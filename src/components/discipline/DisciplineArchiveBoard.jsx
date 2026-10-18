@@ -2,22 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import { collectDisciplineArchive, disciplineArchiveSmartItems } from "@/lib/disciplineBoard";
-import { BORDER, CARD, MUTED, NAVY, PILL_RADIUS } from "@/lib/platformStyles";
-
-function chip(on) {
-  return {
-    fontFamily: "inherit",
-    fontSize: 11,
-    padding: "7px 12px",
-    border: `1px solid ${on ? "var(--nv-navy)" : "var(--nv-line)"}`,
-    background: on ? "var(--nv-navy)" : CARD,
-    color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)",
-    fontWeight: on ? 700 : 400,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-    borderRadius: PILL_RADIUS,
-  };
-}
+import { BORDER, MUTED, NAVY } from "@/lib/platformStyles";
 
 /**
  * Settled sanctions archive — search + day groups via RecordSmartArchive.
@@ -51,6 +36,17 @@ export default function DisciplineArchiveBoard({
     }),
     [cases, employees, stations, ar, today, filter, mineOnly, userId],
   );
+  // Each pill counts what its filter would show — derived from the same collector, never hard-coded.
+  const filterCounts = useMemo(() => Object.fromEntries(["all", "cut", "warn", "objected"].map((id) => [id, collectDisciplineArchive({
+    cases,
+    employees,
+    stations,
+    ar,
+    today,
+    filter: id,
+    selfOnly: mineOnly,
+    userId,
+  }).rows.length])), [cases, employees, stations, ar, today, mineOnly, userId]);
   const items = useMemo(
     () => disciplineArchiveSmartItems(archive.rows, { ar }),
     [archive.rows, ar],
@@ -83,13 +79,12 @@ export default function DisciplineArchiveBoard({
       emptyLabel={emptyText}
       searchPlaceholder={ar ? "بحث في الأرشيف…" : "Search archive…"}
       subtitle={`${archive.note} ${subtitle}`}
-      meta={(
-        <span style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-          {filters.map(([id, label]) => (
-            <button key={id} type="button" onClick={() => setFilter(id)} style={chip(filter === id)}>{label}</button>
-          ))}
-        </span>
-      )}
+      filters={{
+        dataKey: `disc-archive-${scope}`,
+        value: filter,
+        onChange: setFilter,
+        items: filters.map(([id, label]) => ({ id, label, n: filterCounts[id] ?? 0 })),
+      }}
       renderOpen={(item) => {
         const row = item.row;
         if (!row) return null;

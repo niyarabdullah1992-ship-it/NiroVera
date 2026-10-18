@@ -51,10 +51,10 @@ export default function DutyLaneBar({
       }}
     >
       <button type="button" onClick={() => onLane?.("mine")} style={laneBtn(lane === "mine")}>
-        {ar ? "ملفي" : "My file"}
+        {ar ? "الموظف" : "Employee"}
       </button>
       <button type="button" onClick={() => onLane?.("manage")} style={laneBtn(lane === "manage")}>
-        {ar ? "إدارة" : "Manage"}
+        {ar ? "الإدارة" : "Manage"}
         {manageCount > 0 ? (
           <span
             dir="ltr"

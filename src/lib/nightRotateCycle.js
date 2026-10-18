@@ -2,6 +2,7 @@ import { ruleValue } from "./laborRules.js";
 import { isOnApprovedLeave } from "./leaveTypes.js";
 import { checkConfirmConsentPaperGate, isNightWrittenConsent, isOpenConsent } from "./writtenConsent.js";
 import { hasWrittenNightConsent } from "./decision18632.js";
+import { extraCoverageStationIds } from "./stationTree.js";
 import {
   activeNightRemedy,
   checkNightAllowanceGate,
@@ -93,12 +94,16 @@ export function checkNightEmployeeActorGate({ employeeId, actorId } = {}) {
   return { ok: true };
 }
 
-/** Reduce / allowance / change-night-work — establishment on the roster, never My file. */
-export function checkNightManagementActorGate({ employeeId, actorId } = {}) {
+/**
+ * Reduce / allowance / change-night-work — establishment on the roster, never My file.
+ * A worker never decides his own remedy — except the head of the company (the owner seat), who has
+ * no one above him: on his own row he decides as the establishment, and the record says so.
+ */
+export function checkNightManagementActorGate({ employeeId, actorId, actorIsHead = false } = {}) {
   if (!actorId) {
     return { ok: false, error: "ACTOR_REQUIRED", reason: "حدّد من يقرر.", reasonEn: "Name who is deciding." };
   }
-  if (String(actorId) === String(employeeId)) {
+  if (String(actorId) === String(employeeId) && !actorIsHead) {
     return {
       ok: false,
       error: "MANAGEMENT_ONLY",
@@ -109,8 +114,8 @@ export function checkNightManagementActorGate({ employeeId, actorId } = {}) {
   return { ok: true };
 }
 
-export function checkDecideNightRemedyGate({ kind, employeeId, actorId, cutHours, shift, amount, allowanceKind } = {}) {
-  const actor = checkNightManagementActorGate({ employeeId, actorId });
+export function checkDecideNightRemedyGate({ kind, employeeId, actorId, actorIsHead = false, cutHours, shift, amount, allowanceKind } = {}) {
+  const actor = checkNightManagementActorGate({ employeeId, actorId, actorIsHead });
   if (!actor.ok) return actor;
   if (kind !== "allowance" && kind !== "reduce" && kind !== "rotate") {
     return {
@@ -125,8 +130,8 @@ export function checkDecideNightRemedyGate({ kind, employeeId, actorId, cutHours
   return { ok: true };
 }
 
-export function checkWithdrawNightRemedyGate({ employee, employeeId, actorId } = {}) {
-  const actor = checkNightManagementActorGate({ employeeId: employeeId || employee?.id, actorId });
+export function checkWithdrawNightRemedyGate({ employee, employeeId, actorId, actorIsHead = false } = {}) {
+  const actor = checkNightManagementActorGate({ employeeId: employeeId || employee?.id, actorId, actorIsHead });
   if (!actor.ok) return actor;
   if (!nightRemedyIsWithdrawable(activeNightRemedy(employee))) {
     return {
@@ -159,6 +164,11 @@ export function checkWithdrawNightConsentGate({ request, acknowledged } = {}) {
   return { ok: true };
 }
 
+/**
+ * A request the worker actually answered this month. A request that LAPSED (closed by the roster,
+ * not by the worker) is no answer: when nights come back the same month, a fresh request opens —
+ * otherwise the roster keeps the 18632 breach while the worker has nothing to answer.
+ */
 export function answeredNightRotateThisMonth(emp, cycleKey) {
   return (emp?.otherRequests || []).some((row) => (
     isNightRotateRequest(row)
@@ -166,9 +176,23 @@ export function answeredNightRotateThisMonth(emp, cycleKey) {
     && row.status !== "pending"
     && row.status !== "withdrawn"
     && row.status !== "rejected"
+    && row.status !== "lapsed"
+    && !row.lapsed
     && row.decision !== "refuse"
     && !row.withdrawnAt
   ));
+}
+
+/**
+ * The roster that holds this person's nights: his own station's, else a station he covers.
+ * The same week read on every surface — the lapse, the due check and the manager's 18632 row.
+ */
+export function nightScheduleFor(data, employee, weekStart) {
+  const start = weekStartDate(weekStart || new Date());
+  const ids = [employee?.stationId, ...extraCoverageStationIds(employee, data)].filter(Boolean).map(String);
+  const list = ids.map((id) => (data?.schedules || []).find((row) => String(row.stationId) === id)).filter(Boolean);
+  const withNights = list.find((schedule) => onNightsThisWeek(employee, schedule, start));
+  return withNights || list[0] || { shiftTypes: [], assignments: {} };
 }
 
 export function onNightsThisWeek(employee, schedule, weekStart) {
@@ -227,8 +251,7 @@ export function shouldLapseNightWrittenConsent(employee, schedule, weekStart) {
 export function collectLapsedNightWrittenConsents(data, weekStart) {
   const start = weekStartDate(weekStart || new Date());
   return (data?.employees || []).flatMap((employee) => {
-    const schedule = (data.schedules || []).find((row) => row.stationId === employee.stationId)
-      || { shiftTypes: [], assignments: {} };
+    const schedule = nightScheduleFor(data, employee, start);
     if (!shouldLapseNightWrittenConsent(employee, schedule, start)) return [];
     return openNightWrittenConsents(employee).map((request) => ({ employee, request }));
   });
@@ -259,8 +282,7 @@ export function applyLapsedNightConsents(data, weekStart) {
 export function collectLapsedNightRotates(data, weekStart) {
   const start = weekStartDate(weekStart || new Date());
   return (data?.employees || []).flatMap((employee) => {
-    const schedule = (data.schedules || []).find((row) => row.stationId === employee.stationId)
-      || { shiftTypes: [], assignments: {} };
+    const schedule = nightScheduleFor(data, employee, start);
     return shouldLapseNightRotate(employee, schedule, start)
       ? [{ employee, request: pendingNightRotate(employee) }]
       : [];
@@ -270,21 +292,21 @@ export function collectLapsedNightRotates(data, weekStart) {
 export function collectDueNightRotates(data, weekStart) {
   const start = weekStartDate(weekStart || new Date());
   return (data?.employees || []).flatMap((employee) => {
-    const schedule = (data.schedules || []).find((row) => row.stationId === employee.stationId)
-      || { shiftTypes: [], assignments: {} };
+    const schedule = nightScheduleFor(data, employee, start);
     const due = nightRotateDue({ employee, schedule, weekStart: start });
     return due.due ? [{ employee, due, schedule }] : [];
   });
 }
 
-export function applyNightWorkerDecision(schedule, employeeId, decision, weekStart, { ordinaryKind, cutHours } = {}) {
-  if (decision === "reduce") return remapEmployeeNightWorkerDays(schedule, employeeId, weekStart, "reduce", { cutHours });
+export function applyNightWorkerDecision(schedule, employeeId, decision, weekStart, { ordinaryKind, cutHours, notBefore } = {}) {
+  if (decision === "reduce") return remapEmployeeNightWorkerDays(schedule, employeeId, weekStart, "reduce", { cutHours, notBefore });
   if (decision === "refuse" || decision === "rotate") {
     return remapEmployeeNightWorkerDays(
       schedule,
       employeeId,
       weekStart,
       ordinaryKind === "evening" ? "evening" : "rotate",
+      { notBefore },
     );
   }
   return { ok: true, moved: 0, mode: "agree" };

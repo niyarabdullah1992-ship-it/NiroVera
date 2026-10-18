@@ -12,9 +12,10 @@ import {
   field,
 } from "@/lib/platformStyles";
 
-const NAVY = "var(--nv-navy)";
-const NAVY_SOFT = "color-mix(in srgb, var(--nv-navy) 10%, #fff)";
-const NAVY_LINE = "color-mix(in srgb, var(--nv-navy) 28%, var(--nv-line, #DFE3EA))";
+/* Platform identity: the one green accent, soft green for what is picked, ink for names. */
+const NAVY = "var(--nv-ok-ink, #2F6B45)";
+const NAVY_SOFT = "var(--nv-ok-soft, #E8F2EC)";
+const NAVY_LINE = "color-mix(in srgb, var(--nv-ok-ink, #2F6B45) 22%, var(--nv-line, #DFE3EA))";
 const MONO = "var(--font-mono, 'IBM Plex Mono', monospace)";
 const ROW_H = 40;
 
@@ -26,7 +27,8 @@ function compareMembers(a, b) {
 
 function initialsOf(name) {
   const parts = String(name || "").split(/\s+/).filter(Boolean).slice(0, 2);
-  const letters = parts.map((part) => part[0]).join("");
+  // «السالم» gives «س», not the article's «ا».
+  const letters = parts.map((part) => (/^ال.{2,}/.test(part) ? part[2] : part[0])).join("");
   return letters || "—";
 }
 
@@ -60,23 +62,49 @@ function rowStyle(on) {
 const chip = {
   display: "flex",
   alignItems: "center",
-  justifyContent: "flex-start",
-  gap: 4,
-  flex: "1 1 0",
+  gap: 6,
   minWidth: 0,
-  height: 28,
+  height: 32,
   margin: 0,
-  padding: "0 8px",
+  paddingInlineStart: 4,
+  paddingInlineEnd: 4,
   boxSizing: "border-box",
   borderRadius: PILL_RADIUS,
   border: `1px solid ${NAVY_LINE}`,
   background: NAVY_SOFT,
-  color: NAVY,
-  fontSize: 11,
+  color: INK,
+  fontSize: 12.5,
   fontWeight: 600,
   lineHeight: 1,
-  overflow: "hidden",
   whiteSpace: "nowrap",
+};
+
+const chipAvatar = {
+  width: 22,
+  height: 22,
+  borderRadius: "50%",
+  flex: "none",
+  display: "grid",
+  placeItems: "center",
+  fontSize: 10,
+  fontWeight: 700,
+  background: NAVY,
+  color: "#fff",
+};
+
+const chipRemove = {
+  width: 22,
+  height: 22,
+  flex: "none",
+  display: "grid",
+  placeItems: "center",
+  margin: 0,
+  padding: 0,
+  border: "none",
+  borderRadius: "50%",
+  background: "transparent",
+  color: MUTED,
+  cursor: "pointer",
 };
 
 /** Assign one task to several members — closed by default, opens into a searchable checklist. */
@@ -142,7 +170,9 @@ export default function MemberMultiSelect({ members, selected, onChange, lang, e
       >
         <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: pickedNames.length ? INK : MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "start" }}>
           {pickedNames.length
-            ? pickedNames.join(ar ? "، " : ", ")
+            ? (ar
+              ? (pickedNames.length === 1 ? "عضو واحد محدد" : pickedNames.length === 2 ? "عضوان محددان" : `${pickedNames.length} ${pickedNames.length <= 10 ? "أعضاء محددون" : "عضواً محدداً"}`)
+              : `${pickedNames.length} selected`)
             : (ar ? "اختر الأعضاء" : "Select members")}
         </span>
         <ChevronDown style={{ width: 14, height: 14, color: MUTED, flexShrink: 0, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
@@ -151,12 +181,15 @@ export default function MemberMultiSelect({ members, selected, onChange, lang, e
       {!open && picked.length > 0 && (
         <div
           data-member-chip-row
-          style={{ display: "flex", flexWrap: "nowrap", alignItems: "center", gap: 6, width: "100%", overflow: "hidden" }}
+          style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,120px),1fr))", gap: 6, width: "100%" }}
         >
           {picked.map((m) => (
             <span key={m.id} data-member-chip style={chip}>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{m.name}</span>
-              <X style={{ width: 12, height: 12, flexShrink: 0, cursor: "pointer" }} onClick={() => toggle(m.id)} />
+              <span aria-hidden style={chipAvatar}>{initialsOf(m.name)}</span>
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{m.name}</span>
+              <button type="button" onClick={() => toggle(m.id)} aria-label={ar ? `إزالة ${m.name}` : `Remove ${m.name}`} style={chipRemove}>
+                <X style={{ width: 12, height: 12 }} />
+              </button>
             </span>
           ))}
         </div>

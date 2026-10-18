@@ -17,6 +17,7 @@ import { updateCompany } from "@/lib/store";
 import { readWorkProofs } from "@/lib/facts";
 import { cleanedPeople, cleanedVehicles, peopleFromProof, vehiclesFromProof } from "@/lib/workProofCrew";
 import { cleanProofAttachments, makeProofAttachment } from "@/lib/proofAttachments";
+import { addProofPerson, markProofPersonOut } from "@/lib/proofPeople";
 
 function uid(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -153,9 +154,14 @@ export function endLocalWorkProof(companyId, proof, actor, extra = {}) {
     const list = readWorkProofs(data);
     const idx = list.findIndex((item) => item.id === proof.id || item.ref === proof.ref);
     if (idx < 0) return;
+    const endedAt = extra.endedAt || new Date().toISOString();
+    const people = Array.isArray(list[idx].people)
+      ? list[idx].people.map((person) => (person?.name && !person.outAt ? { ...person, outAt: endedAt } : person))
+      : list[idx].people;
     next = {
       ...list[idx],
-      endedAt: extra.endedAt || new Date().toISOString(),
+      people,
+      endedAt,
       afterStamp,
       afterUrl,
       endedById: actor?.id || null,
@@ -368,4 +374,53 @@ export function attachLocalWorkProof(companyId, proof, entry, extra = {}) {
   });
   if (!next) return { error: "PROOF_NOT_FOUND", reason: "الإثبات غير موجود." };
   return { ok: true, proof: withStage(next) };
+}
+
+function patchWorkProof(companyId, proof, build) {
+  let next = null;
+  let failure = null;
+  updateCompany(companyId, (data) => {
+    const list = readWorkProofs(data);
+    const idx = list.findIndex((item) => item.id === proof?.id || item.ref === proof?.ref);
+    if (idx < 0) return;
+    const out = build(list[idx]);
+    if (!out?.ok) { failure = out; return; }
+    next = out.proof;
+    list[idx] = next;
+    data.workProofs = list;
+  });
+  if (failure) return { error: failure.error, reason: failure.errorAr, reasonEn: failure.errorEn };
+  if (!next) return { error: "PROOF_NOT_FOUND", reason: "الإثبات غير موجود.", reasonEn: "Proof not found." };
+  return { ok: true, proof: withStage(next) };
+}
+
+/** A worker of the outside party who arrived after the proof was opened. */
+export function addLocalWorkProofPerson(companyId, proof, person, actor = {}) {
+  return patchWorkProof(companyId, proof, (row) => {
+    const res = addProofPerson(row, person, { kind: "work" });
+    if (!res.ok) return res;
+    const first = res.people[0];
+    return {
+      ok: true,
+      proof: {
+        ...row,
+        people: res.people,
+        personName: row.personName || first?.name || "",
+        personId: row.personId || first?.id || "",
+        auditTrail: appendWorkProofAudit(row, "crew_in", actor, { detail: res.people[res.people.length - 1].name }),
+      },
+    };
+  });
+}
+
+/** One worker left before the rest — the proof stays open for the others. */
+export function markLocalWorkProofPersonOut(companyId, proof, index, actor = {}) {
+  return patchWorkProof(companyId, proof, (row) => {
+    const res = markProofPersonOut(row, index);
+    if (!res.ok) return res;
+    return {
+      ok: true,
+      proof: { ...row, people: res.people, auditTrail: appendWorkProofAudit(row, "crew_out", actor, { detail: res.people[index].name }) },
+    };
+  });
 }

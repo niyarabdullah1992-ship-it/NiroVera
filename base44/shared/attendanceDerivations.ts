@@ -4,6 +4,7 @@
  */
 
 import { addLaborDays, laborDayKey, ruleValue } from "./laborRules.ts";
+import { nursingCreditOf, nursingHourOn } from "./nursingHour.ts";
 
 export const GRACE_MINUTES = ruleValue("hours.grace.minutes");
 export const SHIFT_HOURS = ruleValue("hours.shift.ordinaryHours");
@@ -56,6 +57,7 @@ export type PunchLike = {
   onLeave?: boolean;
   restDay?: boolean;
   excusedAbsence?: boolean;
+  preventedByEmployer?: boolean;
   geoVerdict?: string | null;
   overtimeApproved?: boolean | null;
   settlement?: {
@@ -112,7 +114,7 @@ export function formatMinutes(total: number) {
  */
 export function deriveDayStatus(
   punch: PunchLike,
-  opts: { shiftStart?: string; graceMinutes?: number; shiftMinutes?: number } = {},
+  opts: { shiftStart?: string; graceMinutes?: number; shiftMinutes?: number; nursing?: any; employee?: any } = {},
 ) {
   const grace = opts.graceMinutes ?? GRACE_MINUTES;
   const shiftMin = opts.shiftMinutes ?? SHIFT_MINUTES;
@@ -149,7 +151,8 @@ export function deriveDayStatus(
   const inM = parseHm(punch.checkIn);
   const outM = parseHm(punch.checkOut);
   if (inM == null) {
-    const excused = !!punch.excusedAbsence || !!punch.settlement;
+    // Model Art. 46: kept from work by the establishment — paid, never an unexcused absence.
+    const excused = !!punch.excusedAbsence || !!punch.settlement || !!punch.preventedByEmployer;
     return {
       status: ATT_STATUS.absent as AttStatusId,
       checkIn: null as string | null,
@@ -163,14 +166,19 @@ export function deriveDayStatus(
     };
   }
 
-  const lateMinutes = Math.max(0, inM - shiftStart - grace);
+  // Art. 154: inside her nursing minutes at the start she is not late; the minutes she was away
+  // inside them (start / end) are work — ordinary, never overtime (overtime reads the punches alone).
+  const nursing = opts.nursing !== undefined ? opts.nursing : (opts.employee ? nursingHourOn(opts.employee, String(punch.date || "").slice(0, 10)) : null);
+  const lateMinutes = Math.max(0, inM - shiftStart - grace - (nursing?.startMinutes || 0));
   const late = lateMinutes > 0;
   const openCheckout = outM == null;
   let ordinaryMinutes = 0;
   let overtimeMinutes = 0;
+  let nursingCreditMinutes = 0;
   if (outM != null) {
     const worked = Math.max(0, outM - inM);
-    ordinaryMinutes = Math.min(shiftMin, worked);
+    nursingCreditMinutes = nursingCreditOf(nursing, { inMinutes: inM, outMinutes: outM, shiftStart, shiftEnd, workedMinutes: worked, rosteredMinutes: shiftMin }).minutes;
+    ordinaryMinutes = Math.min(shiftMin, worked + nursingCreditMinutes);
     overtimeMinutes = Math.max(0, worked - shiftMin);
   }
 
@@ -184,6 +192,7 @@ export function deriveDayStatus(
     late,
     openCheckout,
     excused: false,
+    nursingCreditMinutes,
     shiftEndMinutes: shiftEnd,
   };
 }
@@ -416,9 +425,9 @@ export type RosterRow = PunchLike & {
 
 export function buildRosterRow(
   punch: PunchLike,
-  opts: { geofenceOn?: boolean; shiftStart?: string } = {},
+  opts: { geofenceOn?: boolean; shiftStart?: string; employee?: any; nursing?: any } = {},
 ): RosterRow {
-  const day = deriveDayStatus(punch, { shiftStart: opts.shiftStart });
+  const day = deriveDayStatus(punch, { shiftStart: opts.shiftStart, employee: opts.employee, nursing: opts.nursing });
   let status = day.status;
   const geo = deriveGeoVerdict(punch, opts.geofenceOn !== false);
   if (geo === GEO_VERDICT.rejected_outside && status !== ATT_STATUS.leave && status !== ATT_STATUS.rest) {
@@ -460,7 +469,7 @@ export function deriveAttStats(rows: RosterRow[], geofenceOn: boolean) {
       r.geo === GEO_VERDICT.accepted_outside,
   ).length;
   const workMinutes = list.reduce((s, r) => s + r.ordinaryMinutes + r.overtimeMinutes, 0);
-  const absent = list.filter((r) => r.status === ATT_STATUS.absent && !r.excusedAbsence && !r.settlement).length;
+  const absent = list.filter((r) => r.status === ATT_STATUS.absent && !r.excusedAbsence && !r.settlement && !r.preventedByEmployer).length;
 
   return {
     rate,
@@ -474,4 +483,107 @@ export function deriveAttStats(rows: RosterRow[], geofenceOn: boolean) {
     absentUnexcused: absent,
     shiftHours: SHIFT_HOURS,
   };
+}
+
+/** Twin of src/lib/attendanceDerivations.js — minutes the check-in opens before a published shift (default 60). */
+export const EARLY_CHECKIN_DEFAULT = 60;
+export function earlyCheckInMinutesOf(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : EARLY_CHECKIN_DEFAULT;
+}
+
+/** Twin of checkEarlyCheckInGate: a check-in before the window opens is refused; the reply says when it opens. */
+export function checkEarlyCheckInGate(shift: { start?: string } | null | undefined, nowMin: number | null, windowMin: number = EARLY_CHECKIN_DEFAULT) {
+  const m = String(shift?.start || "").match(/^(\d{1,2}):(\d{2})$/);
+  const start = m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  if (start == null || nowMin == null) return { ok: true } as const;
+  const until = start - nowMin;
+  if (until <= windowMin) return { ok: true } as const;
+  const open = ((start - windowMin) % 1440 + 1440) % 1440;
+  const hm = `${String(Math.floor(open / 60)).padStart(2, "0")}:${String(open % 60).padStart(2, "0")}`;
+  return {
+    ok: false,
+    error: "TOO_EARLY",
+    opensAt: hm,
+    reason: `يُفتح الحضور قبل ورديتك بـ${windowMin} دقيقة — من الساعة ${hm}.`,
+    reasonEn: `Check-in opens ${windowMin} minutes before your shift — from ${hm}.`,
+  } as const;
+}
+
+const hmMinutesOf = (value: unknown): number | null => {
+  const m = String(value || "").match(/^(\d{1,2}):(\d{2})$/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+
+/** Twin of isOvernightShift: the end falls on the next calendar day (end ≤ start). */
+export function isOvernightShift(shift: { start?: string; end?: string } | null | undefined): boolean {
+  const start = hmMinutesOf(shift?.start);
+  const end = hmMinutesOf(shift?.end);
+  return start != null && end != null && end <= start;
+}
+
+/** Twin of previousDateKey. */
+export function previousDateKey(dateKey: string): string {
+  const m = String(dateKey || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) - 1)).toISOString().slice(0, 10);
+}
+
+/** Twin of checkLateCheckInGate's grace: minutes after a shift's end the self check-in still opens. */
+export const LATE_CHECKIN_GRACE_MINUTES = 60;
+
+/**
+ * Twin of overnightCarryOpen: after midnight yesterday's overnight duty is still the duty day while
+ * nothing is checked in today and today's own check-in window has not opened, and either its row is
+ * open, or it was not punched at all and its end (+ the late check-in grace) has not passed.
+ */
+export function overnightCarryOpen(input: {
+  yesterdayRow?: { check_in_at?: string | null; check_out_at?: string | null; checkInAt?: string | null; checkOutAt?: string | null } | null;
+  yesterdayShift?: { start?: string; end?: string } | null;
+  todayRow?: { check_in_at?: string | null; checkInAt?: string | null } | null;
+  todayShift?: { start?: string } | null;
+  nowMin?: number | null;
+  earlyWindowMin?: number;
+  lateGraceMin?: number;
+}): boolean {
+  const { yesterdayRow, yesterdayShift, todayRow = null, todayShift = null, nowMin = null, earlyWindowMin = EARLY_CHECKIN_DEFAULT, lateGraceMin = LATE_CHECKIN_GRACE_MINUTES } = input || {};
+  if (!isOvernightShift(yesterdayShift)) return false;
+  if (todayRow?.check_in_at || todayRow?.checkInAt) return false;
+  if (todayShift?.start && nowMin != null && checkEarlyCheckInGate(todayShift, nowMin, earlyWindowMin).ok) return false;
+  const inAt = yesterdayRow?.check_in_at || yesterdayRow?.checkInAt;
+  const outAt = yesterdayRow?.check_out_at || yesterdayRow?.checkOutAt;
+  if (inAt && !outAt) return true;
+  if (inAt || outAt || nowMin == null) return false;
+  return nowMin <= (hmMinutesOf(yesterdayShift?.end) ?? 0) + Math.max(0, Number(lateGraceMin) || 0);
+}
+
+/**
+ * Twin of lateMinutesFromScheduledStart: max(0, in − start − grace − excused) on the duty day's clock
+ * (≥ 1440 after the midnight of an overnight shift) — the same reading as deriveActualDuty.
+ */
+export function lateMinutesFromScheduledStart(nowMinutes: number, scheduledStart: string | null | undefined, graceMinutes: number = ruleValue("hours.grace.minutes"), excusedMinutes = 0) {
+  const startMinutes = hmMinutesOf(scheduledStart);
+  if (startMinutes == null) return { error: "NOT_SCHEDULED", lateMinutes: 0, status: null } as const;
+  const grace = Math.max(0, Number(graceMinutes) || 0);
+  const excused = Math.max(0, Number(excusedMinutes) || 0);
+  const lateMinutes = Math.max(0, Number(nowMinutes) - startMinutes - grace - excused);
+  return { lateMinutes, status: lateMinutes > 0 ? "late" : "present" } as const;
+}
+
+/** Twin of checkLateCheckInGate: after the shift has ended (+ grace) a self check-in is closed. */
+export function checkLateCheckInGate(shift: { start?: string; end?: string } | null | undefined, nowMin: number | null, graceMin: number = LATE_CHECKIN_GRACE_MINUTES) {
+  const start = hmMinutesOf(shift?.start);
+  const end = hmMinutesOf(shift?.end);
+  if (end == null || nowMin == null) return { ok: true } as const;
+  // Overnight: never ended on its start day; on the duty day's clock (≥ 1440) it ends at end + 1440.
+  const endAbs = start != null && end <= start ? (nowMin >= 1440 ? end + 1440 : null) : end;
+  if (endAbs == null) return { ok: true } as const;
+  if (!(nowMin > endAbs + graceMin)) return { ok: true } as const;
+  return {
+    ok: false,
+    error: "SHIFT_ENDED",
+    endsAt: shift?.end,
+    reason: `انتهت ورديتك ${shift?.end} — لا تُفتح بصمة الحضور بعدها. إن كنت حضرت فاطلب تسجيلاً يدوياً من «نسيت البصمة؟».`,
+    reasonEn: `Your shift ended at ${shift?.end} — check-in does not open after it. If you were at work, request a manual entry from «Forgot to punch?».`,
+  } as const;
 }

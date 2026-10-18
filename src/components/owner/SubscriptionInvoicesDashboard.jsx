@@ -104,7 +104,7 @@ export default function SubscriptionInvoicesDashboard({ ar }) {
       <div style={ownerGrid}>
         <OwnerStatTile label={ar ? "إجمالي الفواتير" : "All invoices"} value={periodInvoices.length} />
         <OwnerStatTile label={ar ? "مدفوعة" : "Paid"} value={paid.length} state="ok" />
-        <OwnerStatTile label={ar ? "مستحقة" : "Outstanding"} value={due.length} state={due.length ? "warn" : "mute"} />
+        <OwnerStatTile label={ar ? "مستحقة" : "Outstanding"} value={due.length} state={due.length ? "warn" : "mute"} ar={ar} flag={ar ? "بانتظار السداد" : "Awaiting payment"} />
         <OwnerStatTile
           label={ar ? "إجمالي المحصل" : "Total collected"}
           value={money(totalPaid, paid[0]?.currency || "USD", ar)}
@@ -153,7 +153,7 @@ export default function SubscriptionInvoicesDashboard({ ar }) {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder={ar ? "بحث برقم الفاتورة أو الشركة…" : "Search invoice or company…"}
-            style={{ ...ownerField(), paddingInlineStart: 36 }}
+            style={{ ...ownerField(), paddingInlineStart: 36, "--nv-input-start": "36px" }}
           />
         </div>
         <select value={status} onChange={(event) => setStatus(event.target.value)} style={ownerField()}>

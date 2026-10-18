@@ -1,5 +1,6 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.38";
 import { authPowerCareSession } from "../../shared/powerCareSession.ts";
+import { checkStationLocationGate } from "../../shared/geoPlaces.ts";
 import {
   checkCreateBranchGate,
   checkCreateDelegationGate,
@@ -22,6 +23,14 @@ import {
   type PermOverride,
   type ScopeCode,
 } from "../../shared/orgDerivations.ts";
+import {
+  checkOrgViewGate,
+  deriveMyPlace,
+  descendants,
+  orgViewScope,
+  resolveDoa,
+  toOrgData,
+} from "../../shared/orgDesignDerivations.ts";
 
 const ORG_CATEGORY = "orgTree";
 const ORG_LEGACY_CATEGORY = "orgStructure"; // do-not-write — read fallback only
@@ -274,6 +283,44 @@ Deno.serve(async (req) => {
       return Response.json(enrich(data));
     }
 
+    // Org design reads — derived on the server so an employee who cannot read orgSeats still
+    // sees their own place, and a manager sees only their own subtree.
+    if (action === "myPlace" || action === "subtree" || action === "approvalPath") {
+      const [employees, stations, seatsBlob, designBlob, levelsBlob] = await Promise.all([
+        base44.asServiceRole.entities.Employee.filter({ companyId: auth.companyId }),
+        base44.asServiceRole.entities.Station.filter({ companyId: auth.companyId }),
+        loadBlob("orgSeats"),
+        loadBlob("orgDesign"),
+        loadBlob("hrLevels"),
+      ]);
+      const orgData = toOrgData({
+        employees: (employees || []).filter((e: { companyId?: string }) => e.companyId === auth.companyId),
+        stations: stations || [],
+        orgSeats: Array.isArray(seatsBlob?.payload) ? seatsBlob.payload : [],
+        orgDesign: designBlob?.payload && !Array.isArray(designBlob.payload) ? designBlob.payload : {},
+        hrLevels: Array.isArray(levelsBlob?.payload) ? levelsBlob.payload : [],
+      });
+      const me = (orgData.employees || []).find((e) => e.id === String(auth.userId || "")) || null;
+      const viewer = me
+        ? { ...me, owner: auth.owner, role: auth.owner ? "owner" : (me.role || auth.role) }
+        : (auth.owner ? { id: String(auth.userId || ""), role: "owner", owner: true } : null);
+      const target = String(body.employeeId || auth.userId || "");
+      const gate = checkOrgViewGate(viewer, orgData, target);
+      if (!gate.ok) return Response.json(gate, { status: 403 });
+      if (action === "myPlace") {
+        return Response.json({ ok: true, scope: orgViewScope(viewer, orgData), place: deriveMyPlace(orgData, target) });
+      }
+      if (action === "subtree") {
+        const root = String(body.employeeId || auth.userId || "");
+        return Response.json({ ok: true, scope: gate.scope, root, ids: [root, ...descendants(orgData, root)] });
+      }
+      const kind = String(body.kind || "");
+      const amount = body.amount == null || body.amount === "" ? null : Number(body.amount);
+      const res = resolveDoa(orgData, { kind, employeeId: target, amount });
+      if (res.source === "refused") return Response.json(res, { status: 400 });
+      return Response.json({ ok: true, ...res });
+    }
+
     if (!isSenior) {
       return Response.json({ error: "Forbidden — senior role required to change org structure" }, { status: 403 });
     }
@@ -282,6 +329,13 @@ Deno.serve(async (req) => {
       const gate = checkCreateBranchGate(body);
       if (!gate.ok) {
         return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn }, { status: 400 });
+      }
+      // where the branch is: a known country, and a city from the list for Saudi branches
+      let place: { countryCode?: string; city?: string; cityRegion?: string } = {};
+      if (body.countryCode || body.city) {
+        const geo = checkStationLocationGate({ countryCode: body.countryCode, city: body.city, cityRegion: body.cityRegion });
+        if (!geo.ok) return Response.json({ error: geo.error, reason: geo.reason, reasonEn: geo.reasonEn }, { status: 400 });
+        place = geo.place;
       }
       const data = await seedBranchesFromStations(await loadPayload());
       const id = uid("br");
@@ -295,6 +349,7 @@ Deno.serve(async (req) => {
         type: "branch",
         status: "active",
         managerId: body.managerId || null,
+        ...place,
       });
       const branch: BranchLike & { companyId: string; group?: string | null } = {
         companyId: auth.companyId,

@@ -78,7 +78,7 @@ const DOC_KIND_LABELS = {
   qiwa_title: { ar: "المسمى في قوى", en: "Qiwa job title" },
   national_id: { ar: "الهوية الوطنية", en: "National ID" },
   passport: { ar: "الجواز", en: "Passport" },
-  medical: { ar: "التأمين الطبي", en: "Medical insurance" },
+  medical: { ar: "التأمين الطبي (المادة 144)", en: "Medical insurance (Art. 144)" },
   certificate: { ar: "شهادة", en: "Certificate" },
   driving_licence: { ar: "رخصة القيادة", en: "Driving licence" },
   license: { ar: "رخصة", en: "Licence" },

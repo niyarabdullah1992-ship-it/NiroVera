@@ -21,7 +21,17 @@ import {
   visibleArbitrationOutcomes,
 } from "../../shared/arbitrationDerivations.ts";
 
+import {
+  checkAdvanceDisciplineGate,
+  checkRaiseDisciplineGate,
+  checkSignDisciplineGate,
+} from "../../shared/disciplineDerivations.ts";
+import { DISCIPLINE_WORKER_STAGES, pickDisciplineRegulation, planDisciplineStageWrite } from "../../shared/syncLaw.ts";
+import { checkUniformSanctionGate } from "../../shared/uniformPolicy.ts";
+
 const COMPLIANCE_CATEGORY = "employeeCompliance";
+const DISCIPLINE_CATEGORY = "disciplinaryCases";
+const REGULATION_CATEGORY = "workRegulation";
 const SETTINGS_CATEGORY = "companyMeta";
 const SETTINGS_LEGACY_CATEGORY = "companySettings"; // do-not-write — read fallback only
 const ARBITRATION_CATEGORY = "arbitrationOutcomes";
@@ -353,6 +363,80 @@ Deno.serve(async (req) => {
       await saveBlob(SETTINGS_CATEGORY, Array.isArray(metaBlob?.payload) || !metaBlob ? [settings] : settings);
       await audit("compliance.setGosiEstablishment", `Set GOSI establishment ${number}`);
       return Response.json({ ok: true, gosiEstablishment: number });
+    }
+
+    /**
+     * Saves one sanction file after the same Arts. 66–73 / Art. 80 / model-regulation gates the page runs:
+     * stage "raise" (new file), "sign" (decision), or an advance step ("hearing" | "appeal" | "ruling").
+     * The regulation comes from the stored blob when there is one, else the workspace copy the page sends.
+     */
+    if (action === "disciplineSave") {
+      const stage = String(body.stage || "");
+      const workerStage = DISCIPLINE_WORKER_STAGES.includes(stage);
+      if (!isManager && !workerStage) {
+        return Response.json({ error: "FORBIDDEN", reason: "ملفات الجزاء للإدارة.", reasonEn: "Sanction files are management-only." }, { status: 403 });
+      }
+      const row = (body.caseRow || {}) as Record<string, any>;
+      if (!row.id || !row.employeeId) {
+        return Response.json({ error: "CASE_REQUIRED", reason: "يلزم ملف جزاء مربوط بموظف.", reasonEn: "A sanction file tied to an employee is required." }, { status: 400 });
+      }
+      const blob = await loadBlob(DISCIPLINE_CATEGORY);
+      const cases = (Array.isArray(blob?.payload) ? blob.payload : []) as Array<Record<string, any>>;
+      const idx = cases.findIndex((c) => String(c.id) === String(row.id));
+      const existing = idx >= 0 ? cases[idx] : null;
+      // Art. 72: the grievance and the case thread are the worker's own — never someone else's file.
+      if (!isManager && String(existing?.employeeId ?? row.employeeId) !== String(auth.userId || "")) {
+        return Response.json({ error: "FORBIDDEN", reason: "التظلّم يرفعه صاحب الملف وحده (المادة 72).", reasonEn: "Only the worker on the file may file a grievance (Article 72)." }, { status: 403 });
+      }
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
+      // A worker writes as themself: no evidence, messages stamped with the session's name and the server time.
+      const planned = planDisciplineStageWrite(stage, existing, row, {
+        worker: !isManager, actor: { id: String(auth.userId || ""), name: auth.name }, now: new Date().toISOString(), today,
+      });
+      if (!planned.ok) return Response.json({ error: planned.error, reason: planned.reason, reasonEn: planned.reasonEn }, { status: 400 });
+      const next = planned.row as Record<string, any>;
+      const regBlob = await loadBlob(REGULATION_CATEGORY);
+      // The stored regulation always wins; the page's copy counts only while the server holds none.
+      const { regulation } = pickDisciplineRegulation(regBlob?.payload, body.regulation);
+      const others = cases.filter((c) => String(c.id) !== String(row.id));
+      let gate: any = { ok: true };
+      if (stage === "raise") {
+        const emps = await base44.asServiceRole.entities.Employee.filter({ companyId: auth.companyId });
+        const emp = (emps || []).find((e: any) => String(e.employeeId || e.id) === String(next.employeeId));
+        gate = checkRaiseDisciplineGate({
+          employee: emp ? { id: String(next.employeeId), stationId: emp.stationId || emp.station_id || next.stationId } : null,
+          actor: { id: String(auth.userId || "") },
+          note: next.note,
+          today,
+          discoveredAt: next.discoveredAt,
+          penaltyKind: next.penaltyKind,
+          cutDays: next.cutDays,
+          dismissGround: next.dismissGround,
+          offSite: !!next.offSite,
+          workConnected: next.workConnected,
+          cases: others,
+        });
+        // Model Art. 53(1)(e): a uniform breach only for a worker who acknowledged the announced rules.
+        if (gate.ok) {
+          const stored = Array.isArray(regBlob?.payload) ? regBlob.payload[0] : regBlob?.payload;
+          gate = checkUniformSanctionGate({ uniform: stored?.uniform || body.regulation?.uniform || null, employeeId: next.employeeId, row: next });
+        }
+      } else if (stage === "sign") {
+        gate = checkSignDisciplineGate(next, { today, cases: others, regulation });
+      } else if (stage === "hearing" || stage === "appeal") {
+        gate = checkAdvanceDisciplineGate(existing as any, stage, { today, appealNote: next.appealNote, hearingMinutes: next.hearingMinutes });
+      } else if (stage === "ruling") {
+        gate = checkAdvanceDisciplineGate(existing as any, "ruling", { today });
+      }
+      if (!gate.ok) {
+        return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn, cite: gate.cite || null }, { status: 400 });
+      }
+      const saved = { ...next, companyId: auth.companyId, updatedAt: new Date().toISOString() };
+      if (idx >= 0) cases[idx] = saved;
+      else cases.unshift(saved);
+      await saveBlob(DISCIPLINE_CATEGORY, cases);
+      await audit(`discipline.${stage}`, `Sanction file ${row.id} — ${stage}`, { employeeId: saved.employeeId, caseId: row.id });
+      return Response.json({ ok: true, case: saved });
     }
 
     return Response.json({ error: `Unknown action: ${action}` }, { status: 400 });

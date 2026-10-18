@@ -43,9 +43,12 @@ function employeeFileStatus(employee, ar) {
   return { label: ar ? "على رأس العمل" : "On the job", kind: "ok" };
 }
 import { eosGratuity } from "./offboardingDerivations.js";
-import { citeRule, laborDayKey, ruleValue } from "./laborRules.js";
+import { citeRule, laborDayKey, ruleValue, religionOnFile } from "./laborRules.js";
 import { officialHolidayList } from "./ummAlQuraCalendar.js";
 import { effectiveCutDays, effectivePenalty, faceOf, fmtDisciplineDate, isErasedFromEmployeeRecord, penaltyShiftLabel } from "./disciplineBoard.js";
+import { sanctionRecordState } from "./penaltiesRecord.js";
+import { HOSPITAL_FAR_MINUTES } from "./allowanceKinds.js";
+import { WAGE_TYPE_OPTIONS } from "./consentEffects.js";
 
 export function countAr(n, one, two, few, many, zero) {
   if (n === 0) return zero || "لا شيء";
@@ -327,11 +330,57 @@ export function contractAllowanceSplit(profile = {}, allowanceTotal) {
   return null;
 }
 
-/** Contributory wage for GOSI: base + allowances, capped. Night pay sits inside allowances. */
-export function contributoryWage(wage = {}) {
-  const amount = (Number(wage.base) || 0) + (Number(wage.allowances) || 0);
+/**
+ * Contributory wage for GOSI (employer guide): basic + housing + commissions, capped at 45,000 and
+ * floored at 1,500 (annuity) / 400 (hazards only). Without a split, housing cannot be told apart and
+ * the lump is used.
+ */
+export function contributoryWage(wage = {}, saudi = true) {
+  const base = Number(wage.base) || 0;
+  const raw = wage.split
+    ? base + (Number(wage.housing) || 0) + (Number(wage.commission) || 0)
+    : base + (Number(wage.allowances) || 0);
+  if (raw <= 0) return 0;
   const cap = Number(ruleValue("compliance.gosi.wageCeiling")) || 45000;
-  return Math.min(amount, cap);
+  const floor = saudi === false
+    ? Number(ruleValue("compliance.gosi.wageFloorHazard")) || 400
+    : Number(ruleValue("compliance.gosi.wageFloorAnnuity")) || 1500;
+  return Math.min(cap, Math.max(floor, raw));
+}
+
+/**
+ * Named Art. 2 lines kept apart from «بدلات أخرى»: effort/hazard (2/2), cost of living or family (2/3),
+ * and the month's commission (2/1). They are always added — never folded into a lump.
+ */
+export function wageExtras(profile = {}) {
+  const n = (v) => Math.max(0, Number(v) || 0);
+  const hazard = n(profile.hazardAllowance);
+  const living = n(profile.livingAllowance);
+  const commission = n(profile.commissionAmount);
+  // Site allowances (contract, Art. 2) — the cash side of the remote-site duties in Arts. 146–147.
+  const remote = n(profile.remoteAreaAllowance);
+  const medical = n(profile.medicalDistanceAllowance);
+  const meals = n(profile.mealAllowance);
+  return { hazard, living, commission, remote, medical, meals, sum: hazard + living + commission + remote + medical + meals };
+}
+
+/**
+ * In-kind benefits (Art. 2/5): valued at most two months of basic wage a year unless the contract sets more;
+ * housing provided in kind satisfies Art. 61/5, transport provided in kind satisfies Art. 148.
+ */
+export function inKindOf(profile = {}) {
+  const base = Math.max(0, Number(profile.baseSalary) || 0);
+  const asked = Math.max(0, Number(profile.inKindMonthly) || 0);
+  const cap = Math.round((base * 2 / 12) * 100) / 100;
+  const value = profile.inKindByContract ? asked : Math.min(asked, cap);
+  return {
+    housingProvided: profile.housingMode === "provided",
+    transportProvided: profile.transportMode === "provided",
+    transportRegular: profile.transportMode === "regular",
+    monthly: value,
+    capped: !profile.inKindByContract && asked > cap,
+    cap,
+  };
 }
 
 export function employeeWageSplit(profile = {}, employee) {
@@ -339,20 +388,28 @@ export function employeeWageSplit(profile = {}, employee) {
   const night = payableNightAllowance(person);
   const nightKind = nightAllowanceKind(person.profile?.nightRemedy?.allowanceKind);
   const base = Number(profile.baseSalary) || 0;
+  const extras = wageExtras(profile);
   const parts = contractAllowanceSplit(profile, profile.allowances);
   if (parts) {
     const h = parts.housing;
     const t = parts.transport;
-    const o = parts.other;
+    const o = parts.other + extras.sum;
     return {
-      base, housing: h, transport: t, other: o,
+      base, housing: h, transport: t, other: o, otherPlain: parts.other,
+      hazard: extras.hazard, living: extras.living, commission: extras.commission,
+      remote: extras.remote, medical: extras.medical, meals: extras.meals, extras: extras.sum,
       allowances: h + t + o + night,
       total: base + h + t + o + night,
       night, nightKind, split: true, splitFrom: parts.from,
     };
   }
   const lump = Number(profile.allowances) || 0;
-  return { base, housing: 0, transport: 0, other: 0, allowances: lump + night, total: base + lump + night, night, nightKind, split: false, splitFrom: "" };
+  return {
+    base, housing: 0, transport: 0, other: 0, otherPlain: 0,
+    hazard: extras.hazard, living: extras.living, commission: extras.commission,
+    remote: extras.remote, medical: extras.medical, meals: extras.meals, extras: extras.sum,
+    allowances: lump + extras.sum + night, total: base + lump + extras.sum + night, night, nightKind, split: false, splitFrom: "",
+  };
 }
 
 export function employeeCustodyRows(assets = [], employeeId, ar = true) {
@@ -386,11 +443,78 @@ function art112Rows(ar, calendar, onDate) {
   });
 }
 
+/**
+ * Allowances and what the Labour Law does with each — Art. 2 (actual wage), 84 (end of service on the
+ * last actual wage), 109 (annual leave paid on the actual wage), 107 (overtime: hourly wage + 50% of the
+ * basic hourly wage), 18632 (night pay or night transport from the roster decision).
+ * The overtime hour is an estimate on 30 days × 8 hours, labelled as such.
+ */
+export function allowanceLawRows(wage = {}, ar = true, inKind = null) {
+  const n = (v) => Number(v) || 0;
+  const base = n(wage.base);
+  const extras = n(wage.extras);
+  const yes = ar ? "يدخل" : "Counts";
+  const no = ar ? "لا يدخل" : "Excluded";
+  const inHour = ar ? "في أجر الساعة فقط" : "In the hourly wage only";
+  const fixed = wage.split
+    ? [
+      ["housing", ar ? "بدل السكن" : "Housing", n(wage.housing), ar ? "م 61" : "Art. 61"],
+      ["transport", ar ? "بدل النقل" : "Transport", n(wage.transport), ar ? "م 2" : "Art. 2"],
+      ["other", ar ? "بدلات أخرى" : "Other allowances", n(wage.otherPlain ?? (n(wage.other) - extras)), ar ? "م 2" : "Art. 2"],
+    ]
+    : [["lump", ar ? "البدلات (مجموع)" : "Allowances (lump)", Math.max(0, n(wage.allowances) - n(wage.night) - extras), ar ? "م 2" : "Art. 2"]];
+  fixed.push(
+    ["hazard", ar ? "بدل طبيعة عمل أو خطر" : "Effort or hazard allowance", n(wage.hazard), ar ? "م 2" : "Art. 2"],
+    ["living", ar ? "بدل غلاء معيشة أو عائلي" : "Cost-of-living or family allowance", n(wage.living), ar ? "م 2" : "Art. 2"],
+    ["remote", ar ? "بدل منطقة نائية" : "Remote-area allowance", n(wage.remote), ar ? "م 2 · 146" : "Art. 2 · 146"],
+    ["medical", ar ? "بدل بُعد الخدمات الطبية" : "Distance-from-care allowance", n(wage.medical), ar ? "م 144 · 146/3" : "Art. 144 · 146/3"],
+    ["meals", ar ? "بدل إعاشة" : "Meals allowance", n(wage.meals), ar ? "م 147" : "Art. 147"],
+  );
+  const rows = fixed.filter(([, , amount]) => amount > 0).map(([key, name, amount, cite]) => ({
+    key, name, amount, cite, eos: yes, leave: yes, ot: inHour, cash: true,
+  }));
+  if (n(wage.commission) > 0) {
+    rows.push({
+      key: "commission", name: ar ? "العمولة" : "Commission", amount: n(wage.commission), cite: ar ? "م 2 · 86" : "Art. 2 · 86",
+      eos: ar ? "يدخل ما لم يُستثنَ كتابةً" : "Counts unless excluded in writing", leave: yes, ot: inHour, cash: true,
+    });
+  }
+  if (n(wage.night) > 0) {
+    rows.push({
+      key: "night",
+      name: wage.nightKind === "transport" ? (ar ? "بدل نقل ليلي" : "Night transport") : (ar ? "أجر ليلي" : "Night pay"),
+      amount: n(wage.night), cite: "18632",
+      eos: yes, leave: yes, ot: inHour, cash: true,
+    });
+  }
+  if (inKind && inKind.monthly > 0) {
+    rows.push({
+      key: "inkind", name: ar ? "ميزات عينية" : "In-kind benefits", amount: inKind.monthly, cite: ar ? "م 2" : "Art. 2",
+      eos: yes, leave: ar ? "لا تُصرف نقداً" : "Not paid in cash", ot: no, cash: false,
+    });
+  }
+  const cash = base + rows.filter((row) => row.cash).reduce((sum, row) => sum + row.amount, 0);
+  const total = cash + rows.filter((row) => !row.cash).reduce((sum, row) => sum + row.amount, 0);
+  const otHour = cash / 240 + (base / 240) * 0.5;
+  return {
+    rows,
+    base,
+    total,
+    cash,
+    otHour: Math.round(otHour * 100) / 100,
+    note: ar
+      ? "الأجر الفعلي = الأساسي + البدلات والعمولات والميزات العينية (المادة 2). عليه تُحسب مكافأة نهاية الخدمة (84). ساعة الإضافي = أجر الساعة + 50٪ من أجر الساعة الأساسي (107) — تقدير على 30 يوماً × 8 ساعات."
+      : "Actual wage = base + allowances, commission and in-kind benefits (Art. 2). End of service (84) uses it. An overtime hour = the hourly wage + 50% of the basic hourly wage (107) — estimated on 30 days × 8 hours.",
+    no,
+  };
+}
+
 export function leaveCatalogFor(profile, ar = true, calendar, onDate) {
   const gender = profileGender(profile);
   const female = gender === "female";
   const male = gender === "male";
-  const muslim = isRamadanHoursSubject({ profile });
+  // Hajj and the iddah length follow the religion on file — nothing is assumed when it is empty.
+  const muslim = religionOnFile({ profile }) === "muslim";
   const groups = [
     {
       title: ar ? "رصيد يتراكم" : "A balance that accumulates",
@@ -407,11 +531,19 @@ export function leaveCatalogFor(profile, ar = true, calendar, onDate) {
       rows: [
         { name: ar ? "مرضية" : "Sick", art: "117", ent: ar ? "30 كامل · 60 بثلاثة أرباع · 30 بغير أجر في السنة" : "30 full · 60 at three-quarters · 30 unpaid in the year", wage: ar ? "متدرّج حسب المستنفد" : "Stepped by what was used", cond: ar ? "تقرير طبي معتمد" : "Approved medical report" },
         { name: female ? (ar ? "وفاة أصل أو فرع" : "Death of parent or child") : (ar ? "وفاة زوج أو أصل أو فرع" : "Death of spouse, parent or child"), art: "113", ent: ar ? "5 أيام" : "5 days", wage: ar ? "بأجر كامل" : "Full pay", cond: female ? (ar ? "وثيقة الوفاة · وفاة الزوج من العدّة 160" : "Death certificate · husband death is iddah 160") : (ar ? "وثيقة الوفاة" : "Death certificate") },
+        { name: ar ? "وفاة أخ أو أخت" : "Death of a sibling", art: "113", ent: ar ? "3 أيام" : "3 days", wage: ar ? "بأجر كامل" : "Full pay", cond: ar ? "وثيقة الوفاة" : "Death certificate" },
         { name: ar ? "زواج" : "Marriage", art: "113", ent: ar ? "5 أيام — مرة واحدة" : "5 days — once", wage: ar ? "بأجر كامل" : "Full pay", cond: ar ? "عقد الزواج" : "Marriage contract" },
         ...(male ? [{ name: leaveTypeLabel("paternity", ar), art: "113", ent: ar ? "3 أيام" : "3 days", wage: ar ? "بأجر كامل" : "Full pay", cond: ar ? "شهادة الميلاد" : "Birth certificate" }] : []),
         ...(muslim ? [{ name: ar ? "حج" : "Hajj", art: "114", ent: ar ? "10 إلى 15 يوماً — مرة في الخدمة" : "10 to 15 days — once in service", wage: ar ? "بأجر كامل" : "Full pay", cond: ar ? "سنتان خدمة متصلة، ولم يؤدِّه قبلاً" : "Two continuous years, and Hajj not performed before" }] : []),
         { name: ar ? "امتحان" : "Exam", art: "115", ent: ar ? "أيام الامتحان الفعلية" : "The actual exam days", wage: ar ? "بأجر كامل — وبغير أجر إن كان معاداً" : "Full pay — unpaid if a repeat", cond: ar ? "طلب قبل 15 يوماً أو ورقة مواعيد متأخرة في يوم صدورها. إثبات أداء بعد الامتحان. صاحب العمل لا يرفض المستوفي" : "Request 15 days ahead or a late timetable paper that day. Sitting proof after the exam. Employer cannot refuse a qualifying file" },
         ...art112Rows(ar, calendar, onDate),
+      ],
+    },
+    {
+      title: ar ? "بحكم نظام التأمينات" : "Under the social insurance law",
+      rule: ar ? "لا تُخصم من رصيد الإجازات؛ التعويض عبر فرع الأخطار المهنية." : "Not taken from the leave balance; compensated through occupational hazards.",
+      rows: [
+        { name: ar ? "إصابة عمل" : "Work injury", art: ar ? "تأمينات" : "GOSI", ent: ar ? "مدة العجز المؤقت بتقرير طبي" : "The temporary-disability period on a medical report", wage: ar ? "من التأمينات — أو من صاحب العمل إن لم تكن المنشأة مسجّلة: كامل 60 يوماً ثم 75٪ (المادة 137)" : "From GOSI — or, if not covered, the employer: full for 60 days then 75% (Art. 137)", cond: ar ? "تقرير طبي وتاريخ الإصابة" : "Medical report and the injury date" },
       ],
     },
     {
@@ -430,7 +562,7 @@ export function leaveCatalogFor(profile, ar = true, calendar, onDate) {
         { name: leaveTypeLabel("maternity", ar), art: "151", ent: ar ? "12 أسبوعاً توزّعها كيف شاءت" : "12 weeks she may place as she chooses", wage: ar ? "بأجر كامل" : "Full pay", cond: ar ? "يُحظر تشغيلها 6 أسابيع بعد الوضع" : "She may not be put to work for 6 weeks after birth" },
         { name: leaveTypeLabel("maternity_extend", ar), art: "151", ent: ar ? "شهر بلا أجر بعد انتهاء الوضع" : "One unpaid month after maternity ends", wage: ar ? "بغير أجر — بلا إيقاف عقد 116" : "Unpaid — not an Art. 116 suspension", cond: ar ? "بعد وضع معتمد" : "After approved maternity" },
         { name: leaveTypeLabel("maternity_companion", ar), art: "151", ent: ar ? "شهر بأجر · وشهر بلا أجر" : "One paid month · one unpaid month", wage: ar ? "بأجر كامل ثم بغير أجر" : "Full pay then unpaid", cond: ar ? "مولود مريض أو ذو إعاقة يحتاج مرافقاً · تقرير طبي" : "Sick or disabled newborn needing a companion · medical report" },
-        { name: leaveTypeLabel("iddah", ar), art: "160", ent: isRamadanHoursSubject({ profile }) ? (ar ? "4 أشهر وعشرة أيام — بطلب" : "4 months and 10 days — by request") : (ar ? "15 يوماً — بطلب" : "15 days — by request"), wage: isRamadanHoursSubject({ profile }) ? (ar ? "بأجر كامل — وتمديد بغير أجر عند الحمل حتى الوضع" : "Full pay — unpaid extension if pregnant until birth") : (ar ? "بأجر كامل" : "Full pay"), cond: ar ? "وثيقة الوفاة · لا عمل لدى الغير" : "Death certificate · no other employer" },
+        { name: leaveTypeLabel("iddah", ar), art: "160", ent: !religionOnFile({ profile }) ? (ar ? "حسب الديانة: 130 يوماً للمسلمة و15 لغيرها — حدّد الديانة في الملف" : "By religion: 130 days for a Muslim, 15 otherwise — set the religion on file") : religionOnFile({ profile }) === "muslim" ? (ar ? "4 أشهر وعشرة أيام — بطلب" : "4 months and 10 days — by request") : (ar ? "15 يوماً — بطلب" : "15 days — by request"), wage: isRamadanHoursSubject({ profile }) ? (ar ? "بأجر كامل — وتمديد بغير أجر عند الحمل حتى الوضع" : "Full pay — unpaid extension if pregnant until birth") : (ar ? "بأجر كامل" : "Full pay"), cond: ar ? "وثيقة الوفاة · لا عمل لدى الغير" : "Death certificate · no other employer" },
       ],
     });
   }
@@ -448,9 +580,10 @@ function fileDocs(employee, ar, today) {
   const saudi = /سعود|saudi/i.test(String(profile.nationality || employee?.nationality || ""));
   const idType = profileFieldValue(profile, "idType", employee);
   const rows = [];
-  const push = (name, ref, exp) => {
+  const push = (name, ref, exp, kind = "doc") => {
     const days = daysUntilExpiry(exp, today);
     rows.push({
+      kind,
       name,
       ref: ref || "—",
       exp: exp ? niceFileDate(exp, ar) : "—",
@@ -471,7 +604,7 @@ function fileDocs(employee, ar, today) {
     push(ar ? "رخصة العمل" : "Work permit", profile.workPermitNumber, profile.workPermitExpiry);
   }
   for (const cert of employee?.certificates || []) {
-    push(cert.name || (ar ? "شهادة" : "Certificate"), cert.code || cert.fileName || cert.id, cert.expiryDate);
+    push(cert.name || (ar ? "شهادة" : "Certificate"), cert.code || cert.fileName || cert.id, cert.expiryDate, "cert");
   }
   return rows;
 }
@@ -496,7 +629,9 @@ export function buildEmployeeFileView({
   const hireIso = profile.hireDate || employee?.hireDate || employee?.startDate || "";
   const years = serviceYearsFromHire(hireIso, day);
   const wage = employeeWageSplit(profile, employee);
-  const eosNow = eosGratuity(years, wage.total);
+  const inKind = inKindOf(profile);
+  // Art. 2: the wage for end of service is the actual wage — cash lines plus in-kind benefits.
+  const eosNow = eosGratuity(years, wage.total + inKind.monthly);
   const contractType = optionLabel(CONTRACT_TYPE_OPTIONS, profileFieldValue(profile, "contractType", employee), ar) || (ar ? "—" : "—");
   const fixed = isFixedContractType(profileFieldValue(profile, "contractType", employee));
   const annualLeft = remainingLeaveDays(profile, employee?.leaveRequests || [], "annual", day);
@@ -560,7 +695,7 @@ export function buildEmployeeFileView({
     },
     {
       id: "docs",
-      tab: "docs",
+      tab: "identity",
       label: ar ? "الوثائق" : "Documents",
       ok: worstDoc >= 0,
       warn: worstDoc <= EXPIRY_WARN_DAYS,
@@ -576,17 +711,20 @@ export function buildEmployeeFileView({
     { k: ar ? "العقد" : "Contract", v: contractType || "—", note: ar ? `${citeRule(fixed ? "contract.fixed.cite" : "contract.indefinite.cite")?.labelAr || "المادة 75"} · ${qiwa ? "مسجَّل في قوى" : "قوى"}` : `${fixed ? "Art. 50" : "Art. 75"} · Qiwa` },
     { k: ar ? "الأجر الشهري" : "Monthly wage", v: wage.total > 0 ? moneySar(wage.total, ar) : "—", note: ar ? `أساسي ${moneySar(wage.base, ar)} + بدلات` : `Base ${moneySar(wage.base, ar)} + allowances` },
     { k: ar ? "مدة الخدمة" : "Service", v: serviceLabel(hireIso, ar, day), note: hireIso ? (ar ? `منذ ${niceFileDate(hireIso, ar)}` : `Since ${niceFileDate(hireIso, ar)}`) : (ar ? "لا تاريخ تعيين" : "No hire date") },
-    { k: ar ? "رصيد الإجازة السنوية" : "Annual leave", v: annualLeft == null ? "—" : (ar ? countAr(annualLeft, "يوم متبقٍ", "يومان متبقيان", "أيام متبقية", "يوماً متبقياً") : `${annualLeft} left`), note: ar ? `من ${statutory} — المادة 109` : `of ${statutory} — Art. 109` },
     { k: ar ? "مكافأة نهاية الخدمة" : "End-of-service", v: wage.total > 0 && hireIso ? moneySar(eosNow, ar) : "—", note: ar ? "تقدير على الأجر الأخير — المادة 84" : "Estimate on last wage — Art. 84" },
     { k: ar ? "العهد بحوزته" : "Custody in hand", v: ar ? countAr(inHand.length, "عهدة واحدة", "عهدتان", "عهد", "عهدة", "لا عهدة") : `${inHand.length} in hand`, note: ar ? "تُستعاد في إخلاء الطرف" : "Returned at clearance" },
   ];
 
-  const mineCases = (cases || []).filter((item) => String(item.employeeId) === String(employee?.id));
+  // On his own file the worker sees no sanction: no to-do, no penalty rows, no count — they live in «الجزاءات».
+  const mineCases = isSelf ? [] : (cases || []).filter((item) => String(item.employeeId) === String(employee?.id));
   const openCases = mineCases.filter((item) => !["ruling", "closed"].includes(item.status));
   const todos = [];
+  if (!inKind.housingProvided && !(wage.housing > 0) && !(Number(profile.allowances) > 0)) {
+    todos.push({ tab: "contract", text: ar ? "لا بدل سكن ولا سكن مؤمَّن — المادة 61 تُلزم بأحدهما" : "No housing allowance and no housing provided — Art. 61 requires one", tag: ar ? "المادة 61" : "Art. 61", kind: "warn" });
+  }
   for (const doc of validityWarn) {
     todos.push({
-      tab: "docs",
+      tab: "identity",
       text: `${ar ? doc.docLabelAr : doc.docLabelEn} — ${doc.days < 0 ? (ar ? "منتهية" : "expired") : niceFileDate(doc.expiryDate, ar)}`,
       tag: doc.days < 0 ? (ar ? "منتهية" : "Expired") : (ar ? "تجديد" : "Renew"),
       kind: doc.days < 0 ? "bad" : "warn",
@@ -637,7 +775,8 @@ export function buildEmployeeFileView({
   const sick1 = pct(sickFullLeft, sickFull);
   const sick2 = pct(sickMidLeft, sickMid);
   const usedHajj = usedLeaveDays(employee?.leaveRequests || [], "hajj", day, hireIso);
-  const muslim = isRamadanHoursSubject({ profile });
+  // Hajj and the iddah length follow the religion on file — nothing is assumed when it is empty.
+  const muslim = religionOnFile({ profile }) === "muslim";
   const balances = [
     { name: ar ? "سنوية — المستحق النظامي" : "Annual — statutory", art: ar ? "المادة 109" : "Art. 109", val: ar ? `من ${statutory} — ${countAr(annualLeft ?? 0, "يوم متبقٍ", "يومان متبقيان", "أيام متبقية", "يوماً متبقياً")}` : `${annualLeft ?? 0} of ${statutory}`, ...annualBar },
     { name: ar ? "مرضية — المرتبة الأولى" : "Sick — first band", art: ar ? "المادة 117" : "Art. 117", val: ar ? `من ${sickFull} — ${countAr(sickFullLeft, "يوم متبقٍ", "يومان متبقيان", "أيام متبقية", "يوماً متبقياً")}` : `${sickFullLeft} of ${sickFull}`, ...sick1 },
@@ -727,7 +866,7 @@ export function buildEmployeeFileView({
     {
       kicker: ar ? "الاتصال" : "Contact",
       title: ar ? "التواصل والطوارئ" : "Reach and emergency",
-      tag: ar ? "يُحدّثه الموظف" : "The employee updates this",
+      tag: ar ? "يطلب الموظف تحديثه" : "The employee asks to update it",
       rows: [
         row(ar ? "الجوال" : "Mobile", employee?.phone, "", "", "phone", "text", { raw: employee?.phone || "", secret: true }),
         row(ar ? "البريد" : "Email", employee?.email, "", "", "", "text", { secret: true }),
@@ -752,11 +891,23 @@ export function buildEmployeeFileView({
   const probationEnd = profile.probationEnd || profile.contract?.probationEnd;
   const contract = [
     row(ar ? "نوع العقد" : "Contract type", contractType, citeRule(fixed ? "contract.fixed.cite" : "contract.indefinite.cite")?.labelAr || (ar ? "المادة 75" : "Art. 75"), "mute", "contractType", "text", { raw: profileFieldValue(profile, "contractType", employee), options: opts(CONTRACT_TYPE_OPTIONS) }),
+    row(
+      ar ? "فئة الأجر" : "Wage type",
+      (WAGE_TYPE_OPTIONS.find((o) => o.value === (profile.wageType || "monthly")) || WAGE_TYPE_OPTIONS[0])[ar ? "ar" : "en"],
+      ar ? "المادة 59 — لا تحويل من الشهري إلا بموافقته الكتابية" : "Art. 59 — off monthly only with written consent",
+      "mute",
+      "wageType",
+      "text",
+      { raw: profile.wageType || "monthly", options: WAGE_TYPE_OPTIONS.map((o) => ({ value: o.value, label: ar ? o.ar : o.en })) },
+    ),
     row(ar ? "تاريخ البداية" : "Start", niceFileDate(hireIso, ar), "", "", "hireDate", "date", { raw: hireIso || "" }),
     row(ar ? "تاريخ النهاية" : "End", fixed ? niceFileDate(profile.contractEndDate || profile.contract?.endDate, ar) : (ar ? "غير محدد" : "Open"), fixed ? "" : (ar ? "مفتوح" : "Open"), fixed ? "warn" : "ok", fixed ? "contractEndDate" : "", "date", { raw: profile.contractEndDate || profile.contract?.endDate || "" }),
     row(ar ? "فترة التجربة" : "Probation", probationEnd ? niceFileDate(probationEnd, ar) : (ar ? "—" : "—"), citeRule("contract.probation.warnDays")?.labelAr || (ar ? "المادة 53" : "Art. 53"), "mute"),
     row(ar ? "ساعات العمل" : "Hours", ar ? "من جدول الدوام المنشور" : "From the published rota", citeRule("hours.week.ordinaryMaxHours")?.labelAr || (ar ? "المادة 98" : "Art. 98"), "mute"),
     row(ar ? "مسجَّل في قوى" : "On Qiwa", qiwa || (ar ? "—" : "—"), qiwa ? (ar ? "مطابق" : "Aligned") : (ar ? "يحتاج تسجيلاً" : "Needs registration"), qiwa ? "ok" : "bad", "qiwaTitle", "text", { raw: qiwa }),
+    row(ar ? "السكن" : "Housing", inKind.housingProvided ? (ar ? "سكن مؤمَّن من المنشأة" : "Housing provided") : (wage.housing > 0 ? (ar ? "بدل نقدي مع الأجر" : "Cash allowance with the wage") : (ar ? "لم يُحدَّد" : "Not set")), ar ? "المادة 61" : "Art. 61", inKind.housingProvided || wage.housing > 0 ? "ok" : "warn", "housingMode", "text", { raw: profile.housingMode || "", options: [["cash", ar ? "بدل نقدي مع الأجر" : "Cash allowance"], ["provided", ar ? "سكن مؤمَّن من المنشأة" : "Housing provided"]].map(([value, label]) => ({ value, label })) }),
+    row(ar ? "النقل" : "Transport", inKind.transportProvided ? (ar ? "وسيلة نقل مؤمَّنة" : "Transport provided") : inKind.transportRegular ? (ar ? "مواصلات منتظمة تصل الموقع" : "Regular transport reaches the site") : (wage.transport > 0 ? (ar ? "بدل نقدي" : "Cash allowance") : (ar ? "لم يُحدَّد" : "Not set")), ar ? "المادة 148" : "Art. 148", inKind.transportProvided || inKind.transportRegular || wage.transport > 0 ? "ok" : "warn", "transportMode", "text", { raw: profile.transportMode || "", options: [["cash", ar ? "بدل نقدي" : "Cash allowance"], ["provided", ar ? "وسيلة نقل مؤمَّنة" : "Transport provided"], ["regular", ar ? "مواصلات منتظمة تصل الموقع" : "Regular transport"]].map(([value, label]) => ({ value, label })) }),
+    row(ar ? "ميزات عينية — قيمة شهرية" : "In-kind benefits — monthly value", inKind.monthly > 0 ? moneySar(inKind.monthly, ar) : "—", ar ? "المادة 2" : "Art. 2", "mute", "inKindMonthly", "text", { raw: profile.inKindMonthly ?? "" }),
     row(ar ? "النسخة المكتوبة" : "Written copy", written ? String(written).slice(0, 36) : (ar ? "غير مرفوعة" : "Not uploaded"), written ? (ar ? "موقّع" : "Signed") : (ar ? "يخالف المادة 51" : "Breaks Art. 51"), written ? "ok" : "bad"),
   ];
 
@@ -769,6 +920,9 @@ export function buildEmployeeFileView({
     row(ar ? "الاستقالة بين 2 و5" : "Resign 2–5 years", ar ? "الثلث" : "One third", ar ? "المادة 85" : "Art. 85", "mute"),
     row(ar ? "الاستقالة بين 5 و10" : "Resign 5–10 years", ar ? "الثلثان" : "Two thirds", ar ? "المادة 85" : "Art. 85", "mute"),
     row(ar ? "الاستقالة بعد 10" : "Resign after 10", ar ? "المكافأة كاملة" : "Full award", ar ? "المادة 85" : "Art. 85", "mute"),
+    row(ar ? "العمولات" : "Commissions", ar ? "تدخل ما لم يُتفق كتابةً على استثنائها" : "Included unless excluded in writing", ar ? "المادة 86" : "Art. 86", "mute"),
+    row(ar ? "المكافأة كاملة رغم الاستقالة" : "Full award despite resigning", ar ? "قوة قاهرة، أو العاملة خلال 6 أشهر من الزواج أو 3 من الوضع" : "Force majeure, or a woman within 6 months of marriage or 3 of giving birth", ar ? "المادة 87" : "Art. 87", "mute"),
+    row(ar ? "مهلة التصفية" : "Settlement window", ar ? "أسبوع من الانتهاء — وأسبوعان إن أنهى العامل العقد" : "A week from the end — two if the worker ended it", ar ? "المادة 88" : "Art. 88", "mute"),
     row(ar ? "المستحق التقديري اليوم" : "Estimate today", wage.total > 0 && hireIso ? moneySar(eosNow, ar) : "—", ar ? "يُحسب من الأجر الأخير" : "From last wage", "ok"),
   ];
 
@@ -776,9 +930,15 @@ export function buildEmployeeFileView({
     { k: ar ? "الأجر الأساسي" : "Base wage", field: "baseSalary", val: wage.base, note: ar ? "أساس حساب الاستحقاقات" : "The basis for entitlements", color: "var(--nv-ink)", weight: 600 },
     { k: ar ? "بدل السكن" : "Housing", field: "housingAllowance", val: wage.housing, note: ar ? "بدل ثابت شهرياً" : "A fixed monthly allowance", color: "#4B5567", weight: 500 },
     { k: ar ? "بدل النقل" : "Transport", field: "transportAllowance", val: wage.transport, note: ar ? "ثابت شهرياً" : "Fixed monthly", color: "#4B5567", weight: 500 },
-    { k: ar ? "بدلات أخرى" : "Other allowances", field: "otherAllowances", val: wage.other, note: ar ? "طبيعة عمل" : "Work nature", color: "#4B5567", weight: 500 },
+    { k: ar ? "بدلات أخرى" : "Other allowances", field: "otherAllowances", val: wage.otherPlain ?? wage.other, note: ar ? "بدل لا يندرج تحت بند مسمّى" : "An allowance with no named line", color: "#4B5567", weight: 500 },
+    { k: ar ? "بدل طبيعة عمل أو خطر" : "Effort or hazard allowance", field: "hazardAllowance", val: wage.hazard || 0, note: ar ? "لقاء جهد أو مخاطر — من الأجر الفعلي (المادة 2)" : "For effort or risk — part of the actual wage (Art. 2)", color: "#4B5567", weight: 500 },
+    { k: ar ? "بدل غلاء معيشة أو عائلي" : "Cost-of-living or family allowance", field: "livingAllowance", val: wage.living || 0, note: ar ? "زيادة لمستوى المعيشة أو أعباء العائلة (المادة 2)" : "For living costs or family burden (Art. 2)", color: "#4B5567", weight: 500 },
+    { k: ar ? "بدل منطقة نائية" : "Remote-area allowance", field: "remoteAreaAllowance", val: wage.remote || 0, note: ar ? "العمل بعيداً عن العمران — بالعقد (المادة 2)، ومعه التزامات المادتين 146 و147" : "Work far from towns — by contract (Art. 2), alongside the duties in Arts. 146–147", color: "#4B5567", weight: 500 },
+    { k: ar ? "بدل بُعد الخدمات الطبية" : "Distance-from-care allowance", field: "medicalDistanceAllowance", val: wage.medical || 0, note: ar ? `أقرب مستشفى أبعد من ${HOSPITAL_FAR_MINUTES} دقيقة (معيار المنشأة) — بدل عن الترتيبات الطبية (المادتان 144 و146/3)` : `Nearest hospital past ${HOSPITAL_FAR_MINUTES} minutes (establishment criterion) — in place of medical arrangements (Arts. 144, 146/3)`, color: "#4B5567", weight: 500 },
+    { k: ar ? "بدل إعاشة" : "Meals allowance", field: "mealAllowance", val: wage.meals || 0, note: ar ? "الوجبات في الأماكن البعيدة والمناجم والمحاجر (المادة 147)" : "Meals at remote sites, mines and quarries (Art. 147)", color: "#4B5567", weight: 500 },
+    { k: ar ? "العمولة" : "Commission", field: "commissionAmount", val: wage.commission || 0, note: ar ? "عمولة الشهر أو نسبة المبيعات (المادة 2) — يجوز استثناؤها من نهاية الخدمة باتفاق (المادة 86)" : "The month's commission (Art. 2) — may be excluded from end of service by agreement (Art. 86)", color: "#4B5567", weight: 500 },
     ...(!wage.split && (Number(profile.allowances) || 0) > 0
-      ? [{ k: ar ? "البدلات" : "Allowances", field: "allowances", val: (wage.allowances || 0) - (wage.night || 0), note: ar ? "مجموع البدلات الشهرية" : "Monthly allowances total", color: "#4B5567", weight: 500 }]
+      ? [{ k: ar ? "البدلات" : "Allowances", field: "allowances", val: (wage.allowances || 0) - (wage.night || 0) - (wage.extras || 0), note: ar ? "مجموع البدلات الشهرية" : "Monthly allowances total", color: "#4B5567", weight: 500 }]
       : []),
     {
       k: ar ? "تاريخ التسجيل في التأمينات" : "GOSI registration date",
@@ -807,6 +967,19 @@ export function buildEmployeeFileView({
         derived: true,
       }]
       : []),
+    ...(inKind.monthly > 0
+      ? [{
+        k: ar ? "ميزات عينية (تقدير شهري)" : "In-kind benefits (monthly value)",
+        field: "",
+        val: inKind.monthly,
+        note: inKind.capped
+          ? (ar ? `بسقف شهرين من الأساسي سنوياً (المادة 2) = ${moneySar(inKind.cap, ar)} شهرياً — لا تُصرف نقداً` : `Capped at two months of basic a year (Art. 2) = ${moneySar(inKind.cap, ar)} a month — not paid in cash`)
+          : (ar ? "تدخل في الأجر الفعلي لنهاية الخدمة (المادة 2) — لا تُصرف نقداً" : "Part of the actual wage for end of service (Art. 2) — not paid in cash"),
+        color: "#3C7D50",
+        weight: 500,
+        derived: true,
+      }]
+      : []),
     { k: ar ? "الإجمالي الشهري" : "Monthly total", field: "", val: wage.total, note: ar ? "مشتق من البنود أعلاه" : "Derived from the lines above", color: "#3C7D50", weight: 700, derived: true },
   ].map((item) => ({
     ...item,
@@ -832,8 +1005,8 @@ export function buildEmployeeFileView({
       state: gosi ? (ar ? "نشط" : "Active") : (ar ? "ناقص" : "Missing"),
       kind: gosi ? "ok" : "warn",
       note: ar
-        ? "الأجر الخاضع = الأساسي + السكن + النقل + أخرى + الليلي، بسقف 45,000، بلا إضافي ولا مكافأة. تاريخ التسجيل في التأمينات هو أول تسجيل للشخص، لا تاريخ تعيينه هنا: قبل 3 يوليو 2024 مشترك قديم، ومنه مشترك جديد. إن خلا التاريخ لا يُعامل كجديد وتبقى حصة السعودي 9.75٪."
-        : "Contributory wage = base + housing + transport + other + night, capped at 45,000, without overtime or bonus. The GOSI registration date is the person's first registration, not the hire date here: before 3 July 2024 an old subscriber, and from that day a new one. An empty date is not treated as new, and a confirmed Saudi stays at 9.75%.",
+        ? "الأجر الخاضع = الأساسي + بدل السكن + العمولات، بسقف 45,000 وحد أدنى 1,500 (400 لغير الخاضع للمعاشات). لا يدخله النقل ولا البدلات الأخرى ولا الليلي ولا الإضافي ولا المكافأة. تاريخ التسجيل في التأمينات هو أول تسجيل للشخص، لا تاريخ تعيينه هنا: قبل 3 يوليو 2024 مشترك قديم، ومنه مشترك جديد. إن خلا التاريخ لا يُعامل كجديد وتبقى حصة السعودي 9.75٪."
+        : "Contributory wage = basic + housing + commissions, capped at 45,000 with a 1,500 floor (400 outside the annuity branch). Transport, other allowances, night pay, overtime and bonus stay out. The GOSI registration date is the person's first registration, not the hire date here: before 3 July 2024 an old subscriber, and from that day a new one. An empty date is not treated as new, and a confirmed Saudi stays at 9.75%.",
       rows: [
         row(ar ? "رقم المشترك" : "Member number", gosi, "", "", "gosiNumber", "text", { raw: gosi, secret: true }),
         row(
@@ -922,6 +1095,18 @@ export function buildEmployeeFileView({
         color: live ? "var(--nv-warn-ink)" : "var(--nv-ink3)",
         bg: live ? "var(--nv-warn-soft)" : "var(--nv-soft)",
         border: live ? "var(--nv-warn-line)" : "var(--nv-line)",
+        tone: live ? "warn" : null,
+        // Model Art. 69: the record's three fields — the offence, the day it happened, the penalty — and
+        // whether it can still raise a repeat (Art. 61). Nothing here is ever dropped.
+        offence: String(item.regulationOffence || "").trim(),
+        occurredAt: fmtDisciplineDate(item.discoveredAt || item.createdAt, ar),
+        repeat: (() => {
+          const st = sanctionRecordState(item, { today: day });
+          if (!st.signed) return "";
+          return st.countsForRepeat
+            ? (ar ? `يُحتسب في التكرار حتى ${st.repeatUntil}` : `Counts for a repeat until ${st.repeatUntil}`)
+            : (ar ? `مضى ${st.cooloff} يوماً على إبلاغه — لا يُشدَّد به (م61)` : `${st.cooloff} days since notice — no increase (Art. 61)`);
+        })(),
       };
     });
 
@@ -960,6 +1145,7 @@ export function buildEmployeeFileView({
     contract,
     eos,
     wageRows,
+    allowanceLaw: allowanceLawRows(wage, ar, inKind),
     leaveGroups: leaveCatalogFor(profile, ar, laborCalendar, day),
     leaveScope: ar ? "أربع مجموعات بحسب سلوك الإجازة لا بحسب اسمها — لأن الرصيد والشرط وأثر الأجر يختلف بين المجموعات." : "Grouped by how leave behaves, not by its name — balance, condition, and wage effect differ.",
     balances,
@@ -1029,6 +1215,7 @@ export function employeeFileDraftSeed(employee) {
     iban: profileFieldValue(profile, "iban", employee),
     bankName: profile.bankName || profile.bank || "",
     contractType: profileFieldValue(profile, "contractType", employee),
+    wageType: profile.wageType || "monthly",
     contractEndDate: profile.contractEndDate || profile.contract?.endDate || "",
     gosiNumber: wage.gosiNumber,
     gosiRegisteredAt: wage.gosiRegisteredAt,

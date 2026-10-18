@@ -23,7 +23,8 @@ import {
   Wallet,
 } from "lucide-react";
 import { RAIL_SIDE_COLOR, railBadgeTone, railFooter } from "@/lib/suiteRailFrame";
-import { railFaceHref, routeRailSide, useExplicitRailSide, useSetRailSide } from "@/lib/railSide";
+import { railSwitchHref, routeRailSide, useExplicitRailSide, useSetRailSide } from "@/lib/railSide";
+import NvIcon from "@/components/shared/NvIcon";
 
 const LINE = "var(--nv-line)";
 const INK = "var(--nv-ink)";
@@ -232,7 +233,7 @@ export default function SuiteRail({
           textAlign: "start",
         }}
       >
-        <span style={{ fontSize: 16, lineHeight: 1, width: 17, textAlign: "center" }}>{open ? "»" : "☰"}</span>
+        <span style={{ fontSize: 16, lineHeight: 1, width: 17, textAlign: "center", display: "inline-flex", justifyContent: "center" }}>{open ? "»" : <NvIcon name="menu" size={15} strokeWidth={1.7} inline={false} />}</span>
         <span className="nv-rail-fold-label">{ar ? (open ? "طيّ القائمة" : "فتح القائمة") : (open ? "Collapse" : "Expand")}</span>
       </button>
       <Link
@@ -285,7 +286,7 @@ export default function SuiteRail({
                 onClick={() => {
                   if (item.id === sideId) return;
                   setRailSide(item.id);
-                  const next = railFaceHref(location.pathname, location.search, item.id);
+                  const next = railSwitchHref({ pathname: location.pathname, search: location.search, targetSide: item.id, sides, activeKey });
                   const here = `${location.pathname}${location.search}`;
                   if (next && next !== here) navigate(next);
                 }}

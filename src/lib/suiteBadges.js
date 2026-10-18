@@ -15,7 +15,9 @@ import {
   taskAssigneeIds,
 } from "./opsDerivations.js";
 import { checkApproveWorkProofGate } from "./workProofDerivations.js";
-import { collectVoiceItems, deriveVoiceBoard } from "./voiceBoard.js";
+import { attendanceDecisionQueue, queueFacesOf } from "./attendanceQueue.js";
+import { deriveVoiceBoard, viewerOpenAbuseCount, viewerVoiceQueueItems } from "./voiceBoard.js";
+import { isVoiceHrReceiver } from "./voicePrivacy.js";
 import { deriveDisciplineBoard } from "./disciplineBoard.js";
 import { deriveWpsStatus } from "./payrollDerivations.js";
 import { canSeeManagedNightDue, managedDutyEmployees, nightDueAdminCoveredEmployees, nightDueScopeEmployees, requestInboxEmployees, requestInboxMaySee, requestManageEmployees } from "./dutyScope.js";
@@ -24,7 +26,6 @@ import { nightRotateDue, pendingNightRotate } from "./nightRotateCycle.js";
 import { scheduleForEmployee } from "./nightDueNotify.js";
 import { statutoryGlowState } from "./statutoryItem.js";
 import {
-  readExpenseClaims,
   readPayrollRuns,
   readSafety,
   readSignatureRequests,
@@ -159,25 +160,14 @@ export function pendingRequestsBadgeCount(user, data, employees = [], weekStart)
   return mine + admin + dueFresh;
 }
 
-export function needsPunchDecision(employee, attendanceById = {}) {
-  const row = attendanceById[String(employee?.id)];
-  const asked = (employee?.otherRequests || []).some(
-    (item) => (item.type === "manual_punch" || item.type === "checkout_fix") && isManagerDecideOtherRequest(item),
-  );
-  return !!(
-    row?.location_status === "outside"
-    || (row?.check_in_at && !row?.check_out_at && row?.status !== "absent")
-    || row?.early_checkout
-    || asked
-  );
+/** One person needs a punch decision — the same reading as «بصمات اليوم بلا حكم» (lib/attendanceQueue). */
+export function needsPunchDecision(employee, attendanceById = {}, data = null) {
+  return queueFacesOf(employee, attendanceById[String(employee?.id)], data).length > 0;
 }
 
-/** الدوام والحضور — manager punch queue / pending manual punch. */
-export function pendingPunchQueueCount(employees = [], attendanceRows = []) {
-  const byId = Object.fromEntries(
-    (attendanceRows || []).map((row) => [String(row.employee_id ?? row.employeeId), row]),
-  );
-  return (employees || []).filter((employee) => needsPunchDecision(employee, byId)).length;
+/** الدوام والحضور — manager punch queue / pending manual punch; the queue's own count, never a second rule. */
+export function pendingPunchQueueCount(employees = [], attendanceRows = [], data = null) {
+  return attendanceDecisionQueue(employees, attendanceRows, data).length;
 }
 
 function projectSigningForUser(record, user) {
@@ -233,16 +223,14 @@ function canManageVoice(user, data) {
     || ["director", "ops_manager", "pgm", "station_manager"].includes(user?.role)
     || hasHrPerm(user, data, "view_anonymous_reports")
     || hasHrPerm(user, data, "manage_anonymous_reports")
+    || isVoiceHrReceiver(user, data)
   );
 }
 
-/** صوت الموظف — open voices in the reviewer's queue. */
+/** صوت الموظف — open voices in the reviewer's queue (HR-only channels count for HR only). */
 export function pendingVoiceBadgeCount(data, user) {
   if (!canManageVoice(user, data)) return 0;
-  const items = collectVoiceItems({
-    publicReports: data?.publicReports,
-    anonymousReports: data?.anonymousReports,
-  });
+  const items = viewerVoiceQueueItems(data, user);
   const board = deriveVoiceBoard({
     items,
     employees: data?.employees || [],
@@ -250,7 +238,7 @@ export function pendingVoiceBadgeCount(data, user) {
     canManage: true,
     userId: user?.id,
   });
-  return board.openCount || 0;
+  return (board.openCount || 0) + viewerOpenAbuseCount(data, user);
 }
 
 function canManageDiscipline(user, data) {
@@ -272,10 +260,6 @@ export function pendingDisciplineBadgeCount(data, user) {
   return board.openCount || 0;
 }
 
-function canReviewExpenseClaims(user, data) {
-  return canManageOps(user, data) || user?.role === "financial_officer";
-}
-
 function canReviewPayroll(user, data) {
   if (!user) return false;
   if (isOwner(user, data)) return true;
@@ -283,19 +267,7 @@ function canReviewPayroll(user, data) {
   return hasHrPerm(user, data, "manage_payroll");
 }
 
-function isOpenExpenseClaim(claim, user, data) {
-  const status = claim?.status || "pending";
-  if (status === "pending" || status === "submitted") return canManageOps(user, data) || isOwner(user, data);
-  if (status === "manager_approved") return user?.role === "financial_officer" || isOwner(user, data);
-  return false;
-}
-
-/** المال — claims / payroll runs waiting a decision. */
-export function pendingExpenseBadgeCount(claims = [], user, data) {
-  if (!canReviewExpenseClaims(user, data)) return 0;
-  return (claims || []).filter((claim) => isOpenExpenseClaim(claim, user, data)).length;
-}
-
+/** المال — payroll runs waiting a decision. */
 export function pendingPayrollBadgeCount(runs = [], user, data) {
   if (!canReviewPayroll(user, data)) return 0;
   return (runs || []).filter((run) => {
@@ -348,15 +320,16 @@ export function collectSuiteBadges(input = {}) {
   const nightScope = nightDueScopeEmployees(user, data);
   const nightDueDuty = nightDueEmployeeCount(nightScope, data, weekStart);
   const nightDueRequests = nightDueDuty;
+  // «حضور الفريق» shows the punch queue alone (the queue's own count); the section adds the 18632 due.
+  const punchQueue = pendingPunchQueueCount(duty, attendanceRows, data);
   const byApp = {
     requests: asSuiteBadge(pendingRequestsBadgeCount(user, data, employees, weekStart)),
-    attendance: asSuiteBadge(pendingPunchQueueCount(duty, attendanceRows) + nightDueDuty),
+    attendance: asSuiteBadge(punchQueue + nightDueDuty),
     signing: asSuiteBadge(pendingSigningBadgeCount(readSignatureRequests(data).filter((row) => !row.stationId || scoped(row.stationId)), user)),
     tasks: asSuiteBadge(pendingOpsBadgeCount(readTasks(data).filter((row) => scoped(row.stationId)), user, data)),
     "work-proof": asSuiteBadge(pendingWorkProofBadgeCount(readWorkProofs(data).filter((row) => scoped(row.stationId)), user)),
     complaints: asSuiteBadge(pendingVoiceBadgeCount(data, user)),
     discipline: asSuiteBadge(pendingDisciplineBadgeCount(data, user)),
-    expenses: asSuiteBadge(pendingExpenseBadgeCount(readExpenseClaims(data).filter((row) => scoped(row.stationId)), user, data)),
     payroll: asSuiteBadge(pendingPayrollBadgeCount(readPayrollRuns(data), user, data)),
     safety: asSuiteBadge(pendingSafetyBadgeCount(readSafety(data).filter((row) => scoped(row.stationId)), user, data)),
   };
@@ -366,7 +339,7 @@ export function collectSuiteBadges(input = {}) {
     attendance: nightDueDuty > 0 ? "due" : undefined,
   };
 
-  return { byApp, glowByApp };
+  return { byApp, glowByApp, punchQueue: asSuiteBadge(punchQueue) ?? null };
 }
 
 export function suiteAppBadge(app, badges) {

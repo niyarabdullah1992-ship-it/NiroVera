@@ -1,19 +1,65 @@
 /** Other HR service requests — letters, permission, overtime, advance. Not leave. */
 
-import { LEAVE_TYPES, getLeaveTotal, grantDaysOf, leaveTypeLabel } from "./leaveTypes.js";
+import { GRANTABLE_LEAVE_KEYS, LEAVE_TYPES, getLeaveTotal, leaveTypeLabel } from "./leaveTypes.js";
+import { citeLeaveType } from "./laborRules.js";
 import { checkPunchRecordGate, parsePunchClock } from "./attendancePunch.js";
 import { checkIssuedLetterFileGate, checkRaiseSignableGate, isLetterSignableType } from "./requestSigning.js";
+import { checkDutyRequestFields, isDutyRequestType } from "./dutyRequests.js";
+import { checkResignationFields, RESIGNATION_TYPE } from "./exitRequests.js";
+import { checkSubmitFileCorrectionGate, FILE_CORRECTION_LABEL_AR, FILE_CORRECTION_LABEL_EN, FILE_CORRECTION_TYPE } from "./fileCorrection.js";
+import { ART81_EXIT_TYPE, DAMAGE_OBJECTION_TYPE, DOCUMENTS_RETURN_TYPE, GRIEVANCE_TYPE, LEAVE_CARRY_TYPE, NIGHT_AVOID_TYPE, checkArt81Gate, checkGrievanceGate, checkDamageObjectionGate, checkDocumentsReturnGate, checkLeaveCarryGate, checkNightAvoidGate } from "./rightsRequests.js";
 
 export const LEAVE_TOPUP_TYPE = "leave_topup";
-export const LEAVE_TOPUP_MAX_DAYS = 30;
-/** Same cap as requestWorkspace DISCRETIONARY_GRANT_CAP — admin credit + grantDiscretionaryDays. */
-export const DISCRETIONARY_GRANT_CAP = 5;
 
-/** Pools إدارة may credit without the employee raising leave. */
+/**
+ * Balances a grant may target. Annual is listed so the rule shows where it is chosen, but it never
+ * takes a grant (`fixed`): its entitlement is set by the Labour Law, not by the company.
+ * The company may grant any number of days on the others — there is no upper cap.
+ */
 export const LEAVE_CREDIT_POOLS = [
-  { key: "annual", ar: "رصيد سنوي", en: "Annual balance" },
-  { key: "grant", ar: "أيام تقديرية", en: "Discretionary days" },
+  { key: "grant", ar: "رصيد ممنوح", en: "Granted days", hintAr: "أيام تمنحها المنشأة — بلا حد أعلى", hintEn: "Days the company grants — no upper cap" },
+  { key: "emergency", ar: "اضطرارية", en: "Emergency", hintAr: "تُضاف فوق الرصيد الاضطراري الداخلي", hintEn: "Added on top of the internal emergency balance" },
+  { key: "annual", ar: "سنوية", en: "Annual", fixed: true },
 ];
+
+/** The named reason a grant to annual leave is refused — the article comes from the rule catalog. */
+export function annualGrantBlockedReason(onDate) {
+  const art = citeLeaveType("annual", onDate)?.article || "";
+  return {
+    ar: `رصيد السنوية ثابت بالنظام${art ? ` (المادة ${art})` : ""} — لا يُرفع.`,
+    en: `The annual entitlement is fixed by law${art ? ` (Art. ${art})` : ""} — it is not raised.`,
+  };
+}
+
+/**
+ * Named gate for any added balance — the worker's «رفع رصيد إجازة» and management's «إضافة رصيد».
+ * Days: a whole number above zero, no upper cap. Annual: refused, its entitlement is fixed (Art. 109).
+ */
+export function checkLeaveGrantGate(input = {}) {
+  const pool = String(input.pool || input.leaveType || "").trim().toLowerCase();
+  if (pool === "annual") {
+    const why = annualGrantBlockedReason(input.onDate);
+    return { ok: false, error: "ANNUAL_FIXED", reason: why.ar, reasonEn: why.en };
+  }
+  if (!GRANTABLE_LEAVE_KEYS.includes(pool)) {
+    return {
+      ok: false,
+      error: "POOL_REQUIRED",
+      reason: "اختر الرصيد الذي تُضاف إليه الأيام.",
+      reasonEn: "Pick the balance the days are added to.",
+    };
+  }
+  const days = parseLeaveTopupDays(input.days);
+  if (days == null) {
+    return {
+      ok: false,
+      error: "DAYS_INVALID",
+      reason: "حدد عدد الأيام — رقماً صحيحاً أكبر من صفر.",
+      reasonEn: "Set the days — a whole number greater than zero.",
+    };
+  }
+  return { ok: true, pool, days };
+}
 export const STUDY_CONSENT_TYPE = "study_consent";
 export const STUDY_CONSENT_LABEL_AR = "موافقة دراسية";
 export const STUDY_CONSENT_LABEL_EN = "Study consent";
@@ -69,10 +115,25 @@ export const OTHER_REQUEST_TYPES = [
   { key: "written_consent", ar: "موافقة خطية", en: "Written consent" },
   { key: STUDY_CONSENT_TYPE, ar: STUDY_CONSENT_LABEL_AR, en: STUDY_CONSENT_LABEL_EN },
   { key: NIGHT_FITNESS_TYPE, ar: NIGHT_FITNESS_LABEL_AR, en: NIGHT_FITNESS_LABEL_EN },
+  { key: "nursing_hour", ar: "ساعة الرضاعة", en: "Nursing hour" },
+  { key: "pregnancy_notice", ar: "إبلاغ حمل", en: "Pregnancy notice" },
+  { key: "heat_report", ar: "بلاغ عمل مكشوف", en: "Exposed-work report" },
+  { key: "family_duties", ar: "إبلاغ بمسؤوليات عائلية", en: "Family responsibilities notice" },
   { key: "manual_punch", ar: "تسجيل حضور يدوي", en: "Manual punch" },
   { key: "checkout_fix", ar: "تصحيح انصراف", en: "Checkout correction" },
   { key: "custody", ar: "عهدة", en: "Custody" },
+  { key: "relocation_expenses", ar: "نفقات النقل مع تغيير السكن (النموذج الموحد م12)", en: "Relocation expenses (Model Art. 12)" },
+  { key: "mission", ar: "انتداب (النموذج الموحد م24)", en: "Mission (Model Art. 24)" },
+  { key: "employer_prevented", ar: "منعته المنشأة من العمل (النموذج الموحد م46)", en: "Kept from work by the company (Model Art. 46)" },
+  { key: RESIGNATION_TYPE, ar: "تقديم استقالة", en: "Resignation" },
+  { key: DAMAGE_OBJECTION_TYPE, ar: "اعتراض على خصم إتلاف", en: "Damage-deduction objection" },
+  { key: LEAVE_CARRY_TYPE, ar: "تأجيل إجازة سنوية", en: "Annual-leave carry-over" },
+  { key: ART81_EXIT_TYPE, ar: "ترك العمل دون إشعار (المادة 81)", en: "Leaving without notice (Art. 81)" },
+  { key: NIGHT_AVOID_TYPE, ar: "تجنب العمل الليلي لسبب صحي", en: "Avoid night work for health" },
+  { key: DOCUMENTS_RETURN_TYPE, ar: "استرداد الوثائق المودعة", en: "Return of deposited documents" },
+  { key: GRIEVANCE_TYPE, ar: "تظلم (النموذج الموحد م71)", en: "Grievance (Model regulation Art. 71)" },
   { key: LEAVE_TOPUP_TYPE, ar: "رفع رصيد إجازة", en: "Leave balance top-up" },
+  { key: FILE_CORRECTION_TYPE, ar: FILE_CORRECTION_LABEL_AR, en: FILE_CORRECTION_LABEL_EN },
   { key: "document", ar: "مستند / أخرى", en: "Document / other" },
   { key: "other_request", ar: "طلب آخر", en: "Other request" },
 ];
@@ -420,7 +481,8 @@ export function requestAuditFileLog(audit, ar = true) {
       : "";
   const kind = requestAuditKindLabel(audit?.requestType || audit?.type, ar);
   const generic = kind === (ar ? "الطلب" : "the request");
-  const subject = generic ? kind : (ar ? `طلب ${kind}` : kind);
+  // A kind already named «طلب …» (طلب تعديل الملف الوظيفي) is not prefixed again — no «طلب طلب».
+  const subject = generic || (ar && /^طلب\s/.test(kind)) ? kind : (ar ? `طلب ${kind}` : kind);
   const reasonBit = audit?.reason ? `: ${audit.reason}` : "";
   const text = presentRequestAuditText(ar
     ? (key === "raise" ? `رُفع ${subject}${cite}`
@@ -1019,20 +1081,12 @@ export function checkLeaveTopupDaysGate(input) {
       reasonEn: "Set the extra days — a whole number greater than zero.",
     };
   }
-  if (days > LEAVE_TOPUP_MAX_DAYS) {
-    return {
-      ok: false,
-      error: "DAYS_INVALID",
-      reason: `لا يُطلب أكثر من ${LEAVE_TOPUP_MAX_DAYS} يوماً في الطلب الواحد.`,
-      reasonEn: `A single request may not ask for more than ${LEAVE_TOPUP_MAX_DAYS} days.`,
-    };
-  }
   return { ok: true, days };
 }
 
 /**
- * Named gate for إدارة → إضافة رصيد.
- * Credits annual (leaveTotals) or discretionary (grant) without the employee raising leave.
+ * Named gate for إدارة → إضافة رصيد: days land on the file as a recorded grant, with no worker request.
+ * Annual is refused (fixed by law); any other grantable balance takes any whole number of days.
  */
 export function checkAdminLeaveCreditGate(input = {}) {
   if (input.canCredit === false) {
@@ -1044,14 +1098,16 @@ export function checkAdminLeaveCreditGate(input = {}) {
     };
   }
   const pool = String(input.pool || "").trim();
-  if (pool !== "annual" && pool !== "grant") {
+  if (!pool) {
     return {
       ok: false,
       error: "POOL_REQUIRED",
-      reason: "اختر الرصيد السنوي أو الأيام التقديرية.",
-      reasonEn: "Pick the annual balance or discretionary days.",
+      reason: "اختر الرصيد الذي تُضاف إليه الأيام.",
+      reasonEn: "Pick the balance the days are added to.",
     };
   }
+  const grant = checkLeaveGrantGate({ pool, days: input.days, onDate: input.onDate });
+  if (!grant.ok && grant.error !== "DAYS_INVALID") return grant;
   const why = String(input.reason || "").trim();
   if (why.length < 3) {
     return {
@@ -1061,89 +1117,38 @@ export function checkAdminLeaveCreditGate(input = {}) {
       reasonEn: "Write why the balance is being credited.",
     };
   }
-  if (pool === "annual") {
-    const daysGate = checkLeaveTopupDaysGate({ days: input.days });
-    if (!daysGate.ok) return daysGate;
-    return { ok: true, pool, days: daysGate.days, reason: why };
-  }
-  const n = Math.round(Number(input.days) || 0);
-  if (!Number.isFinite(n) || n < 1) {
-    return {
-      ok: false,
-      error: "DAYS_INVALID",
-      reason: "حدد عدد الأيام — رقماً صحيحاً أكبر من صفر.",
-      reasonEn: "Set the days — a whole number greater than zero.",
-    };
-  }
-  if (n > 30) {
-    return {
-      ok: false,
-      error: "DAYS_INVALID",
-      reason: "لا تُضاف أكثر من 30 يوماً في المنحة الواحدة.",
-      reasonEn: "A single grant may not add more than 30 days.",
-    };
-  }
-  const used = grantDaysOf(input.profile);
-  if (used + n > DISCRETIONARY_GRANT_CAP) {
-    return {
-      ok: false,
-      error: "GRANT_CAP",
-      reason: `يتجاوز سقف ${DISCRETIONARY_GRANT_CAP} أيام تقديرية في السنة — المتاح ${Math.max(0, DISCRETIONARY_GRANT_CAP - used)}.`,
-      reasonEn: `Exceeds the ${DISCRETIONARY_GRANT_CAP}-day discretionary cap — ${Math.max(0, DISCRETIONARY_GRANT_CAP - used)} left.`,
-      leftover: Math.max(0, DISCRETIONARY_GRANT_CAP - used),
-    };
-  }
-  return { ok: true, pool, days: n, reason: why, leftover: Math.max(0, DISCRETIONARY_GRANT_CAP - used) };
+  if (!grant.ok) return grant;
+  return { ok: true, pool: grant.pool, days: grant.days, reason: why };
 }
 
-/** Extra annual days after approve — same catalog field as the 21/30 statutory floor. */
-export function incrementAnnualLeaveTotal(profile, extraDays, onDate) {
-  const add = Number(extraDays);
-  if (!Number.isFinite(add) || add <= 0) {
-    return {
-      ok: false,
-      error: "DAYS_INVALID",
-      reason: "حدد الأيام الإضافية — رقماً أكبر من صفر.",
-      reasonEn: "Set the extra days — a number greater than zero.",
-    };
-  }
-  const current = getLeaveTotal(profile, "annual", onDate);
-  const nextTotal = Math.round(((current == null ? 0 : current) + add) * 1000) / 1000;
+/** A recorded grant on the file — the source the balance card derives «متبقٍّ X من Y» from. */
+export function leaveGrantRecord({ pool = "grant", days, reason = "", by = "", at, requestId } = {}) {
   return {
-    ok: true,
-    days: add,
-    nextTotal,
-    profile: {
-      ...(profile || {}),
-      leaveTotals: {
-        ...(profile?.leaveTotals || {}),
-        annual: nextTotal,
-      },
-    },
+    id: `grant_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+    type: pool,
+    days,
+    reason: String(reason || "").trim(),
+    by: by || "",
+    at: String(at || new Date().toISOString()).slice(0, 10),
+    requestId: requestId || undefined,
   };
 }
 
-export function nextAnnualLeaveTotal(profile, extraDays, onDate) {
-  const add = parseLeaveTopupDays(extraDays) || 0;
-  return incrementAnnualLeaveTotal(profile, add, onDate).nextTotal ?? add;
-}
-
-export function applyAnnualLeaveTopup(profile, extraDays, onDate) {
-  const gate = checkLeaveTopupDaysGate({ days: extraDays });
-  if (!gate.ok) return gate;
-  return incrementAnnualLeaveTotal(profile, gate.days, onDate);
-}
-
+/** An approved «رفع رصيد إجازة»: the days become a grant on the requested balance — never on annual. */
 export function stampLeaveTopupOnEmployee(employee, request) {
   if (!employee || request?.type !== LEAVE_TOPUP_TYPE) return { ok: true, skipped: true };
   if (request.balanceApplied) return { ok: true, skipped: true };
-  const applied = applyAnnualLeaveTopup(employee.profile, request.days);
-  if (!applied.ok) return applied;
-  employee.profile = applied.profile;
+  const gate = checkLeaveGrantGate({ pool: request.leaveType || "grant", days: request.days });
+  if (!gate.ok) return gate;
+  const grant = leaveGrantRecord({ pool: gate.pool, days: gate.days, reason: request.reason, by: request.reviewedBy || request.recordedBy, at: request.reviewedAt, requestId: request.id });
+  employee.profile = {
+    ...(employee.profile || {}),
+    discretionaryGrants: [grant, ...(employee.profile?.discretionaryGrants || [])],
+  };
   request.balanceApplied = true;
-  request.appliedDays = applied.days;
-  request.annualTotalAfter = applied.nextTotal;
-  return { ok: true, days: applied.days, nextTotal: applied.nextTotal };
+  request.appliedDays = gate.days;
+  request.leaveType = gate.pool;
+  return { ok: true, days: gate.days, pool: gate.pool };
 }
 
 export function hasPendingLeaveTopup(otherRequests = []) {
@@ -1162,13 +1167,55 @@ export function checkSubmitOtherRequestGate(input) {
     return checkSubmitNightFitnessGate(input);
   }
   const reason = String(input?.reason || "").trim();
-  if (reason.length < 3) {
-    return { ok: false, error: "REASON_REQUIRED", reason: "اكتب سبب الطلب.", reasonEn: "Write why this request is needed." };
+  if (type === FILE_CORRECTION_TYPE) {
+    const files = checkRequestFilesGate(input?.files);
+    if (!files.ok) return files;
+    return checkSubmitFileCorrectionGate({ field: input?.field, value: input?.newValue, reason, files: input?.files, employee: input?.employee });
   }
   if (type === LEAVE_TOPUP_TYPE) {
-    const daysGate = checkLeaveTopupDaysGate(input);
-    if (!daysGate.ok) return daysGate;
-    return { ok: true, days: daysGate.days };
+    const grant = checkLeaveGrantGate({ pool: input?.leaveType || input?.pool || "grant", days: input?.days });
+    if (!grant.ok) return grant;
+    if (reason.length < 3) {
+      return { ok: false, error: "REASON_REQUIRED", reason: "اكتب سبب الطلب.", reasonEn: "Write why this request is needed." };
+    }
+    return { ok: true, days: grant.days, pool: grant.pool };
+  }
+  if (requestReasonRequired(type) && reason.length < 3) {
+    return { ok: false, error: "REASON_REQUIRED", reason: "اكتب سبب الطلب.", reasonEn: "Write why this request is needed." };
+  }
+  const attach = checkRequestFilesGate(input?.files);
+  if (!attach.ok) return attach;
+  if (type === RESIGNATION_TYPE) {
+    const exit = checkResignationFields(input);
+    if (!exit.ok) return exit;
+  }
+  if (type === DAMAGE_OBJECTION_TYPE) {
+    const g = checkDamageObjectionGate({ notifiedOn: input?.notifiedOn, amount: input?.amount, reason, today: input?.today });
+    if (!g.ok) return g;
+  }
+  if (type === LEAVE_CARRY_TYPE) {
+    const g = checkLeaveCarryGate({ days: input?.days, remaining: input?.remaining, reason });
+    if (!g.ok) return g;
+  }
+  if (type === ART81_EXIT_TYPE) {
+    const g = checkArt81Gate({ caseKey: input?.art81Case, reason, ack: input?.ack });
+    if (!g.ok) return g;
+  }
+  if (type === NIGHT_AVOID_TYPE) {
+    const g = checkNightAvoidGate({ kind: input?.nightAvoidKind, from: input?.from, until: input?.until, file: input?.file || (Array.isArray(input?.files) ? input.files[0] : null), gender: input?.gender });
+    if (!g.ok) return g;
+  }
+  if (type === DOCUMENTS_RETURN_TYPE) {
+    const g = checkDocumentsReturnGate({ reason });
+    if (!g.ok) return g;
+  }
+  if (type === GRIEVANCE_TYPE) {
+    const g = checkGrievanceGate({ notifiedOn: input?.notifiedOn, grievanceKind: input?.grievanceKind, reason, today: input?.today, isHoliday: input?.isHoliday });
+    if (!g.ok) return g;
+  }
+  if (isDutyRequestType(type) && !(type === "shift_change" && input?.fromRoster)) {
+    const duty = checkDutyRequestFields({ ...input, type });
+    if (!duty.ok) return duty;
   }
   if ((type === "overtime" || type === "permission" || type === "shift_change" || type === "manual_punch" || type === "checkout_fix") && !String(input?.date || "").trim()) {
     return { ok: false, error: "DATE_REQUIRED", reason: "حدد تاريخ الطلب.", reasonEn: "Set the request date." };
@@ -1203,7 +1250,9 @@ export function checkSubmitOtherRequestGate(input) {
       reasonEn: "Write the consent to remain on night work.",
     };
   }
-  if (isLetterSignableType(type)) {
+  // A letter (salary / employment / other document) is issued by the company: asking for it needs the
+  // purpose and the addressee only — no file from the worker. Custody keeps its hand-signed handover.
+  if (isLetterSignableType(type) && type === "custody") {
     const signGate = checkRaiseSignableGate({
       type,
       file: input?.file || input?.files?.[0],
@@ -1238,12 +1287,23 @@ export function checkApproveOtherRequestGate(request) {
     if (issued?.name || issued?.url) {
       return checkIssuedLetterFileGate(issued);
     }
+    // A document request's own attachment is supporting proof — only custody is raised with a paper to sign.
+    const custody = request.type === "custody";
     const raiseGate = checkRaiseSignableGate({
       type: request.type,
-      file: request.file || request.files?.[0] || request.senderFile,
-      paper: request.paper || request.files?.[1],
+      file: custody ? (request.file || request.files?.[0] || request.senderFile) : request.senderFile,
+      paper: custody ? (request.paper || request.files?.[1]) : request.paper,
     });
     if (raiseGate.ok) return raiseGate;
+    const hasRaiseFile = Boolean(custody ? (request.file || request.files?.[0] || request.senderFile) : request.senderFile);
+    if (request.type !== "custody" && !hasRaiseFile) {
+      return {
+        ok: false,
+        error: "FILE_REQUIRED",
+        reason: "أرفق الوثيقة الصادرة المختومة — تُسلَّم للموظف على البطاقة.",
+        reasonEn: "Attach the issued, stamped letter — it is delivered to the worker on the card.",
+      };
+    }
     return {
       ok: false,
       error: raiseGate.error || "ISSUED_OR_PAPER_REQUIRED",
@@ -1258,7 +1318,7 @@ export function checkApproveOtherRequestGate(request) {
     return checkApproveNightFitnessGate(request);
   }
   if (request.type === LEAVE_TOPUP_TYPE) {
-    return checkLeaveTopupDaysGate(request);
+    return checkLeaveGrantGate({ pool: request.leaveType || "grant", days: request.days });
   }
   return { ok: true };
 }
@@ -1266,4 +1326,57 @@ export function checkApproveOtherRequestGate(request) {
 /** Unanswered night consent stays with the worker — manager silence does not make it their decision. */
 export function pendingManagerDecideCount(employees = []) {
   return pendingLeaveCount(employees) + flattenOtherRequests(employees).filter(isManagerDecideOtherRequest).length;
+}
+
+/**
+ * Art. 79 bis / Art. 75: a resignation needs no reason — the worker may write one, never must.
+ * Every other request keeps its named reason on the audit trail.
+ */
+export function requestReasonRequired(type) {
+  return String(type || "") !== RESIGNATION_TYPE;
+}
+
+/** The one attachment control in طلباتي: PDF or image, up to 25 MB each. */
+export const REQUEST_ATTACH_ACCEPT = "application/pdf,image/jpeg,image/png,image/webp";
+export const REQUEST_ATTACH_MAX_BYTES = 25 * 1024 * 1024;
+export const REQUEST_ATTACH_MAX_FILES = 5;
+const REQUEST_ATTACH_TYPES = ["application/pdf", "image/jpeg", "image/jpg", "image/png", "image/webp"];
+
+/** Request types whose attachment is required; every other type takes an optional one. */
+export const REQUEST_ATTACH_REQUIRED_TYPES = [STUDY_CONSENT_TYPE, NIGHT_FITNESS_TYPE, NIGHT_AVOID_TYPE, "pregnancy_notice"];
+
+/** Every request type in طلباتي accepts an attachment; some require one. */
+export function requestAttachmentRule(type) {
+  const key = String(type || "");
+  return {
+    allowed: true,
+    required: REQUEST_ATTACH_REQUIRED_TYPES.includes(key),
+    accept: REQUEST_ATTACH_ACCEPT,
+    maxBytes: REQUEST_ATTACH_MAX_BYTES,
+    maxFiles: REQUEST_ATTACH_MAX_FILES,
+  };
+}
+
+/** Shape check on what reaches the submit path — the same rule the server runs. */
+export function checkRequestFilesGate(files) {
+  if (files == null) return { ok: true, files: [] };
+  if (!Array.isArray(files)) {
+    return { ok: false, error: "FILES_INVALID", reason: "المرفقات غير مقروءة.", reasonEn: "The attachments could not be read." };
+  }
+  const list = files.filter(Boolean);
+  if (list.length > REQUEST_ATTACH_MAX_FILES) {
+    return { ok: false, error: "FILES_TOO_MANY", reason: `لا تُرفق أكثر من ${REQUEST_ATTACH_MAX_FILES} ملفات.`, reasonEn: `Attach at most ${REQUEST_ATTACH_MAX_FILES} files.` };
+  }
+  for (const file of list) {
+    const name = String(file?.name || "").trim();
+    const mime = String(file?.type || "").toLowerCase();
+    if (!name) return { ok: false, error: "FILE_NAME_REQUIRED", reason: "مرفق بلا اسم.", reasonEn: "An attachment has no name." };
+    if (mime && !REQUEST_ATTACH_TYPES.includes(mime) && !/\.(pdf|jpe?g|png|webp)$/i.test(name)) {
+      return { ok: false, error: "FILE_TYPE", reason: "الصيغ المدعومة: PDF، JPG، PNG، WEBP.", reasonEn: "Supported formats: PDF, JPG, PNG, WEBP." };
+    }
+    if ((Number(file?.size) || 0) > REQUEST_ATTACH_MAX_BYTES) {
+      return { ok: false, error: "FILE_TOO_LARGE", reason: "يجب ألا يتجاوز حجم الملف 25 ميجابايت.", reasonEn: "The file must not exceed 25 MB." };
+    }
+  }
+  return { ok: true, files: list };
 }

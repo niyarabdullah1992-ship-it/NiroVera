@@ -2,25 +2,17 @@
 // re-typing amounts manually in payroll.
 // Idempotent: the same sourceRefId never produces a line twice.
 import { addDeductionLine, deductionLines, removeDeductionLine } from "@/lib/payrollDeductions";
-import { getRun, ensurePayrollRun, monthKey } from "@/lib/payroll";
+import { getRun, ensurePayrollRun, monthKey, syncEmployeeSalaryToPayroll } from "@/lib/payroll";
 import { getCompanyData } from "@/lib/store";
 
-export function generateAbsenceDeduction(companyId, employeeId, attendanceRecordId, days, actor) {
-  const month = monthKey();
-  ensurePayrollRun(companyId, month);
-  const data = getCompanyData(companyId);
-  const run = getRun(data, month);
-  const item = run?.items.find((i) => i.employeeId === employeeId);
-  if (!item || item.paid) return "NO_OPEN_ITEM";
-  const refId = `ATT-${attendanceRecordId}`;
-  if (deductionLines(item).some((l) => l.sourceRefId === refId)) return "ALREADY_GENERATED";
-  const daily = (Number(item.base) || 0) / 30;
-  return addDeductionLine(companyId, month, item, {
-    amount: Math.round(daily * days * 100) / 100,
-    source: "attendance",
-    sourceRefId: refId,
-    reason: `غياب معتمد ${days} يوم · Approved unpaid absence (${days} day${days === 1 ? "" : "s"})`,
-  }, actor);
+/**
+ * Art. 116: an approved unpaid leave is wage not due, not an Art. 92 deduction. Instead of posting
+ * an "attendance" deduction line (which counted toward the Art. 93 half-wage cap and could block
+ * the month), the open payroll line is re-derived — it carries the days as `unpaidLeaveCut`.
+ */
+export function refreshUnpaidLeaveWage(companyId, employeeId) {
+  syncEmployeeSalaryToPayroll(companyId, employeeId);
+  return null;
 }
 
 export function disciplineDeductionRef(caseId) {
@@ -40,7 +32,9 @@ export function generateDisciplineDeduction(companyId, employeeId, caseRow, acto
   const refId = disciplineDeductionRef(caseRow?.id);
   if (!refId || refId === "DSC-") return "REFERENCE_REQUIRED";
   if (deductionLines(item).some((line) => line.sourceRefId === refId)) return "ALREADY_GENERATED";
-  const daily = (Number(item.base) || 0) / 30;
+  // Art. 2: the wage a fine is measured on is the actual wage (basic + allowances) — the same figure
+  // the fines register (Art. 73) records, so the register and the payslip carry one amount.
+  const daily = ((Number(item.base) || 0) + (Number(item.allowances) || 0)) / 30;
   return addDeductionLine(companyId, month, item, {
     amount: Math.round(daily * days * 100) / 100,
     source: "discipline",

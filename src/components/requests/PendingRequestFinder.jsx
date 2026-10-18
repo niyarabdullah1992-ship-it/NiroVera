@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BORDER, CARD, MUTED, NAVY } from "@/lib/platformStyles";
 import { filterPendingRequests } from "@/lib/requestWorkspace";
+import { SearchWrap } from "@/components/shared/NvIcon";
 
 const NAVY_FILL = "var(--nv-navy)";
 
@@ -90,25 +91,27 @@ export default function PendingRequestFinder({
     <label style={{ display: "flex", flexDirection: "column", gap: compact ? 0 : 4, minWidth: compact ? 220 : 0 }}>
       {compact ? null : <span style={{ fontSize: 11, color: MUTED }}>{label || (ar ? "ابحث في ملفات الموظفين" : "Search employee files")}</span>}
       <div ref={boxRef} style={{ position: "relative" }}>
-        <input
-          role="combobox"
-          aria-expanded={open}
-          aria-autocomplete="list"
-          aria-controls="nv-req-pending-list"
-          value={open ? query : (selected ? `${selected.title}${selected.employee?.name ? ` · ${selected.employee.name}` : ""}` : query)}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            if (!open) setOpen(true);
-          }}
-          onFocus={(event) => {
-            setOpen(true);
-            setQuery("");
-            event.target.select();
-          }}
-          onKeyDown={onKey}
-          placeholder={ar ? "⌕ ابحث باسم موظف أو نوع طلب" : "Search by name or request type"}
-          style={compact ? { ...fieldStyle(), height: 30, borderRadius: 12, fontSize: 11.5, padding: "0 12px" } : fieldStyle()}
-        />
+        <SearchWrap>
+          <input
+            role="combobox"
+            aria-expanded={open}
+            aria-autocomplete="list"
+            aria-controls="nv-req-pending-list"
+            value={open ? query : (selected ? `${selected.title}${selected.employee?.name ? ` · ${selected.employee.name}` : ""}` : query)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              if (!open) setOpen(true);
+            }}
+            onFocus={(event) => {
+              setOpen(true);
+              setQuery("");
+              event.target.select();
+            }}
+            onKeyDown={onKey}
+            placeholder={ar ? "ابحث باسم موظف أو نوع طلب" : "Search by name or request type"}
+            style={compact ? { ...fieldStyle(), height: 30, borderRadius: 12, fontSize: 11.5, padding: "0 12px", paddingInlineStart: 30, "--nv-input-start": "30px" } : { ...fieldStyle(), paddingInlineStart: 30, "--nv-input-start": "30px" }}
+          />
+        </SearchWrap>
         {open ? (
           <div
             id="nv-req-pending-list"

@@ -26,8 +26,8 @@ assert.equal(saudiPatch.fields.transportAllowance, 760);
 assert.equal(saudiPatch.fields.allowances, 2660);
 assert.equal(saudiPatch.fields.overtimeHours, 9);
 assert.equal(saudiPatch.fields.isSaudi, true);
-assert.equal(saudiPatch.fields.gosiEmployee, 1000.35);
-assert.equal(lineComponents({ ...saudiLine, ...saudiPatch.fields }).gosiEmployee, 1000.35);
+assert.equal(saudiPatch.fields.gosiEmployee, 926.25);
+assert.equal(lineComponents({ ...saudiLine, ...saudiPatch.fields }).gosiEmployee, 926.25);
 assert.equal(lineComponents({ ...saudiLine, ...saudiPatch.fields }).overtimeHours, 9);
 
 const lumpPerson = {

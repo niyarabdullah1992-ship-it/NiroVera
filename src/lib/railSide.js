@@ -61,18 +61,12 @@ function isPath(path, base) {
   return path === base || path.startsWith(`${base}/`);
 }
 
-const MONEY = ["/app/payroll", "/app/expenses", "/app/assets", "/app/inventory"];
+const MONEY = ["/app/payroll"];
 
 /** Personal surface for each money module. Payroll opens قسيمتي, not the wage run. */
 const EMPLOYEE_MONEY_HREF = {
   payroll: "/app/payroll?view=self&tab=payslip",
-  expenses: "/app/expenses?view=self",
-  assets: "/app/assets?view=self",
-  inventory: "/app/inventory?view=self",
   "/app/payroll": "/app/payroll?view=self&tab=payslip",
-  "/app/expenses": "/app/expenses?view=self",
-  "/app/assets": "/app/assets?view=self",
-  "/app/inventory": "/app/inventory?view=self",
 };
 
 export function employeeMoneyHref(idOrPath) {
@@ -106,7 +100,7 @@ export function railFaceHref(pathname, search, targetSide) {
     }
     params.set("lane", "manage");
     const tab = params.get("tab");
-    if (!tab || ["punch", "mine", "roster", "report"].includes(tab)) {
+    if (!tab || ["punch", "mine", "record", "roster", "report"].includes(tab)) {
       if (isPath(path, "/app/shifts")) params.set("tab", "schedule");
       else if (!isPath(path, "/app/calendar")) params.set("tab", "team");
     }
@@ -120,6 +114,8 @@ export function railFaceHref(pathname, search, targetSide) {
     const tab = params.get("tab") || "";
     const shared = tab === "law" || tab === "schedule" || tab === "archive";
     params.set("tab", shared ? tab : (targetSide === "manage" ? "manage" : "mine"));
+    if (targetSide === "manage") params.set("lane", "manage");
+    else params.delete("lane");
     return joinPath("/app/discipline", params);
   }
   if (isPath(path, "/app/complaints")) {
@@ -144,23 +140,60 @@ export function railFaceHref(pathname, search, targetSide) {
     return joinPath(path, params);
   }
 
+  // المهام والإثبات · التوقيع الرقمي · السلامة: the same page, the lane in the address decides the face.
+  const laneDriven = isPath(path, "/app/tasks") || isPath(path, "/app/work-proof") || isPath(path, "/app/visitor-proof")
+    || isPath(path, "/app/signing") || isPath(path, "/app/safety");
+  if (laneDriven) {
+    if (targetSide === "manage") {
+      params.set("lane", "manage");
+    } else {
+      params.delete("lane");
+      // Management-only tabs have no employee face; the employee page opens on its own default.
+      params.delete("tab");
+      params.delete("focus");
+    }
+    return joinPath(path, params);
+  }
+
   if (targetSide === "employee") {
     if (path === "/app" || isPath(path, "/app/org") || isPath(path, "/app/hr") || isPath(path, "/app/escalation") || isPath(path, "/app/files")) {
       return "/app/attendance";
     }
     return "";
   }
-  if (
-    isPath(path, "/app/tasks")
-    || isPath(path, "/app/work-proof")
-    || isPath(path, "/app/visitor-proof")
-    || isPath(path, "/app/signing")
-    || isPath(path, "/app/safety")
-    || isPath(path, "/app/employees")
-  ) {
-    return "/app";
-  }
+  if (isPath(path, "/app/employees")) return "/app/hr";
   return "";
+}
+
+/** The other side's twin of a section — where a section has a different name on each side. */
+// «الهيكل» (org) opens the full-page chart outside the rail, so it is never a landing for a side switch:
+// HR → الموظف lands on the employee's first section, and the employee's الهيكل → الإدارة lands on HR.
+const RAIL_TWIN = {
+  manage: { compliance: "hse", payslip: "money", org: "hr" },
+  employee: { hse: "compliance", money: "payslip" },
+};
+
+/**
+ * Switching الموظف ↔ الإدارة keeps the person in the same section: السلامة (موظف) → السلامة (إدارة), and so on.
+ * The section's own address on the other side keeps its tab where both faces share it; a section that is
+ * not administered (or has no twin) opens the other side's first section.
+ */
+export function railSwitchHref({ pathname, search, targetSide, sides = [], activeKey = "" } = {}) {
+  const target = (sides || []).find((side) => side.id === targetSide);
+  if (!target) return railFaceHref(pathname, search, targetSide);
+  const items = (target.groups || []).flatMap((group) => group.items || []);
+  const section = String(activeKey || "").split(":")[0];
+  const twinSection = (RAIL_TWIN[targetSide] || {})[section] || section;
+  const twin = section ? items.find((item) => item.key === `${twinSection}:${targetSide}`) : null;
+  if (!twin) {
+    const fallback = railFaceHref(pathname, search, targetSide);
+    return fallback && !section ? fallback : (items[0]?.to || fallback || "");
+  }
+  if (twinSection === section) {
+    const same = railFaceHref(pathname, search, targetSide);
+    if (same) return same;
+  }
+  return twin.to || "";
 }
 
 /** Drop the inner side button. The rail tab is the switch. */

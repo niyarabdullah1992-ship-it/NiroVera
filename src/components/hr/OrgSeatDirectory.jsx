@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { isCompanyRootStation, isHrUnit } from "@/lib/stationTree";
+import { chip, chipButton, mono } from "@/components/schedules/scheduleChrome";
+import { gradeBadge } from "@/components/hr/orgUi";
 
 function initialsOf(name) {
   const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
@@ -82,142 +84,96 @@ export default function OrgSeatDirectory({ nodes = [], stations = [], ar = true,
     });
   }, [nodes, branchId, status, stationById, byId, ar]);
 
+  /** Status chip — colour only for a compliance alert; vacant / acting are facts (mute). Active shows nothing. */
   const statusLabel = (node) => {
     const tone = toneOf(node);
-    if (tone === "vac") return { t: ar ? "شاغرة" : "Vacant", color: "#8A5A12", bg: "#FBF3E1" };
-    if (tone === "act") return { t: ar ? "مكلَّف" : "Acting", color: "#8A5A12", bg: "#FBF3E1" };
-    if (tone === "warn") return { t: ar ? "تنبيه" : "Alert", color: "#9B2335", bg: "#FBEBED" };
-    return { t: ar ? "على رأس العمل" : "Active", color: "#2F6B43", bg: "#E6F2EA" };
+    if (tone === "vac") return { t: ar ? "شاغرة" : "Vacant", style: chip("mute", { borderStyle: "dashed" }) };
+    if (tone === "act") return { t: ar ? "مكلَّف" : "Acting", style: chip("mute") };
+    if (tone === "warn") return { t: ar ? "تنبيه نظامي" : "Compliance alert", style: chip("bad") };
+    return null;
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, width: "100%", minWidth: 0, textAlign: "start" }}>
-      <div style={{ background: "var(--nv-card, #fff)", border: "1px solid var(--nv-line, #E4E9E6)", borderRadius: 12, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--nv-ink2, #3A4048)" }}>{ar ? "الفرع" : "Branch"}</span>
-          <span style={{ fontSize: 11, color: "var(--nv-ink3, #555C66)" }}>{ar ? "اضغط البطاقة لعرض الملف الموجز" : "Open a card for the summary"}</span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8 }}>
+    <div style={{ display: "flex", flexDirection: "column", width: "100%", minWidth: 0, textAlign: "start" }}>
+      <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--nv-line2, var(--nv-line))", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div role="group" aria-label={ar ? "الفرع" : "Branch"} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--nv-muted)", marginInlineEnd: 4 }}>{ar ? "الفرع" : "Branch"}</span>
           {tiles.map((tile) => {
             const on = branchId === tile.id;
             return (
-              <button
-                key={tile.id || "all"}
-                type="button"
-                onClick={() => setBranchId(tile.id)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  height: 40,
-                  padding: "0 12px",
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  boxSizing: "border-box",
-                  minWidth: 0,
-                  fontFamily: "inherit",
-                  fontWeight: on ? 700 : 500,
-                  background: on ? "#0B3D27" : "var(--nv-card, #fff)",
-                  color: on ? "#fff" : "var(--nv-ink, #111418)",
-                  border: `1px solid ${on ? "#0B3D27" : "var(--nv-line, #E4E9E6)"}`,
-                }}
-              >
-                <span style={{ fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tile.name}</span>
-                <span style={{ flex: "none", minWidth: 24, height: 22, padding: "0 7px", borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center", font: "600 11px 'IBM Plex Mono', monospace", background: on ? "rgba(255,255,255,.18)" : "#E6F2EA", color: on ? "#fff" : "#2F6B43" }}>{tile.count}</span>
+              <button key={tile.id || "all"} type="button" aria-pressed={on} onClick={() => setBranchId(tile.id)} style={chipButton(on, { maxWidth: 220 })}>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{tile.name}</span>
+                <span dir="ltr" style={{ ...mono, fontSize: 10.5, opacity: 0.8 }}>{tile.count}</span>
               </button>
             );
           })}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", paddingTop: 10, borderTop: "1px solid var(--nv-line, #EEF1EF)" }}>
-          <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--nv-ink2, #3A4048)" }}>{ar ? "الحالة" : "Status"}</span>
-          <div style={{ display: "inline-flex", gap: 2, padding: 3, borderRadius: 10, background: "var(--nv-soft, #F2F5F3)", border: "1px solid var(--nv-line, #E4E9E6)", flexWrap: "wrap" }}>
-            {STATUSES.map(([id, labelAr, labelEn]) => {
-              const on = status === id;
-              return (
-                <button
-                  key={id || "all"}
-                  type="button"
-                  onClick={() => setStatus(id)}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    height: 30,
-                    padding: "0 12px",
-                    borderRadius: 8,
-                    border: 0,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    fontSize: 12,
-                    fontWeight: on ? 700 : 500,
-                    background: on ? "var(--nv-card, #fff)" : "transparent",
-                    color: on ? "#0B3D27" : "var(--nv-ink2, #3A4048)",
-                    boxShadow: on ? "0 1px 3px rgba(12,20,16,.12)" : "none",
-                  }}
-                >
-                  {ar ? labelAr : labelEn}
-                </button>
-              );
-            })}
-          </div>
+        <div role="group" aria-label={ar ? "الحالة" : "Status"} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--nv-muted)", marginInlineEnd: 4 }}>{ar ? "الحالة" : "Status"}</span>
+          {STATUSES.map(([id, labelAr, labelEn]) => {
+            const on = status === id;
+            return (
+              <button key={id || "all"} type="button" aria-pressed={on} onClick={() => setStatus(id)} style={chipButton(on)}>
+                {ar ? labelAr : labelEn}
+              </button>
+            );
+          })}
+          <span style={{ fontSize: 11, color: "var(--nv-muted)", marginInlineStart: "auto" }}>{ar ? "اضغط السطر لعرض الملف الموجز" : "Open a row for the summary"}</span>
         </div>
       </div>
       {groups.map((group) => (
-        <section key={group.id || "none"} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ font: "700 11px 'IBM Plex Mono', monospace", color: "#fff", background: "#0B3D27", borderRadius: 6, padding: "2px 8px" }}>{group.code}</span>
-            <strong style={{ fontSize: 14, color: "var(--nv-ink, #111418)" }}>{group.name}</strong>
-            <span style={{ fontSize: 11.5, color: "var(--nv-ink3, #555C66)" }}>{group.count}{group.manager ? ` · ${group.manager}` : ""}</span>
-            <span style={{ flex: 1, height: 1, background: "var(--nv-line, #E4E9E6)" }} />
+        <section key={group.id || "none"} style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "9px 18px", background: "var(--nv-soft)", borderBottom: "1px solid var(--nv-line2, var(--nv-line))", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={gradeBadge({ minWidth: 34 })}>{group.code}</span>
+            <strong style={{ fontSize: 12.5, color: "var(--nv-ink)" }}>{group.name}</strong>
+            <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}><span dir="ltr" style={mono}>{group.count}</span>{group.manager ? ` · ${group.manager}` : ""}</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 10 }}>
-            {group.items.map((node) => {
-              const vacant = Boolean(node.vacant);
-              const st = statusLabel(node);
-              const parent = byId.get(String(node.reportsTo || ""));
-              const boss = parent
-                ? (ar ? `يتبع: ${parent.vacant ? parent.title : parent.name}` : `Reports to: ${parent.name || parent.title}`)
-                : (ar ? "أعلى الهيكل" : "Top of the chart");
-              return (
-                <button
-                  key={node.id}
-                  type="button"
-                  onClick={() => onOpen?.(node)}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 8,
-                    padding: 12,
-                    borderRadius: 12,
-                    cursor: "pointer",
-                    boxSizing: "border-box",
-                    textAlign: "start",
-                    fontFamily: "inherit",
-                    background: vacant ? "#FBF3E1" : "var(--nv-card, #fff)",
-                    border: vacant ? "1px dashed #D9C08A" : "1px solid var(--nv-line, #E4E9E6)",
-                    color: "inherit",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                    <span style={{ width: 40, height: 40, borderRadius: "50%", flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, ...(vacant ? { border: "1.5px dashed #D9C08A", color: "#B7791F", background: "#fff" } : { background: "#E6F2EA", color: "#0B3D27" }) }}>
-                      {vacant ? "＋" : initialsOf(node.name)}
-                    </span>
-                    <span style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1, lineHeight: 1.4 }}>
-                      <strong style={{ fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: vacant ? "#8A5A12" : "var(--nv-ink, #111418)" }}>{vacant ? (node.title || "—") : (node.name || "—")}</strong>
-                      <span style={{ fontSize: 11.5, color: "var(--nv-ink3, #555C66)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{vacant ? (ar ? "بانتظار التوظيف" : "Waiting to be filled") : (node.title || "—")}</span>
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 10.5, fontWeight: 700, borderRadius: 999, padding: "1px 8px", whiteSpace: "nowrap", color: st.color, background: st.bg }}>{st.t}</span>
-                    {node.grade ? <span style={{ font: "600 10.5px 'IBM Plex Mono', monospace", border: "1px solid var(--nv-line, #E4E9E6)", borderRadius: 999, padding: "0 7px", color: "var(--nv-ink2, #3A4048)" }}>{node.grade}</span> : null}
-                    <span style={{ flex: 1 }} />
-                    <span dir="ltr" style={{ font: "600 11px 'IBM Plex Mono', monospace", color: "var(--nv-ink3, #555C66)" }}>{node.empLine || "—"}</span>
-                  </div>
-                  <span style={{ fontSize: 11, color: "var(--nv-ink3, #555C66)", borderTop: "1px solid var(--nv-line2, #F2F5F3)", paddingTop: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{boss}</span>
-                </button>
-              );
-            })}
-          </div>
+          {group.items.map((node) => {
+            const vacant = Boolean(node.vacant);
+            const st = statusLabel(node);
+            const parent = byId.get(String(node.reportsTo || ""));
+            const boss = parent
+              ? (ar ? `يتبع: ${parent.vacant ? parent.title : parent.name}` : `Reports to: ${parent.name || parent.title}`)
+              : (ar ? "أعلى الهيكل" : "Top of the chart");
+            return (
+              <button
+                key={node.id}
+                type="button"
+                className="nv-org-dir-row"
+                onClick={() => onOpen?.(node)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "6px 12px",
+                  padding: "10px 18px",
+                  cursor: "pointer",
+                  boxSizing: "border-box",
+                  textAlign: "start",
+                  fontFamily: "inherit",
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: "1px solid var(--nv-line2, var(--nv-line))",
+                  color: "inherit",
+                  width: "100%",
+                }}
+              >
+                <span style={{ width: 32, height: 32, borderRadius: "50%", flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11.5, fontWeight: 600, ...(vacant ? { border: "1.5px dashed var(--nv-mute-fill, var(--nv-line))", color: "var(--nv-muted)", background: "transparent" } : { border: "1px solid var(--nv-line)", background: "var(--nv-soft)", color: "var(--nv-ink2)" }) }}>
+                  {vacant ? "＋" : initialsOf(node.name)}
+                </span>
+                <span style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: "1 1 180px", lineHeight: 1.45 }}>
+                  <strong style={{ fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: vacant ? "var(--nv-muted)" : "var(--nv-ink)" }}>{vacant ? (node.title || "—") : (node.name || "—")}</strong>
+                  <span style={{ fontSize: 11.5, color: "var(--nv-ink2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{vacant ? (ar ? "بانتظار التوظيف" : "Waiting to be filled") : (node.title || "—")}</span>
+                </span>
+                <span style={{ fontSize: 11.5, color: "var(--nv-muted)", flex: "1 1 140px", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{boss}</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  {st ? <span style={st.style}>{st.t}</span> : null}
+                  {node.grade ? <span style={gradeBadge()}>{node.grade}</span> : null}
+                  <span dir="ltr" style={{ ...mono, fontSize: 11, color: "var(--nv-muted)" }}>{node.empLine || "—"}</span>
+                </span>
+              </button>
+            );
+          })}
         </section>
       ))}
     </div>

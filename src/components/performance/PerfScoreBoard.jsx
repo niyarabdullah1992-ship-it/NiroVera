@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { taskQualityLine } from "@/lib/taskQuality";
+import { modelLaw } from "@/lib/modelArticleTexts";
+import { StatuteLink } from "@/components/shared/RightHint";
 import { useAuth } from "@/lib/PowerCareAuth";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { visibleStations } from "@/lib/permissions";
@@ -21,6 +24,7 @@ import {
 } from "@/lib/perfRange";
 import PerfHowBoard from "@/components/performance/PerfHowBoard";
 import { PERF_BODY, PERF_INK, PERF_LINE, PERF_MUTED, PERF_SOFT, PERF_WHITE } from "@/components/performance/PerformanceSectionFrame";
+import NvIcon from "@/components/shared/NvIcon";
 
 const mono = { fontFamily: "'IBM Plex Mono', monospace" };
 const DASH = "—";
@@ -281,7 +285,7 @@ export default function PerfScoreBoard({
   };
 
   const clearFilters = () => {
-    const preset = presets.find((row) => row.id === "q") || presets[0];
+    const preset = presets.find((row) => row.id === "3") || presets[0];
     setBranchId("");
     setTeamId("");
     setQuery("");
@@ -417,7 +421,7 @@ export default function PerfScoreBoard({
               {presets.map((preset) => {
                 const on = from === preset.from && to === preset.to;
                 return (
-                  <button key={preset.id} type="button" className="nv-perf-chip" onClick={() => onPreset?.(preset)} style={{ ...ghostBtn(), height: 28, background: on ? ACTION : PERF_WHITE, color: on ? "#fff" : PERF_INK, borderColor: on ? ACTION : PERF_LINE }}>
+                  <button key={preset.id} type="button" className="nv-perf-chip" aria-pressed={on} onClick={() => onPreset?.(preset)} style={{ display: "inline-flex", alignItems: "center", height: 32, padding: "0 12px", borderRadius: 999, border: on ? "none" : `1px solid ${PERF_LINE}`, background: on ? "#0B3D27" : PERF_WHITE, color: on ? "#fff" : PERF_INK, fontSize: 12, fontWeight: on ? 700 : 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
                     {ar ? preset.labelAr : preset.labelEn}
                   </button>
                 );
@@ -464,7 +468,7 @@ export default function PerfScoreBoard({
             <div key={tile.label} style={{ display: "flex", flexDirection: "column", gap: 2, padding: "12px 16px", borderInlineStart: index ? `1px solid ${PERF_SOFT}` : "none" }}>
               <span style={{ fontSize: 12, color: PERF_MUTED }}>{tile.label}</span>
               <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                <strong dir="ltr" style={{ ...mono, fontSize: 24, fontWeight: 700, color: tile.color, lineHeight: 1.15 }}>{tile.value}</strong>
+                <strong dir="ltr" style={{ ...mono, fontSize: 24, fontWeight: 700, color: PERF_INK, lineHeight: 1.15 }}>{tile.value}</strong>
                 {tile.unit ? <span style={{ fontSize: 11, color: PERF_MUTED }}>{tile.unit}</span> : null}
               </span>
               <span style={{ fontSize: 11, color: PERF_BODY }}>{tile.sub}</span>
@@ -489,7 +493,7 @@ export default function PerfScoreBoard({
             <div style={{ overflowX: "auto" }}>
               <div style={{ minWidth: 860 }}>
                 <div style={{ display: "grid", gridTemplateColumns: cols, background: "var(--nv-soft)", borderBottom: `1px solid ${PERF_LINE}` }}>
-                  <button type="button" onClick={() => setPicked(allPeopleOn ? [] : people.map((row) => row.id))} style={{ ...headCell, justifyContent: "center", border: "none" }}><span style={checkStyle(allPeopleOn)}>{allPeopleOn ? "✓" : ""}</span></button>
+                  <button type="button" onClick={() => setPicked(allPeopleOn ? [] : people.map((row) => row.id))} style={{ ...headCell, justifyContent: "center", border: "none" }}><span style={checkStyle(allPeopleOn)}>{allPeopleOn ? <NvIcon name="check" size={10} strokeWidth={2.5} inline={false} /> : ""}</span></button>
                   {peopleHeads.map(([id, label]) => (
                     <button key={label} type="button" onClick={() => id && toggleSort(id)} style={{ ...headCell, border: "none", cursor: id ? "pointer" : "default" }}>
                       {label}
@@ -524,7 +528,7 @@ export default function PerfScoreBoard({
                         onClick={(event) => { event.stopPropagation(); toggleId(picked, setPicked, row.id); }}
                         style={{ ...cell, justifyContent: "center" }}
                       >
-                        <span style={checkStyle(on)}>{on ? "✓" : ""}</span>
+                        <span style={checkStyle(on)}>{on ? <NvIcon name="check" size={10} strokeWidth={2.5} inline={false} /> : ""}</span>
                       </span>
                       <span dir="ltr" style={{ ...cell, ...mono, color: PERF_MUTED }}>{number || DASH}</span>
                       <span style={{ ...cell, flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 0, lineHeight: 1.35 }}>
@@ -577,6 +581,13 @@ export default function PerfScoreBoard({
                   <strong dir="ltr" style={{ ...mono, fontSize: 26, lineHeight: 1.2 }}>{openRow.a.proof}</strong>
                   <span style={{ fontSize: 11, color: PERF_MUTED }}>{ar ? `مهام معتمدة · الحد ${MIN_PROOF}` : `Approved tasks · floor ${MIN_PROOF}`}</span>
                   </div>
+              </div>
+              <div data-perf-quality={openRow.a.quality?.n || 0} style={{ padding: "9px 14px", borderBottom: `1px solid ${PERF_SOFT}`, fontSize: 12, color: PERF_BODY, lineHeight: 1.7, display: "flex", alignItems: "baseline", gap: 8 }}>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <strong style={{ color: "var(--nv-ink)" }}>{ar ? "جودة المهام: " : "Task quality: "}</strong>
+                  {taskQualityLine(openRow.a.quality, ar)}
+                </span>
+                <StatuteLink ar={ar} law={modelLaw(["18", "19"], ar)} />
               </div>
               <div style={{ display: "flex", borderBottom: `1px solid ${PERF_SOFT}` }}>
                 {[["drv", ar ? "المحرّكات" : "Drivers"], ["trend", ar ? "المسار" : "Months"], ["log", ar ? "الأدلة" : "Proof"]].map(([id, label]) => (
@@ -691,7 +702,7 @@ export default function PerfScoreBoard({
           <div style={{ overflowX: "auto" }}>
             <div style={{ minWidth: 920 }}>
               <div style={{ display: "grid", gridTemplateColumns: bcols, background: "var(--nv-soft)", borderBottom: `1px solid ${PERF_LINE}` }}>
-                <button type="button" onClick={() => setPickedB(allBranchesOn ? [] : branchRows.map((row) => row.id))} style={{ ...headCell, justifyContent: "center", border: "none" }}><span style={checkStyle(allBranchesOn)}>{allBranchesOn ? "✓" : ""}</span></button>
+                <button type="button" onClick={() => setPickedB(allBranchesOn ? [] : branchRows.map((row) => row.id))} style={{ ...headCell, justifyContent: "center", border: "none" }}><span style={checkStyle(allBranchesOn)}>{allBranchesOn ? <NvIcon name="check" size={10} strokeWidth={2.5} inline={false} /> : ""}</span></button>
                 {branchHeads.map(([id, label]) => (
                   <button key={label} type="button" onClick={() => id && toggleBSort(id)} style={{ ...headCell, border: "none" }}>
                     {label}
@@ -703,7 +714,7 @@ export default function PerfScoreBoard({
                 const on = pickedB.includes(row.id);
                 return (
                   <div key={row.id} style={{ display: "grid", gridTemplateColumns: bcols, borderBottom: `1px solid ${PERF_SOFT}`, background: on ? "color-mix(in oklab, #3C7D50 10%, var(--nv-card))" : PERF_WHITE }}>
-                    <button type="button" onClick={() => toggleId(pickedB, setPickedB, row.id)} style={{ ...cell, justifyContent: "center", border: "none", background: "transparent", cursor: "pointer" }}><span style={checkStyle(on)}>{on ? "✓" : ""}</span></button>
+                    <button type="button" onClick={() => toggleId(pickedB, setPickedB, row.id)} style={{ ...cell, justifyContent: "center", border: "none", background: "transparent", cursor: "pointer" }}><span style={checkStyle(on)}>{on ? <NvIcon name="check" size={10} strokeWidth={2.5} inline={false} /> : ""}</span></button>
                     <button type="button" onClick={() => { setBranchId(row.id); onTab?.("people"); setCompareOn(false); }} style={{ ...cell, flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 0, lineHeight: 1.35, border: "none", background: "transparent", cursor: "pointer", fontFamily: "inherit", textAlign: "start" }}>
                       <strong style={{ fontSize: 13, color: ACTION }}>{row.name || DASH}</strong>
                       <span style={{ fontSize: 11, color: PERF_MUTED }}>{ar ? countAr(row.ps.length, "موظف واحد", "موظفان", "موظفين", "موظفاً", "لا أحد") : `${row.ps.length}`}</span>
@@ -735,7 +746,7 @@ export default function PerfScoreBoard({
         <section data-perf-card style={{ ...card, overflow: "hidden" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: `1px solid ${PERF_SOFT}` }}>
             <strong style={{ fontSize: 14 }}>{activeTab === "branches" ? (ar ? "مقارنة الفروع" : "Branch comparison") : (ar ? "مقارنة الموظفين" : "People comparison")}</strong>
-            <span style={{ fontSize: 12, color: PERF_MUTED }}>{ar ? "الفارق مقابل الأعلى بين المحدد · ★ الأعلى" : "Gap against the highest of the pick · ★ leads"}</span>
+            <span style={{ fontSize: 12, color: PERF_MUTED }}>{ar ? <>الفارق مقابل الأعلى بين المحدد · <NvIcon name="star" size={12} /> الأعلى</> : <>Gap against the highest of the pick · <NvIcon name="star" size={12} /> leads</>}</span>
             <span style={{ flex: 1 }} />
             <button type="button" style={ghostBtn()} onClick={() => setCompareOn(false)}>{ar ? "إغلاق" : "Close"}</button>
           </div>
@@ -760,7 +771,7 @@ export default function PerfScoreBoard({
                       const gap = value == null || best == null ? null : best - value;
                       return (
                         <span key={col.id} dir="ltr" style={{ padding: "8px 12px", borderTop: `1px solid ${PERF_SOFT}`, ...mono, fontWeight: 600, color: value == null ? PERF_MUTED : gap ? (gap >= 15 ? DANGER : PERF_BODY) : ACTION, background: value != null && !gap ? "color-mix(in oklab, #3C7D50 14%, var(--nv-card))" : "transparent" }}>
-                          {value == null ? DASH : `${value}%${gap ? `  (−${gap})` : "  ★"}`}
+                          {value == null ? DASH : <>{`${value}%${gap ? `  (−${gap})` : "  "}`}{gap ? null : <NvIcon name="star" size={12} />}</>}
                               </span>
                       );
                     })}
@@ -774,7 +785,7 @@ export default function PerfScoreBoard({
                 const gap = col.score == null || best == null ? null : best - col.score;
                 return (
                   <span key={col.id} dir="ltr" style={{ padding: "8px 12px", borderTop: `1px solid ${PERF_SOFT}`, ...mono, fontWeight: 700, color: col.score == null ? PERF_MUTED : gap ? PERF_BODY : ACTION }}>
-                    {col.score == null ? DASH : `${col.score}${gap ? `  (−${gap})` : "  ★"}`}
+                    {col.score == null ? DASH : <>{`${col.score}${gap ? `  (−${gap})` : "  "}`}{gap ? null : <NvIcon name="star" size={12} />}</>}
                           </span>
                 );
               })}

@@ -87,7 +87,11 @@ export function matchRowsToEmployees(rows, employees) {
 
 // Applies matched salaries in one mutation: updates each employee's salary
 // profile (source of truth for future months) and the selected month's run.
-export function applySalaryImport(companyId, month, matches) {
+/**
+ * `canWriteFile(employee)` — the wage on the employee file is HR's (employeeFileRights): rows for someone
+ * the importer may not edit still fill this month's unpaid payroll line, but leave the file's wage as it is.
+ */
+export function applySalaryImport(companyId, month, matches, { canWriteFile = () => true } = {}) {
   updateCompany(companyId, (d) => {
     const appliedEmployees = new Set();
     matches.forEach(({ row, employee }) => {
@@ -97,10 +101,12 @@ export function applySalaryImport(companyId, month, matches) {
       appliedEmployees.add(employee.id);
       const emp = d.employees.find((e) => e.id === employee.id);
       if (!emp) return;
-      emp.profile = emp.profile || {};
-      emp.profile.baseSalary = amount(row.base_salary);
-      emp.profile.allowances = amount(row.allowances);
-      if (row.currency && /^[A-Z]{3}$/.test(String(row.currency).toUpperCase())) emp.profile.currency = String(row.currency).toUpperCase();
+      if (canWriteFile(emp)) {
+        emp.profile = emp.profile || {};
+        emp.profile.baseSalary = amount(row.base_salary);
+        emp.profile.allowances = amount(row.allowances);
+        if (row.currency && /^[A-Z]{3}$/.test(String(row.currency).toUpperCase())) emp.profile.currency = String(row.currency).toUpperCase();
+      }
 
       const run = (d.payrollRuns || []).find((r) => r.month === month);
       const item = run?.items.find((i) => i.employeeId === emp.id);

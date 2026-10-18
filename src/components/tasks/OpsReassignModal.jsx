@@ -1,8 +1,7 @@
 import React, { useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import { CARD, MUTED, NAVY, NAVY_FILL, field, textarea } from "@/lib/platformStyles";
 import { taskAssigneeId } from "@/lib/opsDerivations";
 import PlatformDateField from "@/components/shared/PlatformDateField";
+import { AckLine, FieldBlock, FrameBlock, ReasonBox, RequestFrameDialog, TaskDialogFooter, TaskPersonPicker, dateKeyText } from "@/components/tasks/TaskDialogParts";
 
 function todayKey() {
   const d = new Date();
@@ -20,6 +19,17 @@ function addDaysKey(base, days) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** Inclusive days between two yyyy-mm-dd keys (the delegation covers both ends). */
+function spanDays(start, end) {
+  const a = /^(\d{4})-(\d{2})-(\d{2})$/.exec(start || "");
+  const b = /^(\d{4})-(\d{2})-(\d{2})$/.exec(end || "");
+  if (!a || !b) return 0;
+  const ms = new Date(Number(b[1]), Number(b[2]) - 1, Number(b[3])) - new Date(Number(a[1]), Number(a[2]) - 1, Number(a[3]));
+  return Math.round(ms / 86400000) + 1;
+}
+
+const daysAr = (n) => (n === 1 ? "يوم واحد" : n === 2 ? "يومان" : n >= 3 && n <= 10 ? `${n} أيام` : `${n} يوماً`);
+
 /**
  * Manager-only توكيل — start/end dates + reason; ends only via الموكِّل later.
  */
@@ -27,6 +37,7 @@ export default function OpsReassignModal({
   task,
   ar,
   employees = [],
+  stations = [],
   busy,
   onClose,
   onConfirm,
@@ -50,60 +61,32 @@ export default function OpsReassignModal({
   const start = String(delegatedAt || "").slice(0, 10);
   const end = String(actingUntil || "").slice(0, 10);
   const rangeOk = !!start && !!end && end >= start;
-  const canSubmit = !!toId && rangeOk && reason.trim().length > 0 && ack && !busy;
+  const days = rangeOk ? spanDays(start, end) : 0;
+  const endText = dateKeyText(end, ar);
+  const missing = [
+    !toId ? (ar ? "اختيار الموكَّل إليه" : "the delegate") : "",
+    !rangeOk ? (ar ? "مدة صحيحة" : "a valid period") : "",
+    !reason.trim() ? (ar ? "سبب التوكيل" : "the reason") : "",
+    !ack ? (ar ? "الإقرار" : "the acknowledgement") : "",
+  ].filter(Boolean);
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
-      dir={ar ? "rtl" : "ltr"}
+  return (
+    <RequestFrameDialog
+      ar={ar}
+      dataNv="delegate"
+      title={ar ? "توكيل المهمة" : "Delegate task"}
+      hint={ar
+        ? "إسناد مؤقت ببداية ونهاية. يبقى المرجع على بطاقة المهمة، ويحق للموكِّل إنهاء الوكالة قبل نهايتها."
+        : "A temporary assignment with a start and an end. The reference stays on the task card; the delegator may end it early."}
+      onClose={onClose}
     >
-      <div
-        className="w-full max-w-md rounded-xl p-4 shadow-lg"
-        style={{ background: CARD }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="text-sm font-semibold" style={{ color: NAVY }}>
-          {ar ? "توكيل المهمة" : "Delegate task"}
-        </div>
-        <p className="mt-1 text-[11px] leading-6" style={{ color: MUTED }}>
-          {ar
-            ? "حدّد بداية ونهاية التوكيل. يبقى المرجع على بطاقة المهمة، ويحق للموكِّل إنهاء الوكالة قبل نهايتها."
-            : "Set start and end of the delegation. The reference stays on the task card, and the delegator may end it early."}
-        </p>
+      <FrameBlock heading={ar ? "الموكَّل إليه" : "Delegate to"} dataKey="delegate-to">
+        <TaskPersonPicker ar={ar} options={options} value={toId} onChange={setToId} stations={stations} label={ar ? "الموكَّل إليه" : "Delegate to"} />
+      </FrameBlock>
 
-        <label className="mt-3 flex flex-col gap-1.5">
-          <span className="text-[11px] font-semibold" style={{ color: MUTED }}>
-            {ar ? "الموكَّل إليه" : "Delegate to"}
-          </span>
-          <select
-            value={toId}
-            onChange={(e) => setToId(e.target.value)}
-            style={field}
-          >
-            <option value="">{ar ? "اختر موظفًا" : "Select employee"}</option>
-            {options.map((emp) => {
-              const id = emp.employeeId || emp.id;
-              return (
-                <option key={id} value={id}>{emp.name}</option>
-              );
-            })}
-          </select>
-        </label>
-
-        {options.length === 0 && (
-          <div className="mt-2 text-[11px] leading-6" style={{ color: "var(--nv-warn-ink)" }}>
-            {ar
-              ? "لا موظف آخر ظاهر في نطاق هذا الفرع."
-              : "No other visible employee in this station scope."}
-          </div>
-        )}
-
-        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-semibold" style={{ color: MUTED }}>
-              {ar ? "بداية التوكيل" : "Delegation starts"}
-            </span>
+      <FrameBlock dataKey="delegate-details">
+        <div data-task-field="delegate-period" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: 10 }}>
+          <FieldBlock label={ar ? "بداية التوكيل" : "Starts"}>
             <PlatformDateField
               value={delegatedAt}
               onChange={(next) => {
@@ -114,81 +97,52 @@ export default function OpsReassignModal({
               ar={ar}
               placeholder={ar ? "تاريخ البداية" : "Start date"}
             />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-semibold" style={{ color: MUTED }}>
-              {ar ? "نهاية التوكيل" : "Delegation ends"}
-            </span>
+          </FieldBlock>
+          <FieldBlock label={ar ? "نهاية التوكيل" : "Ends"}>
             <PlatformDateField
               value={actingUntil}
+              min={start || undefined}
               onChange={(next) => setActingUntil(String(next || "").slice(0, 10))}
               ar={ar}
               placeholder={ar ? "تاريخ النهاية" : "End date"}
             />
-          </div>
+          </FieldBlock>
         </div>
-        {start && end && end < start && (
-          <div className="mt-2 text-[11px] leading-6" style={{ color: "var(--nv-warn-ink)" }}>
+        {start && end && end < start ? (
+          <span style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.7, color: "var(--nv-warn-ink, #8A5A12)" }}>
             {ar ? "النهاية يجب أن تكون في يوم البداية أو بعده." : "End must be on or after the start date."}
-          </div>
-        )}
-
-        <label className="mt-3 flex flex-col gap-1.5">
-          <span className="text-[11px] font-semibold" style={{ color: MUTED }}>
-            {ar ? "لماذا لم تُنجز / سبب التوكيل" : "Why it was not done / reason"}
           </span>
-          <textarea
-            rows={3}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder={ar ? "سبب التوكيل (مطلوب)" : "Delegation reason (required)"}
-            style={textarea}
-          />
-        </label>
-
-        <label className="mt-3 flex items-start gap-2 text-[11px] leading-6" style={{ color: NAVY }}>
-          <input
-            type="checkbox"
-            checked={ack}
-            onChange={(e) => setAck(e.target.checked)}
-            className="mt-0.5"
-          />
-          <span>
-            {ar
-              ? `أقرّ أن التوكيل ينتهي بنهاية يوم ${end || "—"}، ويحق للموكِّل إنهاؤه قبل ذلك.`
-              : `I acknowledge the delegation ends at the close of ${end || "—"}, and the delegator may end it earlier.`}
+        ) : rangeOk ? (
+          <span data-task-span="1" style={{ fontSize: 11, lineHeight: 1.7, color: "var(--nv-muted)" }}>
+            {ar ? `${daysAr(days)} · تنتهي بنهاية ${endText}` : `${days} day${days === 1 ? "" : "s"} · ends at the close of ${endText}`}
           </span>
-        </label>
+        ) : null}
 
-        <div className="mt-3 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-[var(--nv-line)] px-3 py-1.5 text-xs"
-            style={{ color: MUTED, background: CARD }}
-          >
-            {ar ? "إلغاء" : "Cancel"}
-          </button>
-          <button
-            type="button"
-            disabled={!canSubmit}
-            onClick={() => {
-              onConfirm?.({
-              toId,
-              reason: reason.trim(),
-              delegatedAt: start,
-              actingUntil: end,
-              kind: "delegate",
-            });
-            }}
-            className="rounded-lg px-3 py-1.5 text-xs text-white disabled:opacity-50"
-            style={{ background: NAVY_FILL }}
-          >
-            {ar ? "توكيل" : "Delegate"}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
+        <FieldBlock label={ar ? "سبب التوكيل" : "Reason"} dataKey="delegate-reason">
+          <ReasonBox value={reason} onChange={setReason} placeholder={ar ? "مثال: إجازة المسؤول الأصلي" : "e.g. the owner is on leave"} />
+        </FieldBlock>
+
+        <AckLine checked={ack} onChange={setAck}>
+          {ar
+            ? `أقرّ أن التوكيل ينتهي بنهاية ${endText}، ويحق للموكِّل إنهاؤه قبل ذلك.`
+            : `I acknowledge the delegation ends at the close of ${endText}, and the delegator may end it earlier.`}
+        </AckLine>
+      </FrameBlock>
+
+      <TaskDialogFooter
+        ar={ar}
+        busy={busy}
+        missing={missing}
+        label={ar ? "توكيل" : "Delegate"}
+        readyText={ar ? "جاهز للتوكيل" : "Ready to delegate"}
+        onConfirm={() => onConfirm?.({
+          toId,
+          reason: reason.trim(),
+          delegatedAt: start,
+          actingUntil: end,
+          kind: "delegate",
+        })}
+      />
+    </RequestFrameDialog>
   );
 }

@@ -54,8 +54,8 @@ export default function SubscribersDashboard({ ar }) {
     { label: ar ? "الشركات المسجلة" : "Registered companies", value: summary.totalCompanies },
     { label: ar ? "اشتراكات نشطة" : "Active subscriptions", value: summary.activeSubscriptions },
     { label: ar ? "تجريبي" : "Trialing", value: summary.trialing },
-    { label: ar ? "متأخر الدفع" : "Past due", value: summary.pastDue, warn: summary.pastDue > 0 },
-    { label: ar ? "الاشتراكات المجمّدة" : "Frozen subscriptions", value: summary.frozen || 0, warn: summary.frozen > 0 },
+    { label: ar ? "متأخر الدفع" : "Past due", value: summary.pastDue, warn: summary.pastDue > 0, flag: ar ? "يحتاج تحصيلاً" : "Needs collection" },
+    { label: ar ? "الاشتراكات المجمّدة" : "Frozen subscriptions", value: summary.frozen || 0, warn: summary.frozen > 0, flag: ar ? "الوصول موقوف" : "Access paused" },
   ] : [];
 
   const filters = [
@@ -89,7 +89,7 @@ export default function SubscribersDashboard({ ar }) {
         <>
           <div style={ownerGrid}>
             {stats.map((stat) => (
-              <OwnerStatTile key={stat.label} label={stat.label} value={stat.value} warn={stat.warn} state={stat.warn ? "warn" : "mute"} />
+              <OwnerStatTile key={stat.label} label={stat.label} value={stat.value} warn={stat.warn} state={stat.warn ? "warn" : "mute"} flag={stat.flag} ar={ar} />
             ))}
           </div>
 
@@ -106,7 +106,7 @@ export default function SubscribersDashboard({ ar }) {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={ar ? "بحث باسم الشركة أو الإيميل…" : "Search by company or email…"}
-                style={{ ...ownerField(), paddingInlineStart: 36 }}
+                style={{ ...ownerField(), paddingInlineStart: 36, "--nv-input-start": "36px" }}
               />
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

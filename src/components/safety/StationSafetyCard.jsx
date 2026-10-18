@@ -11,8 +11,9 @@ import PermitWorkTab from "@/components/safety/PermitWorkTab";
 import SafetyTabsSettings from "@/components/safety/SafetyTabsSettings";
 import { checklistCompliance } from "@/lib/safetyStandards";
 import { safetyLevelMeta } from "@/lib/safetyLogic";
-import { ACCENT, BORDER, MUTED, NAVY, NAVY_FILL, SURFACE, NEUTRAL, CARD } from "@/lib/platformStyles";
-import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import { ACCENT, BORDER, MUTED, NAVY, SURFACE, NEUTRAL, CARD } from "@/lib/platformStyles";
+import RightHint from "@/components/shared/RightHint";
+import { stationSafetyHint } from "@/lib/rightHints.disc";
 
 export default function StationSafetyCard({ station, rec, canEdit, canApprove, canCustomize, approvalIssues = [], lang, signerName, onUpdate, onDisabledTabsChange, onCloseHazard, onApprove, onRevokeApproval, onIncident, defaultExpanded = false, layer = "full" }) {
   const nested = useContext(StampNestContext);
@@ -58,7 +59,6 @@ export default function StationSafetyCard({ station, rec, canEdit, canApprove, c
           }}
       dir={ar ? "rtl" : "ltr"}
     >
-      {nested ? null : <div aria-hidden style={{ height: 3, background: NAVY_FILL }} />}
       <div
         style={{
           display: "flex",
@@ -146,10 +146,9 @@ export default function StationSafetyCard({ station, rec, canEdit, canApprove, c
       {(layered || expanded) && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14, background: nested ? "transparent" : SURFACE, padding: nested ? 0 : 14 }}>
           {(layer === "comply" || layer === "full") && (
-            <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-              <LaborArticleCite ruleId="safety.hygiene.cite" ar={ar} showText />
-              <LaborArticleCite ruleId="safety.precautions.cite" ar={ar} showText />
-              <LaborArticleCite ruleId="safety.inform.cite" ar={ar} showText />
+            <div data-station-safety-duty="" style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, fontSize: 12, color: MUTED, lineHeight: 1.7 }}>
+              <span style={{ minWidth: 0 }}>{ar ? "نظافة الموقع، والحماية من أخطار العمل، ووسائل وقاية مجانية مع التدريب، وإحاطة العامل قبل المباشرة." : "A clean site, protection from hazards, free PPE with training, and briefing before work."}</span>
+              <RightHint ar={ar} hint={stationSafetyHint(station, { view: canEdit ? "manager" : "employee", ar })} />
             </div>
           )}
           {(layer === "comply" || layer === "full") && (

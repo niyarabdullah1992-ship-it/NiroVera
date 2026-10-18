@@ -4,9 +4,12 @@ import { useAuth } from "@/lib/PowerCareAuth";
 import { useI18n } from "@/lib/i18n";
 import { isOnApprovedLeave } from "@/lib/leaveTypes";
 import { checkPublishGates } from "@/lib/shiftDerivations";
+import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
+import { laborDayKey } from "@/lib/laborRules";
 import { ShieldCheck } from "lucide-react";
 import { ACCENT, MUTED, NAVY, RADIUS, PAPER_SHADOW, dot, statusBannerQuiet } from "@/lib/platformStyles";
-import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import RightHint from "@/components/shared/RightHint";
+import { attHintForCheck } from "@/lib/rightHints.att.js";
 
 async function workforce(payload) {
   const res = await base44.functions.invoke("workforce", payload);
@@ -19,20 +22,20 @@ const CHECK_NOTES = {
     en: "Computed per calendar week from the matrix itself — the heaviest week for the heaviest employee, never a monthly average.",
   },
   rest_5h: {
-    ar: "لا يجوز تشغيل العامل أكثر من خمس ساعات متواصلة دون راحة وصلاة وطعام لا تقل عن نصف ساعة — المادة 101. والراحة ليست ساعات عمل — المادة 102.",
-    en: "A worker may not work more than five consecutive hours without a rest of at least half an hour — Art. 101. Rest periods are not working hours — Art. 102.",
+    ar: "راحة نصف ساعة بعد كل خمس ساعات متواصلة، ولا تُحسب من ساعات العمل.",
+    en: "Half an hour of rest after every five straight hours, not counted as work.",
   },
   double_shift: {
     ar: "لا يُسند الموظف إلى ورديتين في يوم واحد.",
     en: "A person is not assigned two shifts on the same day.",
   },
   workplace_hours: {
-    ar: "لا يبقى العامل في مكان العمل أكثر من 12 ساعة في اليوم — المادة 101.",
-    en: "A worker may not remain at the workplace more than 12 hours a day — Art. 101.",
+    ar: "لا يبقى العامل في مكان العمل أكثر من 12 ساعة في اليوم.",
+    en: "A worker may not remain at the workplace more than 12 hours a day.",
   },
   hours_ramadan: {
-    ar: "في رمضان تُخفَّض ساعات المسلمين إلى 6 يومياً أو 36 أسبوعياً — المادة 98. الفراغ على الملف = مسلم. غير مسلم مسجّل مستثنى.",
-    en: "In Ramadan, Muslim hours drop to 6 a day or 36 a week — Art. 98. An empty file is treated as Muslim. A recorded non-Muslim is exempt.",
+    ar: "رمضان: 6 يومياً أو 36 أسبوعياً للمسلمين — الفراغ على الملف = مسلم.",
+    en: "Ramadan: 6 a day or 36 a week for Muslims — an empty file counts as Muslim.",
   },
   weekly_rest: {
     ar: "يوم راحة كامل لكل موظف في كل أسبوع، ولا يُستبدل بأجر.",
@@ -51,7 +54,7 @@ const CHECK_NOTES = {
 /**
  * Pre-publication rota checks (hours, rest, coverage).
  */
-export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTypes, assignments, canManage }) {
+export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTypes, assignments, schedule = null, canManage }) {
   const { company, data } = useAuth();
   const { lang } = useI18n();
   const ar = lang === "ar";
@@ -75,7 +78,23 @@ export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTyp
         }
       }
     });
-    return checkPublishGates({ year, monthIndex, shiftTypes, assignments, onLeaveIds, namesById });
+    // Fallback when the cloud function is unavailable: the same per-person 18632 / juvenile (161–166) / 3337 blocks as the server.
+    const station = (data?.stations || []).find((row) => String(row?.id) === String(stationId)) || null;
+    return checkPublishGates({
+      year,
+      monthIndex,
+      shiftTypes,
+      assignments,
+      onLeaveIds,
+      namesById,
+      employees: data?.employees || [],
+      schedule: schedule || { shiftTypes, assignments },
+      station,
+      settings: data?.settings || null,
+      company,
+      laborCalendar: laborCalendarOf(data),
+      today: laborDayKey(new Date()),
+    });
   };
 
   const refresh = async () => {
@@ -110,7 +129,7 @@ export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTyp
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stationId, year, monthIndex, JSON.stringify(shiftTypes), JSON.stringify(assignments)]);
+  }, [stationId, year, monthIndex, JSON.stringify(shiftTypes), JSON.stringify(assignments), JSON.stringify(schedule?.sunExposure || null)]);
 
   const publish = async () => {
     if (!canManage || !company?.id) return;
@@ -239,7 +258,7 @@ export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTyp
                     }}
                   >
                     {ar ? c.labelAr : c.labelEn}
-                    {c.article ? <LaborArticleCite cite={{ article: c.article }} ar={ar} tone={!c.ok ? "block" : undefined} /> : null}
+                    <RightHint ar={ar} hint={attHintForCheck(c, { view: "manager", ar })} />
                   </span>
                   {note && (
                     <span style={{ display: "block", fontSize: "11px", color: MUTED, lineHeight: 1.65, marginTop: "3px" }}>

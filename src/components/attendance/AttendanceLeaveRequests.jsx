@@ -20,6 +20,8 @@ function hasAttachment(request) {
 function statusMeta(status, ar) {
   if (status === "approved") return { label: ar ? "معتمد" : "Approved", style: OK };
   if (status === "rejected") return { label: ar ? "مرفوض" : "Rejected", style: BAD };
+  // Legacy Art. 112 request voided — the calendar applies the holiday.
+  if (status === "not_needed") return { label: ar ? "لا حاجة — تُطبَّق تلقائياً" : "Not needed — applies automatically", style: NEUTRAL };
   return { label: ar ? "بانتظار القرار" : "Pending", style: WARN };
 }
 
@@ -70,6 +72,8 @@ export default function AttendanceLeaveRequests({
           ar ? `${days} أيام` : `${days} days`,
           stationName(request.employee?.stationId),
         ].filter(Boolean).join(" · "),
+        person: request.employee?.name || "",
+        branch: stationName(request.employee?.stationId),
         badge: st.label,
       };
     });

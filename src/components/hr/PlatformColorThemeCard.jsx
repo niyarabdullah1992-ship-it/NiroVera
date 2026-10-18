@@ -187,7 +187,6 @@ export default function PlatformColorThemeCard({ lang = "ar" }) {
           background: SURFACE,
         }}
       >
-        <div style={{ height: 3, background: "var(--nv-navy)" }} />
         <div style={{ display: "flex", alignItems: "stretch", minHeight: 88 }}>
           <div style={{ width: 88, padding: 10, background: CARD, borderInlineEnd: `1px solid ${BORDER}` }}>
             <div style={{ height: 8, borderRadius: 4, background: "var(--nv-navy)", marginBottom: 8 }} />

@@ -2,15 +2,16 @@ import React, { useMemo } from "react";
 import { checkWeekPublishGates, groupDutyStripByPerson, SW, weekDutyStripAlerts } from "@/lib/shiftWeek";
 import { employeeFileHoursAlerts, employeeFileVoice, isViewerOwnFile } from "@/lib/employeeFileView";
 import DutyStripAlertCard from "@/components/employees/DutyStripAlertCard";
-import { hoursPolicyOf, checkWorkPostingGate } from "@/lib/laborHoursPolicy.js";
-import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { docFrame } from "@/lib/designSystem";
-import { statusBanner, statusBannerQuiet } from "@/lib/platformStyles";
+import { statusBanner } from "@/lib/platformStyles";
+import { chip, SectionHead, slab } from "@/components/schedules/scheduleChrome";
+
+const NO_CARDS = [];
 
 /**
  * Employee presenter of the same week-check rows as حكم المنصة.
  * Section title is تنبيهاتي. Cards never name a coworker.
- * Default chrome matches platform تنبيهات (statusBanner + 3px top edge).
+ * Default chrome matches platform تنبيهات (statusBanner — soft fill, no coloured top edge).
  * Pass quietEdge for جدول — soft fill + 1px line only; night_rotate / 18632 stay there.
  * Without quietEdge (employee file): omit night consent — it lives in طلباتي or الجدول only.
  */
@@ -28,6 +29,13 @@ export default function FileHoursAlertsRail({
   canApplyOrdinary = false,
   onApplyOrdinary,
   quietEdge = false,
+  leadNotice = null,
+  /** File tab with جدول chrome: keep the file rule (night consent lives in طلباتي / الجدول). */
+  omitNightConsent,
+  /** (card) => node — the «افتح ›» link under each card (the day on جدولي, the row on جدول الدوام). */
+  cardLinks,
+  /** Today's live duty cards (dutyAlerts.dutyAlertRailCard — e.g. a late return from a flex break). */
+  liveCards = NO_CARDS,
 }) {
   const ar = lang === "ar";
   const own = isViewerOwnFile(employee, currentUser);
@@ -67,7 +75,7 @@ export default function FileHoursAlertsRail({
     [employee, schedule, weekStart, ar, laborCalendar],
   );
   /** File تنبيهاتي: 18632 / night_rotate lives in طلباتي or الجدول only — no repeat here. */
-  const omitNightConsentRepeat = !quietEdge;
+  const omitNightConsentRepeat = typeof omitNightConsent === "boolean" ? omitNightConsent : !quietEdge;
   const grouped = useMemo(() => {
     const weekCards = omitNightConsentRepeat
       ? weekPack.cards.filter((row) => row.gateId !== "night_rotate" && row.decisionId !== "18632")
@@ -104,43 +112,54 @@ export default function FileHoursAlertsRail({
         };
       });
     return groupDutyStripByPerson(
-      { cards: [...weekCards, ...extraCards] },
+      { cards: [...(liveCards || []).filter(Boolean), ...weekCards, ...extraCards] },
       { ar, audience },
     );
-  }, [weekPack, fileAlerts, employee, ar, audience, omitNightConsentRepeat]);
+  }, [weekPack, fileAlerts, employee, ar, audience, omitNightConsentRepeat, liveCards]);
   const due = grouped.anyDue;
-  const posting = checkWorkPostingGate({ company, station, settings });
-  const table = hoursPolicyOf(company).workPosting || {};
-  const banner = quietEdge ? statusBannerQuiet : statusBanner;
-  const settledSkin = quietEdge
-    ? { background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, boxShadow: "var(--nv-paper)", padding: "12px 14px" }
-    : { ...docFrame("settled"), padding: "12px 14px" };
-  const railSkin = due
-    ? (grouped.anyBlock ? banner.bad : banner.warn)
-    : settledSkin;
+  /** quietEdge (جدول): one slab, hairline rows — same chrome as «التنبيهات والامتثال». */
+  const railSkin = quietEdge
+    ? slab
+    : (due
+      ? (grouped.anyBlock ? statusBanner.bad : statusBanner.warn)
+      : { ...docFrame("settled"), padding: "12px 14px" });
+  const count = (grouped.cards || []).length;
+  const countChip = due
+    ? (
+      <span style={chip(grouped.anyBlock ? "bad" : "warn")}>
+        {ar ? (count === 1 ? "تنبيه واحد" : count === 2 ? "تنبيهان" : `${count} تنبيهات`) : `${count} alert${count === 1 ? "" : "s"}`}
+      </span>
+    )
+    : <span style={chip("ok")}>{ar ? "مستوفى" : "Settled"}</span>;
 
   return (
     <section
       data-audience={audience}
       style={{
         ...railSkin,
-        ...(due ? {} : { padding: "12px 14px" }),
+        ...(quietEdge ? {} : (due ? {} : { padding: "12px 14px" })),
         display: "flex",
         flexDirection: "column",
-        gap: 10,
+        gap: quietEdge ? 0 : 10,
       }}
     >
-      <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0, color: SW.ink }}>{voice.warnings}</span>
-      {!due ? (
-        <span style={{ fontSize: 12, color: SW.muted, lineHeight: 1.7 }}>{voice.emptyAlert}</span>
+      {quietEdge ? (
+        <SectionHead title={voice.warnings} note={due || leadNotice ? "" : voice.emptyAlert} trailing={countChip} />
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 2 }}>
+        <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0, color: SW.ink }}>{voice.warnings}</span>
+      )}
+      {leadNotice}
+      {!due ? (
+        quietEdge || leadNotice ? null : <span style={{ fontSize: 12, color: SW.muted, lineHeight: 1.7 }}>{voice.emptyAlert}</span>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: quietEdge ? 0 : 8, marginTop: quietEdge ? 0 : 2 }}>
           {grouped.people.map((person) => (
             <DutyStripAlertCard
               key={person.id}
               card={person}
               ar={ar}
               hideJudgment
+              row={quietEdge}
               onApplyOrdinary={canApplyOrdinary && onApplyOrdinary
                 ? (kind) => {
                   const rotate = [person.gateId, ...(person.items || []).map((row) => row.gateId)]
@@ -148,23 +167,12 @@ export default function FileHoursAlertsRail({
                   return onApplyOrdinary(employee, kind, rotate ? undefined : person.onDate);
                 }
                 : undefined}
-            />
+            >
+              {cardLinks ? cardLinks(person) : null}
+            </DutyStripAlertCard>
           ))}
         </div>
       )}
-      <div style={{ paddingTop: 8, borderTop: `1px solid ${SW.hair}`, display: "flex", flexDirection: "column", gap: 6 }}>
-        <LaborArticleCite ruleId="hours.posting.cite" ar={ar} />
-        {posting.ok ? (
-          <span style={{ fontSize: 11, color: SW.mid, lineHeight: 1.75 }}>
-            {[table.hoursTable, table.restPeriods, table.weeklyRest, table.shiftTimes].filter(Boolean).join(" · ")
-              || (ar ? `معلَن في موقع العمل${table.postedAt ? ` في ${table.postedAt}` : ""}` : `Posted at the workplace${table.postedAt ? ` on ${table.postedAt}` : ""}`)}
-          </span>
-        ) : (
-          own
-            ? <span style={{ fontSize: 11, color: SW.muted, lineHeight: 1.7 }}>{ar ? "جدول العمل المعلن لم يُرفع بعد — اسأل الإدارة." : "The posted work table is not on file yet — ask management."}</span>
-            : <span style={{ fontSize: 11, color: SW.gold, lineHeight: 1.7 }}>{posting.reason}</span>
-        )}
-      </div>
     </section>
   );
 }

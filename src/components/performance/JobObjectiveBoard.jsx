@@ -13,6 +13,7 @@ import {
   objectiveWeightTotal,
 } from "@/lib/hcmDerivations";
 import ReviewCyclePanel from "@/components/performance/ReviewCyclePanel";
+import { taskQualityLine } from "@/lib/taskQuality";
 import { ACCENT, MUTED, NAVY, bar, cardShell, tableShell, ui, field, CARD, SURFACE } from "@/lib/platformStyles";
 
 const labelText = { display: "block", fontSize: "11px", fontWeight: 600, color: MUTED, marginBottom: "5px" };
@@ -239,6 +240,11 @@ export default function JobObjectiveBoard({ lang = "ar" }) {
                         </span>
                       </div>
                     ))}
+                    {r.quality ? (
+                      <div data-objective-quality={r.quality.n} style={{ marginTop: "8px", fontSize: "11px", color: MUTED, lineHeight: 1.7 }}>
+                        {ar ? "جودة المهام (النموذج الموحد م19): " : "Task quality (model Art. 19): "}{taskQualityLine(r.quality, ar)}
+                      </div>
+                    ) : null}
                     {r.ratingJustification ? (
                       <div style={{ marginTop: "8px", fontSize: "11px", color: MUTED, lineHeight: 1.7 }}>
                         {ar ? "مبرر المعايرة: " : "Calibration justification: "}{r.ratingJustification}
@@ -262,6 +268,9 @@ export default function JobObjectiveBoard({ lang = "ar" }) {
         band={state.calibrationBand}
         busy={busy}
         onRun={run}
+        grievances={state.grievances || []}
+        data={data}
+        company={company}
       />
 
       {/* goal plan editor */}

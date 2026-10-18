@@ -99,8 +99,6 @@ const I18N_TERM_KEYS = {
   selectStation: "selectStation",
   stationTeam: "stationTeam",
   stationManager: "stationManager",
-  purchaseAllStations: "allStations",
-  purchaseStationFilter: "station",
   allStationsChat: "stations",
   activeStations: "stations",
   hq: "hq",

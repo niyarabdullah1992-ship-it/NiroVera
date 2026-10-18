@@ -3,7 +3,11 @@
  *  Daily station board lives in dailyReport — do not duplicate StationDailyBoard here.
  */
 
-import { ruleValue } from "./laborRules.ts";
+import { citeRule, ruleValue } from "./laborRules.ts";
+import { checkConsecutiveWorkGate, minutesBetween, resolveFlexDayBreaks, riyadhClockOf, shiftRestMinutes } from "./shiftDerivations.ts";
+import { isOfficialHolidayDay } from "./leaveDerivations.ts";
+import { nursingCreditOf, nursingHourOn } from "./nursingHour.ts";
+import { actualShiftHours, art108Limits, hoursBasisOf, hoursPolicyOf, isEmployeeOffDay, isTwelveStayDuty, ordinaryDayCap } from "./laborHoursPolicy.ts";
 
 export const GRACE_MINUTES = ruleValue("hours.grace.minutes");
 export const SHIFT_HOURS = ruleValue("hours.shift.ordinaryHours");
@@ -41,7 +45,7 @@ export type ReportCatalogEntry = {
 
 export type ScheduledReportEntry = {
   id: string;
-  reportId: ReportKind | "stock_alert";
+  reportId: ReportKind;
   titleAr: string;
   titleEn: string;
   recipientsAr: string;
@@ -99,8 +103,8 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
     kickerEn: "FINANCE",
     titleAr: "تحليل تكلفة التشغيل بالفرع",
     titleEn: "Cost per station analysis",
-    descAr: "الرواتب والمخزون والصيانة منسوبة لكل فرع على حدة.",
-    descEn: "Payroll, inventory and maintenance attributed per station.",
+    descAr: "الرواتب وقيود اليومية منسوبة لكل فرع على حدة.",
+    descEn: "Payroll and journal lines attributed per station.",
     format: "XLSX",
     needsPeriod: true,
     roles: ["owner", "director", "ops_manager", "admin", "pgm", "financial_officer"],
@@ -176,16 +180,6 @@ export const SCHEDULED_REPORTS: ScheduledReportEntry[] = [
     cadenceAr: "أول كل شهر",
     cadenceEn: "1st of month",
   },
-  {
-    id: "sched_stock",
-    reportId: "stock_alert",
-    titleAr: "تنبيه المخزون تحت الحد",
-    titleEn: "Below-threshold stock alert",
-    recipientsAr: "مدير المشتريات",
-    recipientsEn: "Procurement Manager",
-    cadenceAr: "عند تجاوز الحد",
-    cadenceEn: "On threshold breach",
-  },
 ];
 
 export function parseHm(hm: string | null | undefined): number | null {
@@ -226,87 +220,257 @@ export function actorMayGenerate(
   return roles.includes(String(actor.role || "").toLowerCase());
 }
 
-/** Derive one timesheet day under grace + 8 h shift + OT beyond (payroll closes against this). */
-export function deriveTimesheetDay(
-  punch: DayPunchLike,
-  opts: { shiftStart?: string; graceMinutes?: number; shiftMinutes?: number } = {},
-) {
-  const grace = opts.graceMinutes ?? GRACE_MINUTES;
-  const shiftMin = opts.shiftMinutes ?? SHIFT_MINUTES;
-  const shiftStart = parseHm(opts.shiftStart || DEFAULT_SHIFT_START) ?? parseHm(DEFAULT_SHIFT_START)!;
-  const shiftEnd = shiftStart + shiftMin;
+/** "HH:MM", or an ISO instant on the Riyadh clock → minutes after midnight (twin of actualDuty.js punchClockMinutes). */
+export function punchClockMinutes(value: any): number | null {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const hm = raw.match(/^(\d{1,2}):(\d{2})$/);
+  if (hm) return Number(hm[1]) * 60 + Number(hm[2]);
+  const at = new Date(raw);
+  if (Number.isNaN(at.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Riyadh", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(at);
+  const part = (type: string) => Number(parts.find((row) => row.type === type)?.value || 0);
+  return part("hour") * 60 + part("minute");
+}
 
-  if (punch.restDay || punch.status === "rest") {
-    return {
-      date: punch.date,
-      status: "rest" as const,
-      checkIn: null as string | null,
-      checkOut: null as string | null,
-      ordinaryMinutes: 0,
-      overtimeMinutes: 0,
-      lateMinutes: 0,
-      earlyMinutes: 0,
-      openCheckout: false,
-      late: false,
-    };
-  }
-  if (punch.onLeave || punch.status === "leave") {
-    return {
-      date: punch.date,
-      status: "leave" as const,
-      checkIn: null as string | null,
-      checkOut: null as string | null,
-      ordinaryMinutes: 0,
-      overtimeMinutes: 0,
-      lateMinutes: 0,
-      earlyMinutes: 0,
-      openCheckout: false,
-      late: false,
-    };
-  }
+const clockOf = (mins: number) => {
+  const m = ((mins % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+};
 
-  const inM = parseHm(punch.checkIn);
-  const outM = parseHm(punch.checkOut);
-  if (inM == null) {
-    return {
-      date: punch.date,
-      status: "absent" as const,
-      checkIn: null as string | null,
-      checkOut: null as string | null,
-      ordinaryMinutes: 0,
-      overtimeMinutes: 0,
-      lateMinutes: 0,
-      earlyMinutes: 0,
-      openCheckout: false,
-      late: false,
-      excused: !!punch.excusedAbsence,
-    };
-  }
+/** Twin of actualDuty.js earlyPunchStart: an early punch counts from the published shift start. */
+export function earlyPunchStart(inM: number | null, shift: any): number | null {
+  if (inM == null || !shift?.start) return inM;
+  const start = punchClockMinutes(shift.start);
+  if (start == null) return inM;
+  const earlyBy = ((start - inM) % 1440 + 1440) % 1440;
+  return earlyBy > 0 && earlyBy <= 720 ? inM + earlyBy : inM;
+}
 
-  const lateMinutes = Math.max(0, inM - shiftStart - grace);
-  const late = lateMinutes > 0 || (inM - shiftStart > grace);
-  const openCheckout = outM == null;
-  let ordinaryMinutes = 0;
-  let overtimeMinutes = 0;
-  let earlyMinutes = 0;
-  if (outM != null) {
-    const worked = Math.max(0, outM - inM);
-    ordinaryMinutes = Math.min(shiftMin, worked);
-    overtimeMinutes = Math.max(0, worked - shiftMin);
-    earlyMinutes = Math.max(0, shiftEnd - outM);
+/**
+ * Server twin of src/lib/actualDuty.js deriveActualDuty for the timesheet: rostered shift, rest deducted
+ * (Art. 102), overtime per Art. 107 (holiday / unrostered rest day in full; weekly criterion beyond the
+ * roster; else beyond the day cap — juvenile 164 / Art. 108 category / Ramadan / Art. 99 / 8 h), and the
+ * flags presence over the stay cap (Art. 101 or the Regs Art. 23 ceiling), work over 10 h (Art. 106 or
+ * the category cap), more than five hours without a break (Art. 101 / category). Same rule rows.
+ */
+export function deriveActualDutyCore(input: {
+  checkIn?: any; checkOut?: any; shift?: any; onDate: string; employee?: any; company?: any; laborCalendar?: any; breaks?: any[] | null;
+}) {
+  const { checkIn, checkOut, shift = null, onDate, employee, company, laborCalendar } = input;
+  const inM = punchClockMinutes(checkIn);
+  const outRaw = punchClockMinutes(checkOut);
+  if (inM == null || outRaw == null) {
+    return { ok: false, open: true, reason: "لا انصراف مسجّل بعد — لا تُحسب ساعات.", reasonEn: "No checkout yet — no hours are computed." } as any;
   }
+  const outM = outRaw <= inM ? outRaw + 1440 : outRaw;
+  // An early punch is not work: time starts at the published shift start (the attendance policy —
+  // «البصمة المبكرة لا تُحتسب ساعات عمل»). Early = up to 12 h before the start, so a punch after
+  // midnight on a shift that began the evening before still reads as late, not as early.
+  // Presence (Art. 101 stay cap, consecutive hours) stays the real punch; worked time is read from effIn.
+  const effIn = earlyPunchStart(inM, shift);
+  const presence = outM - inM;
+  const workSpan = Math.max(0, outM - effIn);
+  const consecMax = ruleValue("hours.rest.maxConsecutiveHours", onDate) || 5;
+  // Twin of the client: a flex day deducts its punched (or assumed) breaks; Art. 101 reads the punched ones.
+  const flexDay = shift?.breakMode === "flex"
+    ? resolveFlexDayBreaks({ shift, breaks: input.breaks, checkIn, checkOut, onDate, continuous103: hoursPolicyOf(company, employee).continuousWork103 === true })
+    : null;
+  const flexOn = !!flexDay?.flex;
+  const recordedBreaks = flexOn ? flexDay.forDuty : (Array.isArray(input.breaks) ? clockBreaksCore(input.breaks) : null);
+  const breakMinutes = recordedBreaks
+    ? recordedBreaks.reduce((sum: number, row: any) => sum + (row?.start && row?.end ? minutesBetween(row.start, row.end) : Math.max(0, Number(row?.minutes) || 0)), 0)
+    : null;
+  const rosterRest = shift ? shiftRestMinutes(shift) : null;
+  const statutoryRest = ruleValue("hours.rest.duringShiftMinutes", onDate) || 30;
+  const rest = breakMinutes != null ? breakMinutes : (workSpan > consecMax * 60 ? (rosterRest == null ? statutoryRest : rosterRest) : 0);
+  const worked = Math.max(0, workSpan - Math.min(rest, workSpan));
 
+  const holiday = isOfficialHolidayDay(onDate, laborCalendar);
+  const offDay = !shift && isEmployeeOffDay(onDate, company, employee);
+  const rosteredMinutes = shift ? Math.round(actualShiftHours(shift, onDate, employee) * 60) : 0;
+  const basis = hoursBasisOf(company, employee).basis;
+  const weeklyCriterion = basis === "weekly" || (shift && isTwelveStayDuty(shift, onDate));
+  const dayCapMinutes = Math.round((ordinaryDayCap(employee, company, onDate, laborCalendar) || 8) * 60);
+
+  let overtime = 0;
+  let kind = "";
+  if (holiday) { overtime = worked; kind = "holiday"; }
+  else if (offDay) { overtime = worked; kind = "weekly_rest"; }
+  else if (weeklyCriterion) { overtime = Math.max(0, worked - rosteredMinutes); kind = overtime ? "beyond_roster" : ""; }
+  else if (Number.isFinite(dayCapMinutes)) { overtime = Math.max(0, worked - dayCapMinutes); kind = overtime ? "beyond_day_cap" : ""; }
+  const grace = ruleValue("hours.grace.minutes", onDate) || 0;
+  const shiftStart = shift?.start ? punchClockMinutes(shift.start) : null;
+  const shiftEndRaw = shift?.end ? punchClockMinutes(shift.end) : null;
+  const shiftEnd = shiftStart == null || shiftEndRaw == null ? null : (shiftEndRaw <= shiftStart ? shiftEndRaw + 1440 : shiftEndRaw);
+  // Twin of the client: Art. 154 nursing minutes — not lateness at the start, credited as work, never overtime.
+  const nursing = shift && !holiday && !offDay ? nursingHourOn(employee, onDate) : null;
+  const credit = nursingCreditOf(nursing, { inMinutes: effIn, outMinutes: outM, shiftStart, shiftEnd, workedMinutes: worked, rosteredMinutes });
+  const lateMinutes = shiftStart == null ? 0 : Math.max(0, inM - shiftStart - grace - (nursing?.startMinutes || 0));
+
+  const limits = art108Limits(employee, onDate, laborCalendar);
+  const policy = hoursPolicyOf(company, employee);
+  const stayCap = limits ? limits.workplaceHours : ruleValue("hours.workplace.maxHours", onDate);
+  const workCap = limits ? limits.dayHours : ruleValue("hours.ot.exceptionDayHours", onDate);
+  const flags: any[] = [];
+  if (presence > stayCap * 60) {
+    flags.push({
+      error: "ACTUAL_PRESENCE_OVER_CAP",
+      article: limits ? "اللائحة م23" : "101",
+      reason: `بقاء فعلي ${Math.round((presence / 60) * 10) / 10} ساعة في موقع العمل فوق ${stayCap} — ${limits ? "اللائحة م23" : "المادة 101"}.`,
+      reasonEn: `Actual presence ${Math.round((presence / 60) * 10) / 10} h at the workplace above ${stayCap} — ${limits ? "Regs Art. 23" : "Art. 101"}.`,
+      cite: citeRule("hours.workplace.maxHours", onDate),
+    });
+  }
+  if (worked > workCap * 60) {
+    flags.push({
+      error: "ACTUAL_WORK_OVER_CAP",
+      article: limits ? "اللائحة م23" : "106",
+      reason: `عمل فعلي ${Math.round((worked / 60) * 10) / 10} ساعة فوق ${Math.round(workCap * 100) / 100} — ${limits ? "سقف فئة المادة 108 (اللائحة م23)" : "المادة 106"}.`,
+      reasonEn: `Actual work ${Math.round((worked / 60) * 10) / 10} h above ${Math.round(workCap * 100) / 100} — ${limits ? "Art. 108 category cap (Regs Art. 23)" : "Art. 106"}.`,
+      cite: citeRule("hours.ot.exceptionDayHours", onDate),
+    });
+  }
+  const consecBreaks = flexOn ? flexDay.forConsec : recordedBreaks;
+  const consec = checkConsecutiveWorkGate({
+    start: clockOf(inM),
+    end: clockOf(outM),
+    breaks: consecBreaks || undefined,
+    restMinutes: flexOn
+      ? consecBreaks.reduce((sum: number, row: any) => sum + minutesBetween(row.start, row.end), 0)
+      : (recordedBreaks ? breakMinutes : (presence > consecMax * 60 ? (rosterRest == null ? undefined : rosterRest) : 0)),
+    breakCount: shift?.breakCount,
+    onDate,
+    continuous103: policy.continuousWork103 === true,
+    maxConsecutiveHours: limits?.consecutiveHours || undefined,
+    exempt101: !!limits && limits.consecutiveHours == null,
+  });
+  if (!consec.ok) flags.push({ error: "ACTUAL_NO_BREAK", article: "101", reason: consec.reason, reasonEn: consec.reasonEn, cite: consec.cite });
+  return {
+    ok: true,
+    open: false,
+    presenceMinutes: presence,
+    restMinutes: Math.min(rest, workSpan),
+    workedMinutes: worked + credit.minutes,
+    presenceWorkedMinutes: worked,
+    nursingCreditMinutes: credit.minutes,
+    ...(nursing ? { nursing: { start: credit.start, mid: credit.mid, end: credit.end, excusedStart: nursing.startMinutes, excusedEnd: nursing.endMinutes } } : {}),
+    rosteredMinutes,
+    ordinaryMinutes: Math.max(0, worked - overtime) + credit.minutes,
+    overtimeMinutes: overtime,
+    lateMinutes,
+    holiday,
+    offDay,
+    kind,
+    flags,
+    breakMode: flexOn ? "flex" : (flexDay?.mode || "fixed"),
+    ...(flexOn ? { breakAssumed: !!flexDay.assumed, lateReturnMinutes: flexDay.overMinutes, shortBreaks: flexDay.shortCount } : {}),
+  };
+}
+
+/** Twin of actualDuty.clockBreaks: ISO punch instants → Riyadh "HH:MM"; open breaks drop. */
+function clockBreaksCore(list: any[]): any[] {
+  return (Array.isArray(list) ? list : [])
+    .map((row: any) => {
+      if (!row) return null;
+      if (row.start == null && row.end == null) return Number(row.minutes) > 0 ? { minutes: Number(row.minutes) } : null;
+      const s = riyadhClockOf(row.start);
+      const e = riyadhClockOf(row.end);
+      if (s == null || e == null) return null;
+      return { start: clockOf(s), end: clockOf(e) };
+    })
+    .filter(Boolean);
+}
+
+function rosterWindow(shift: any) {
+  const start = parseHm(shift?.start);
+  const endRaw = parseHm(shift?.end);
+  if (start == null || endRaw == null) return null;
+  return { start, end: endRaw <= start ? endRaw + 1440 : endRaw };
+}
+
+function emptyDay(punch: DayPunchLike, status: string, extra: Record<string, unknown> = {}): any {
   return {
     date: punch.date,
-    status: (late ? "late" : "present") as "late" | "present",
+    status,
+    checkIn: null,
+    checkOut: null,
+    ordinaryMinutes: 0,
+    overtimeMinutes: 0,
+    lateMinutes: 0,
+    earlyMinutes: 0,
+    openCheckout: false,
+    late: false,
+    ...extra,
+  };
+}
+
+/**
+ * One timesheet day against the ROSTERED shift for that person and day (twin of the client
+ * reportsDerivations.js) — never a fixed 07:00 / 8 h. opts.duty (a client deriveActualDuty) wins.
+ */
+export function deriveTimesheetDay(
+  punch: DayPunchLike & { shift?: any; breaks?: any[] },
+  opts: { graceMinutes?: number; shift?: any; employee?: any; company?: any; laborCalendar?: any; breaks?: any[]; duty?: any } = {},
+): any {
+  const grace = opts.graceMinutes ?? GRACE_MINUTES;
+  const shift = opts.shift !== undefined ? opts.shift : (punch.shift || null);
+
+  if (punch.restDay || punch.status === "rest") return emptyDay(punch, "rest");
+  if (punch.onLeave || punch.status === "leave") return emptyDay(punch, "leave");
+
+  const inM = punchClockMinutes(punch.checkIn);
+  const outM = punchClockMinutes(punch.checkOut);
+  const roster = {
+    rostered: !!shift,
+    shiftId: shift?.id || null,
+    shiftLabel: shift?.label || null,
+    shiftStart: shift?.start || null,
+    shiftEnd: shift?.end || null,
+  };
+  if (inM == null) return emptyDay(punch, "absent", { excused: !!punch.excusedAbsence, ...roster });
+
+  const win = rosterWindow(shift);
+  // Art. 154: her nursing minutes at the start are not lateness, at the end not an early checkout.
+  const nursingDay = win ? nursingHourOn(opts.employee, punch.date) : null;
+  const lateMinutes = win ? Math.max(0, inM - win.start - grace - (nursingDay?.startMinutes || 0)) : 0;
+  const late = lateMinutes > 0;
+  const openCheckout = outM == null;
+  const base = {
+    date: punch.date,
+    status: late ? "late" : "present",
     checkIn: punch.checkIn || null,
     checkOut: punch.checkOut || null,
-    ordinaryMinutes,
-    overtimeMinutes,
-    lateMinutes: late ? Math.max(lateMinutes, inM - shiftStart - grace) : 0,
-    earlyMinutes,
-    openCheckout,
+    lateMinutes,
     late,
+    openCheckout,
+    ...roster,
+  };
+  if (openCheckout) return { ...base, ordinaryMinutes: 0, overtimeMinutes: 0, earlyMinutes: 0, flags: [] };
+  const duty = opts.duty || deriveActualDutyCore({
+    checkIn: punch.checkIn,
+    checkOut: punch.checkOut,
+    shift,
+    onDate: punch.date,
+    employee: opts.employee,
+    company: opts.company,
+    laborCalendar: opts.laborCalendar,
+    breaks: punch.breaks ?? opts.breaks,
+  });
+  const outAbs = (outM as number) <= inM ? (outM as number) + 1440 : (outM as number);
+  return {
+    ...base,
+    ordinaryMinutes: duty.ordinaryMinutes || 0,
+    overtimeMinutes: duty.overtimeMinutes || 0,
+    earlyMinutes: win ? Math.max(0, win.end - outAbs - (nursingDay?.endMinutes || 0)) : 0,
+    nursingCreditMinutes: duty.nursingCreditMinutes || 0,
+    presenceMinutes: duty.presenceMinutes || 0,
+    restMinutes: duty.restMinutes || 0,
+    workedMinutes: duty.workedMinutes || 0,
+    rosteredMinutes: duty.rosteredMinutes || 0,
+    overtimeKind: duty.kind || "",
+    holiday: !!duty.holiday,
+    flags: (duty.flags || []).map((flag: any) => ({ error: flag.error, article: flag.article, reason: flag.reason, reasonEn: flag.reasonEn })),
   };
 }
 
@@ -321,7 +485,16 @@ export function deriveTimesheetTotals(
   let lateCount = 0;
   let openCheckouts = 0;
   let earlyDepartures = 0;
+  let presenceOverCap = 0;
+  let workOverCap = 0;
+  let noBreak = 0;
+  let unrosteredDays = 0;
   for (const d of list) {
+    const codes = (d.flags || []).map((flag: any) => flag.error);
+    if (codes.includes("ACTUAL_PRESENCE_OVER_CAP")) presenceOverCap += 1;
+    if (codes.includes("ACTUAL_WORK_OVER_CAP")) workOverCap += 1;
+    if (codes.includes("ACTUAL_NO_BREAK")) noBreak += 1;
+    if (d.checkIn && d.rostered === false) unrosteredDays += 1;
     ordinaryMinutes += d.ordinaryMinutes || 0;
     overtimeMinutes += d.overtimeMinutes || 0;
     if (d.status === "absent" && !(d as { excused?: boolean }).excused) absenceDays += 1;
@@ -340,6 +513,10 @@ export function deriveTimesheetTotals(
     lateCount,
     openCheckouts,
     earlyDepartures,
+    presenceOverCap,
+    workOverCap,
+    noBreak,
+    unrosteredDays,
     graceMinutes: GRACE_MINUTES,
     shiftHours: SHIFT_HOURS,
     /** Copy from design: document payroll closes against. */

@@ -1,8 +1,7 @@
 import React, { useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import { CARD, MUTED, NAVY, field, textarea } from "@/lib/platformStyles";
 import { taskAssigneeId } from "@/lib/opsDerivations";
 import PlatformDateField from "@/components/shared/PlatformDateField";
+import { AckLine, ConsequenceSlab, FieldBlock, FrameBlock, ReasonBox, RequestFrameDialog, TaskDialogFooter, TaskPersonPicker } from "@/components/tasks/TaskDialogParts";
 
 function todayKey() {
   const d = new Date();
@@ -17,6 +16,7 @@ export default function OpsTransferModal({
   task,
   ar,
   employees = [],
+  stations = [],
   busy,
   onClose,
   onConfirm,
@@ -37,132 +37,63 @@ export default function OpsTransferModal({
   if (!task) return null;
 
   const when = String(transferredAt || "").slice(0, 10);
-  const canSubmit = !!toId && !!when && reason.trim().length > 0 && ack && !busy;
+  const missing = [
+    !toId ? (ar ? "اختيار المسؤول الجديد" : "the new owner") : "",
+    !when ? (ar ? "تاريخ النقل" : "the date") : "",
+    !reason.trim() ? (ar ? "سبب النقل" : "the reason") : "",
+    !ack ? (ar ? "الإقرار" : "the acknowledgement") : "",
+  ].filter(Boolean);
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
-      dir={ar ? "rtl" : "ltr"}
+  return (
+    <RequestFrameDialog
+      ar={ar}
+      dataNv="transfer"
+      title={ar ? "نقل المهمة" : "Transfer task"}
+      hint={ar
+        ? "نقل نهائي لمسؤولية الإثبات إلى موظف آخر. يظهر تاريخ النقل واسم الناقل على بطاقة المهمة."
+        : "Permanent transfer of proof ownership. The date and who moved it show on the task card."}
+      onClose={onClose}
     >
-      <div
-        className="w-full max-w-md rounded-xl p-4 shadow-lg"
-        style={{ background: CARD }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="text-sm font-semibold" style={{ color: NAVY }}>
-          {ar ? "نقل المهمة" : "Transfer task"}
-        </div>
-        <p className="mt-1 text-[11px] leading-6" style={{ color: MUTED }}>
+      <FrameBlock heading={ar ? "المسؤول الجديد" : "New owner"} dataKey="transfer-to">
+        <TaskPersonPicker ar={ar} options={options} value={toId} onChange={setToId} stations={stations} label={ar ? "المسؤول الجديد" : "New owner"} />
+        <ConsequenceSlab dataKey="irreversible" title={ar ? "لا تراجع بعده" : "Cannot be undone"}>
           {ar
-            ? "نقل نهائي لمسؤولية الإثبات إلى موظف آخر. يظهر تاريخ النقل واسم الناقل على بطاقة المهمة."
-            : "Permanent transfer of proof ownership to another employee. The transfer date and who moved it show on the task card."}
-        </p>
+            ? "لا يُلغى النقل ولا تعود المسؤولية تلقائياً. لإسناد مؤقت ببداية ونهاية استخدم «توكيل»."
+            : "The transfer is not cancelled and ownership does not return. For a temporary assignment use Delegate."}
+        </ConsequenceSlab>
+      </FrameBlock>
 
-        <div
-          className="mt-3 rounded-xl border px-3 py-2.5 text-[11px] leading-6"
-          style={{ borderColor: "var(--nv-line)", background: "var(--nv-bad-soft)", color: "var(--nv-bad-ink)" }}
-        >
-          <strong style={{ display: "block", marginBottom: 4 }}>
-            {ar ? "تنبيه — لا يمكن التراجع" : "Warning — irreversible"}
-          </strong>
-          {ar
-            ? "بعد التأكيد لا يمكن إلغاء النقل أو إرجاع المسؤولية تلقائيًا. استخدم التوكيل إن أردت إسنادًا مؤقتًا ببداية ونهاية."
-            : "After confirm, the transfer cannot be undone or auto-reversed. Use delegation if you need a temporary start/end assignment."}
-        </div>
-
-        <label className="mt-3 flex flex-col gap-1.5">
-          <span className="text-[11px] font-semibold" style={{ color: MUTED }}>
-            {ar ? "المسؤول الجديد" : "New owner"}
-          </span>
-          <select
-            value={toId}
-            onChange={(e) => setToId(e.target.value)}
-            style={field}
-          >
-            <option value="">{ar ? "اختر موظفًا" : "Select employee"}</option>
-            {options.map((emp) => {
-              const id = emp.employeeId || emp.id;
-              return (
-                <option key={id} value={id}>{emp.name}</option>
-              );
-            })}
-          </select>
-        </label>
-
-        {options.length === 0 && (
-          <div className="mt-2 text-[11px] leading-6" style={{ color: "var(--nv-warn-ink)" }}>
-            {ar
-              ? "لا موظف آخر ظاهر في نطاق هذا الفرع."
-              : "No other visible employee in this station scope."}
-          </div>
-        )}
-
-        <div className="mt-3 flex flex-col gap-1.5">
-          <span className="text-[11px] font-semibold" style={{ color: MUTED }}>
-            {ar ? "تاريخ النقل" : "Transfer date"}
-          </span>
+      <FrameBlock dataKey="transfer-details">
+        <FieldBlock label={ar ? "تاريخ النقل" : "Transfer date"} dataKey="transfer-date">
           <PlatformDateField
             value={transferredAt}
             onChange={(next) => setTransferredAt(String(next || "").slice(0, 10))}
             ar={ar}
             placeholder={ar ? "اختر التاريخ" : "Pick a date"}
           />
-        </div>
+        </FieldBlock>
+        <FieldBlock label={ar ? "سبب النقل" : "Reason"} dataKey="transfer-reason">
+          <ReasonBox value={reason} onChange={setReason} placeholder={ar ? "مثال: انتقل المسؤول الأصلي إلى فرع آخر" : "e.g. the owner moved to another branch"} />
+        </FieldBlock>
+        <AckLine checked={ack} onChange={setAck}>
+          {ar ? "أقرّ أن النقل نهائي ولا يمكن التراجع عنه بعد التأكيد." : "I understand this transfer is final and cannot be undone."}
+        </AckLine>
+      </FrameBlock>
 
-        <label className="mt-3 flex flex-col gap-1.5">
-          <span className="text-[11px] font-semibold" style={{ color: MUTED }}>
-            {ar ? "سبب النقل" : "Transfer reason"}
-          </span>
-          <textarea
-            rows={3}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder={ar ? "سبب النقل (مطلوب)" : "Transfer reason (required)"}
-            style={textarea}
-          />
-        </label>
-
-        <label className="mt-3 flex items-start gap-2 text-[11px] leading-6" style={{ color: NAVY }}>
-          <input
-            type="checkbox"
-            checked={ack}
-            onChange={(e) => setAck(e.target.checked)}
-            className="mt-0.5"
-          />
-          <span>
-            {ar
-              ? "أقرّ أن النقل نهائي ولا يمكن التراجع عنه بعد التأكيد."
-              : "I understand this transfer is final and cannot be undone after confirmation."}
-          </span>
-        </label>
-
-        <div className="mt-3 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-[var(--nv-line)] px-3 py-1.5 text-xs"
-            style={{ color: MUTED, background: CARD }}
-          >
-            {ar ? "إلغاء" : "Cancel"}
-          </button>
-          <button
-            type="button"
-            disabled={!canSubmit}
-            onClick={() => onConfirm?.({
-              toId,
-              reason: reason.trim(),
-              delegatedAt: when,
-              kind: "transfer",
-            })}
-            className="rounded-lg px-3 py-1.5 text-xs text-white disabled:opacity-50"
-            style={{ background: "var(--nv-bad-fill)" }}
-          >
-            {ar ? "تأكيد النقل" : "Confirm transfer"}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
+      <TaskDialogFooter
+        ar={ar}
+        busy={busy}
+        missing={missing}
+        tone="danger"
+        label={ar ? "تأكيد النقل النهائي" : "Confirm final transfer"}
+        readyText={ar ? "جاهز للنقل" : "Ready to transfer"}
+        onConfirm={() => onConfirm?.({
+          toId,
+          reason: reason.trim(),
+          delegatedAt: when,
+          kind: "transfer",
+        })}
+      />
+    </RequestFrameDialog>
   );
 }

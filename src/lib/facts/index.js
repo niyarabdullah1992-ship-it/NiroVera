@@ -8,7 +8,6 @@
  *   org.js          stations, orgTree, header scope
  *   attendance.js   punches → overtime → payroll
  *   payroll.js      derived lines (قسيمتي)
- *   money.js        expenses / assets / inventory
  *   requests.js     leave + other (nested on employees)
  *   discipline.js   cases + arbitration
  *   voice.js        anonymous / public complaints
@@ -20,6 +19,11 @@
  *   owner.js        /owner off suite rail
  *   migrate.js      named preview migrations
  *   catalog.js      PLATFORM_FACTS + HR_FACTS registry
+ *
+ * The company blob itself is read through store.getCompanyData in three named passes:
+ *   lib/data/companyMigrations.js   one-time migrations above the blob's schemaVersion (numbered, logged)
+ *   lib/data/companyInvariants.js   rules kept true on every read (numbers, ladders, rests, Art. 55)
+ *   lib/preview/previewUpkeep.js    demo seeds — the local preview workspace only
  *
  * Companion schema map: base44/data/domains.jsonc
  * Backward facade: src/lib/hrFacts.js re-exports people + company wage/GOSI API.
@@ -76,24 +80,6 @@ export {
   readPayrollRuns,
   emptyMoneyDisplay,
 } from "./payroll.js";
-
-export {
-  MONEY_FACTS,
-  readExpenseClaims,
-  readStationBudgets,
-  readAssets,
-  readAssetCustody,
-  readInventoryItems,
-  readStockMovements,
-  readMaterialRequests,
-  locationBalancesOf,
-  totalQtyFromBalances,
-  qtyAtLocation,
-  syncItemQuantityFromBalances,
-  adjustLocationBalance,
-  assetsHeldBy,
-  expenseClaimsBy,
-} from "./money.js";
 
 export {
   REQUEST_FACTS,

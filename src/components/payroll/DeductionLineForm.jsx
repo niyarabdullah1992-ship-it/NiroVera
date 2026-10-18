@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Plus } from "lucide-react";
-import { DEDUCTION_SOURCES, sourceLabel } from "@/lib/payrollDeductions";
+import { COURT_DEBT_KINDS, DEDUCTION_SOURCES, sourceLabel } from "@/lib/payrollDeductions";
+import { damageObjectionDeadline } from "@/lib/rightsRequests";
 import { article90MaxDeduction } from "@/lib/payrollDerivations";
 import { payrollDenyReason } from "@/lib/payrollRights";
 import { MUTED, BORDER, SURFACE, DANGER, field, textarea, ui } from "@/lib/platformStyles";
@@ -12,12 +13,17 @@ export default function DeductionLineForm({ ar, item, onAdd }) {
   const [reason, setReason] = useState("");
   const [sourceRefId, setSourceRefId] = useState("");
   const [error, setError] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [damageNoticeOn, setDamageNoticeOn] = useState("");
+  const [courtDebtKind, setCourtDebtKind] = useState("maintenance");
+  const [rulingAllowsMore, setRulingAllowsMore] = useState(false);
 
   const cap = article90MaxDeduction(item || {});
   const messages = {
     INVALID_AMOUNT: ar ? "أدخل مبلغاً أكبر من صفر." : "Enter an amount greater than zero.",
     SOURCE_REQUIRED: ar ? "حدّد مصدر الخصم." : "Select the deduction source.",
     REASON_REQUIRED: ar ? "الخصم اليدوي يتطلب سبباً مكتوباً واضحاً." : "A manual deduction requires a written reason.",
+    CONSENT_REQUIRED: ar ? "لا حسم لحق خاص دون موافقة خطية من العامل (المادة 92) — أكّد وجود الموافقة." : "No deduction for a private right without the worker's written consent (Art. 92) — confirm it exists.",
     REFERENCE_REQUIRED: ar ? "أدخل معرّف السجل المرجعي (سجل الغياب أو السلفة)." : "Enter the reference record id (absence or advance).",
     REFERENCE_SHAPE: ar
       ? "المرجع يجب أن يبدأ بنطاق مصدره: ATT- للغياب المعتمد، ADV- للسلفة، DSC- للجزاء."
@@ -30,15 +36,29 @@ export default function DeductionLineForm({ ar, item, onAdd }) {
     ARTICLE_93_EXCEEDED: ar
       ? `يتجاوز سقف الخصم — الحد الأقصى ${cap.toLocaleString()} ${item?.currency || "SAR"}.`
       : `Exceeds the deduction cap — maximum ${cap.toLocaleString()} ${item?.currency || "SAR"}.`,
+    DAMAGE_NOTICE_REQUIRED: ar ? "المادة 91: حدد تاريخ إبلاغ العامل بالتلف وتقديره — منه تبدأ مهلة تظلمه (15 يوم عمل)." : "Art. 91: set the day the worker was told of the damage — his 15-working-day objection window runs from it.",
+    DAMAGE_NOTICE_FUTURE: ar ? "تاريخ الإبلاغ في المستقبل." : "The notice day is in the future.",
+    ARTICLE_91_DAMAGE_CAP: ar ? "المادة 91: حسم التلف لا يزيد على أجر خمسة أيام في الشهر." : "Art. 91: a damage deduction may not exceed five days' wage a month.",
+    COURT_DEBT_CAP: ar ? "المادة 92: دين الحكم القضائي لا يتجاوز ربع الأجر شهرياً ما لم يتضمن الحكم خلاف ذلك." : "Art. 92: a court-ordered debt may take at most a quarter of the wage a month unless the ruling says otherwise.",
+    COURT_DEBT_ORDER: ar ? "المادة 92: دين النفقة أولاً، ثم المأكل والملبس والمسكن، قبل الديون الأخرى." : "Art. 92: maintenance first, then food, clothing and housing, before other debts.",
     ARTICLE_90_EXCEEDED: ar
       ? `يتجاوز سقف الخصم — الحد الأقصى ${cap.toLocaleString()} ${item?.currency || "SAR"}.`
       : `Exceeds the deduction cap — maximum ${cap.toLocaleString()} ${item?.currency || "SAR"}.`,
   };
 
   const submit = () => {
-    const code = onAdd({ source, amount, reason, sourceRefId });
+    const code = onAdd({
+      source,
+      amount,
+      reason,
+      sourceRefId,
+      consent: source === "manual" ? consent : undefined,
+      damageNoticeOn: source === "damage" ? damageNoticeOn : undefined,
+      courtDebtKind: source === "court_debt" ? courtDebtKind : undefined,
+      rulingAllowsMore: source === "court_debt" ? rulingAllowsMore : undefined,
+    });
     if (code) { setError(messages[code] || payrollDenyReason(code, ar) || String(code)); return; }
-    setError(""); setAmount(""); setReason(""); setSourceRefId("");
+    setError(""); setAmount(""); setReason(""); setSourceRefId(""); setConsent(false); setDamageNoticeOn(""); setRulingAllowsMore(false);
   };
 
   return (
@@ -70,17 +90,52 @@ export default function DeductionLineForm({ ar, item, onAdd }) {
           aria-label={ar ? "سبب الخصم" : "Deduction reason"}
           style={textarea}
         />
+      ) : null}
+      {source === "manual" ? (
+        <label data-deduction-consent="1" style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.7, cursor: "pointer" }}>
+          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: 3 }} />
+          <span>{ar ? "لدينا موافقة خطية من العامل على هذا الحسم — المادة 92 لا تجيز حسم حق خاص بدونها." : "We hold the worker's written consent to this deduction — Art. 92 allows no private-right deduction without it."}</span>
+        </label>
       ) : (
         <input
           type="text"
           value={sourceRefId}
           onChange={(e) => setSourceRefId(e.target.value)}
-          placeholder={source === "attendance" ? (ar ? "معرّف سجل الغياب المعتمد — ATT-…" : "Approved absence record id — ATT-…") : (ar ? "معرّف السلفة — ADV-…" : "Advance record id — ADV-…")}
+          placeholder={{
+            attendance: ar ? "معرّف سجل الغياب المعتمد — ATT-…" : "Approved absence record id — ATT-…",
+            advance: ar ? "معرّف السلفة — ADV-…" : "Advance record id — ADV-…",
+            damage: ar ? "مرجع العهدة أو محضر التلف" : "Custody item or damage report ref",
+            savings_fund: ar ? "رقم اشتراك العامل في الصندوق" : "Worker's fund membership no.",
+            housing_scheme: ar ? "رقم انضمام العامل لمشروع المساكن" : "Worker's housing-scheme enrolment no.",
+            court_debt: ar ? "رقم الحكم القضائي" : "Court ruling number",
+          }[source] || (ar ? "المرجع" : "Reference")}
           aria-label={ar ? "المرجع" : "Reference"}
           style={field}
           dir="ltr"
         />
       )}
+      {source === "damage" ? (
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--nv-ink2)" }}>
+          <span>{ar ? "تاريخ إبلاغ العامل بالتلف وتقديره — المادة 91 (لا تُشترط موافقته الخطية)" : "Day the worker was told of the damage and estimate — Art. 91 (no written consent needed)"}</span>
+          <input type="date" value={damageNoticeOn} onChange={(e) => setDamageNoticeOn(e.target.value)} style={field} dir="ltr" />
+          {damageNoticeOn ? (
+            <span style={{ fontSize: 11, color: MUTED }}>
+              {ar ? `مهلة تظلم العامل حتى ${damageObjectionDeadline(damageNoticeOn)} (15 يوم عمل). إن قُبل اعتراضه رُدّ المبلغ.` : `The worker may object until ${damageObjectionDeadline(damageNoticeOn)} (15 working days). An accepted objection refunds it.`}
+            </span>
+          ) : null}
+        </label>
+      ) : null}
+      {source === "court_debt" ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <select value={courtDebtKind} onChange={(e) => setCourtDebtKind(e.target.value)} style={field} aria-label={ar ? "نوع الدين" : "Debt kind"}>
+            {COURT_DEBT_KINDS.map((row) => <option key={row.key} value={row.key}>{ar ? row.ar : row.en}</option>)}
+          </select>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.7, cursor: "pointer" }}>
+            <input type="checkbox" checked={rulingAllowsMore} onChange={(e) => setRulingAllowsMore(e.target.checked)} style={{ marginTop: 3 }} />
+            <span>{ar ? "الحكم ينص على حسم أكثر من ربع الأجر — المادة 92/6" : "The ruling sets more than a quarter of the wage — Art. 92/6"}</span>
+          </label>
+        </div>
+      ) : null}
       {error && <p style={{ margin: 0, fontSize: "12px", color: DANGER }}>{error}</p>}
       <button type="button" onClick={submit} style={{ ...ui.btnPrimary, display: "inline-flex", alignItems: "center", gap: "6px", alignSelf: "flex-start" }}>
         <Plus style={{ width: 14, height: 14 }} /> {ar ? "إضافة البند" : "Add line"}

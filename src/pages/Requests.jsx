@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { ABUSE_COMPLAINT_KIND, DAMAGE_OBJECTION_TYPE, GRIEVANCE_TYPE, rightsRouteFor } from "@/lib/rightsRequests";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { canCreateTasks, hasHRPermission, hrScopeStations, visibleEmployees, visibleStations } from "@/lib/permissions";
@@ -9,6 +10,7 @@ import useStationScope from "@/hooks/useStationScope";
 import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
 import { pageKicker } from "@/lib/moduleMeta";
 import RequestsWorkspace from "@/components/requests/RequestsWorkspace";
+import OtDecisionsPanel from "@/components/schedules/OtDecisionsPanel";
 import { pendingManagerDecideCount, pendingRequestsCount } from "@/lib/otherRequestDerivations";
 import {
   openWrittenConsentCount,
@@ -16,7 +18,7 @@ import {
 import { annualRemainingWithGrants, flattenWorkspaceRows, isUnseenApprovedLeave, managerPendingInbox, requestEmployeeStationId } from "@/lib/requestWorkspace";
 import { requestSelfEmployee } from "@/lib/employeeFileView";
 import { hydrateEmployeesLeave } from "@/lib/leaveDerivations";
-import { openDueAnnualLeaveNotices, openDueNightRotateCycles } from "@/lib/store";
+import { openDueAnnualCarryNotices, openDueAnnualLeaveNotices, openDueNightRotateCycles } from "@/lib/store";
 import { railLaneTabs, useRailSide } from "@/lib/railSide";
 
 function canManageRequests(user, data) {
@@ -57,7 +59,9 @@ export default function Requests() {
     if (!company?.id) return;
     const night = openDueNightRotateCycles(company.id);
     const leave = openDueAnnualLeaveNotices(company.id);
-    if (night.opened?.length || night.notified || leave.opened?.length) refresh?.();
+    // Art. 110: carried days near or past the deferral limit — the worker and manager are told once.
+    const carry = openDueAnnualCarryNotices(company.id);
+    if (night.opened?.length || night.notified || leave.opened?.length || carry.opened?.length) refresh?.();
   }, [company?.id]);
 
   if (!data || !currentUser) return null;
@@ -106,7 +110,17 @@ export default function Requests() {
     : railSide === "manage"
       ? canManage
       : canManage && path.endsWith("/manage");
-  const initialKind = path.endsWith("/other") ? "other" : "leave";
+  const askedKind = new URLSearchParams(location.search || "").get("kind") || "";
+  // Old links: the grievance and damage objection moved to «الجزاءات», the abuse complaint to «صوت الموظف».
+  const askedRight = new URLSearchParams(location.search || "").get("right") || "";
+  if (askedKind === "rights" && [GRIEVANCE_TYPE, DAMAGE_OBJECTION_TYPE, ABUSE_COMPLAINT_KIND].includes(askedRight)) {
+    return <Navigate to={rightsRouteFor(askedRight)} replace />;
+  }
+  const initialKind = path.endsWith("/other")
+    ? "other"
+    : (["permission", "shift_change", "nursing_hour", "pregnancy_notice", "family_duties", "manual", "outfix", "resignation", "rights", "file_correction"].includes(askedKind)
+      ? askedKind
+      : (manageLane ? "leave_credit" : "leave"));
   const lane = manageLane ? "manage" : "mine";
   const initialFilter = location.state?.requestFilter === "archive" ? "archive" : undefined;
 
@@ -130,42 +144,8 @@ export default function Requests() {
     ? (ar ? "القرار يُسجَّل باسمك. يُفتح من له طلب فقط؛ الأرشيف داخل الفلتر." : "The ruling is recorded in your name. Only someone with a request opens; the archive sits inside the filter.")
     : null;
 
-  const scopeRows = flattenWorkspaceRows(manageLane ? scopedAdminEmployees : [self], lang);
-  const riyadhYear = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh", year: "numeric" }).format(new Date());
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const decidedAt = (row) => new Date(row.approvedAt || row.decidedAt || row.reviewedAt || row.createdAt || 0).getTime();
-  const approvedThisYear = scopeRows.filter((row) => row.status === "approved" && String(row.approvedAt || row.decidedAt || row.reviewedAt || row.createdAt || "").startsWith(riyadhYear)).length;
-  const approvedThisWeek = scopeRows.filter((row) => row.status === "approved" && decidedAt(row) >= weekAgo).length;
-  const refusedCount = scopeRows.filter((row) => row.status === "rejected" || row.status === "no" || row.status === "refused_by_employee").length;
-  const lateCount = scopeRows.filter((row) => {
-    if (row.status !== "pending" || !row.createdAt) return false;
-    return Date.now() - new Date(row.createdAt).getTime() >= 48 * 60 * 60 * 1000;
-  }).length;
-  const pendingShown = manageLane ? adminPending : minePending;
   const linkInk = { color: "#fff", fontWeight: 600 };
 
-  const headStats = manageLane
-    ? [
-      { label: ar ? "بانتظار قرارك" : "Awaiting you", value: pendingShown, note: ar ? "في فروعك" : "In your branches" },
-      { label: ar ? "معتمدة هذا الأسبوع" : "Approved this week", value: approvedThisWeek },
-      { label: ar ? "مرفوضة" : "Refused", value: refusedCount, note: ar ? "بسبب مكتوب" : "With a written reason" },
-      { label: ar ? "متأخرة 48 س" : "Late 48h", value: lateCount, note: ar ? "تصعد تلقائياً" : "Escalates on its own" },
-    ]
-    : [
-      {
-        label: ar ? "الرصيد السنوي" : "Annual balance",
-        value: annual.remaining,
-        note: (annual.total || annual.statutory)
-          ? (ar ? `من ${annual.total || annual.statutory} · المادة 109` : `of ${annual.total || annual.statutory} · Art. 109`)
-          : "—",
-      },
-      {
-        label: ar ? "بانتظار قرار" : "Awaiting a decision",
-        value: pendingShown,
-        note: pendingShown ? (ar ? "لدى مديرك · تصعد بعد 48 س" : "With your manager · escalates after 48h") : "—",
-      },
-      { label: ar ? "معتمدة هذا العام" : "Approved this year", value: approvedThisYear },
-    ];
 
   return (
     <SuiteWorkspaceFrame
@@ -174,21 +154,14 @@ export default function Requests() {
       title={pageTitle}
       hint={manageLane ? pageLede : (
         <>
-          {ar ? "ترفع طلبك هنا ويستقرّ في " : "You raise the request here and it settles on "}
-          <Link to="/app/employees" style={linkInk}>{ar ? "ملف الموظف" : "the employee file"}</Link>
-          {ar ? ". القرار في «" : ". The decision sits in «"}
-          {canManage && railSide !== "employee"
-            ? <Link to="/app/requests/manage" style={linkInk}>{ar ? "إدارة" : "Manage"}</Link>
-            : (ar ? "إدارة" : "Manage")}
-          {ar ? "»، والأثر في " : "», and the effect lands on "}
+          {ar ? "ترفع طلبك هنا ويقرّره مديرك، ويظهر أثره في " : "Raise your request here; your manager decides, and the effect shows on "}
           <Link to="/app/shifts" style={linkInk}>{ar ? "جدول الدوام" : "the duty roster"}</Link>
           {ar ? " و" : " and "}
-          <Link to={railSide === "manage" ? "/app/calendar?lane=manage" : "/app/calendar"} style={linkInk}>{ar ? "التقويم التشغيلي" : "the operational calendar"}</Link>
+          <Link to="/app/calendar" style={linkInk}>{ar ? "سجل الحضور" : "the attendance record"}</Link>
           .
         </>
       )}
-      viewNote={viewNote}
-      tabs={laneTabs.map((item) => ({
+      tabs={[].concat(laneTabs.length > 1 ? laneTabs : []).map((item) => ({
         value: item.key,
         label: ar ? item.ar : item.en,
         count: item.count,
@@ -198,21 +171,16 @@ export default function Requests() {
         const next = laneTabs.find((item) => item.key === value);
         if (next?.href) navigate(next.href);
       }}
-      meta={(
-        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          {headStats.map((item, index) => (
-            <React.Fragment key={item.label}>
-              {index > 0 ? <span aria-hidden style={{ width: 1, height: 28, background: "rgba(255,255,255,.28)" }} /> : null}
-              <div style={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "flex-start" }}>
-                <span style={{ fontSize: 10.5, color: "#A9CDB8" }}>{item.label}</span>
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 18, fontWeight: 600, color: "#fff", unicodeBidi: "isolate" }}>{item.value}</span>
-                {item.note ? <span style={{ fontSize: 10, color: "#C5DBCD" }}>{item.note}</span> : null}
-              </div>
-            </React.Fragment>
-          ))}
-        </div>
-      )}
+      // No figures in the hero: pending/approved/refused already head the queue inside the section.
     >
+      {/* Art. 107 / Regs Art. 22 — my overtime awaiting a decision, and the cap-consent request I answer. */}
+      {/* Art. 107 / Regs Art. 22 — overtime and holiday-work decisions live in طلباتي: the worker's own in
+          طلباتي, the decisions on the team in إدارة الطلبات (no longer under الحضور). */}
+      {manageLane ? (
+        <OtDecisionsPanel data={data} companyId={company?.id} currentUser={currentUser} employees={scopedAdminEmployees} mode="manage" canEdit ar={ar} onSaved={refresh} />
+      ) : self?.id ? (
+        <OtDecisionsPanel data={data} companyId={company?.id} currentUser={currentUser} employees={[self]} mode="mine" ar={ar} onSaved={refresh} />
+      ) : null}
       <RequestsWorkspace
         employees={manageLane ? scopedAdminEmployees : [self]}
         stations={adminStations}
@@ -224,6 +192,8 @@ export default function Requests() {
         initialKind={initialKind}
         initialFilter={initialFilter}
         focusStationId={manageLane && canManage ? inboxFocusStationId : ""}
+        initialRightsKind={new URLSearchParams(location.search || "").get("right") || ""}
+        initialDocKind={new URLSearchParams(location.search || "").get("doc") || ""}
       />
     </SuiteWorkspaceFrame>
   );

@@ -507,14 +507,14 @@ export function demoChatFacts(companyId: string): ChatFacts {
 
   const messages: ChatMessage[] = [
     { id: "m1", companyId, channelId: "jbl2", authorId: "u_turki", authorName: "تركي المطيري", text: "مضخة التبريد توقفت الساعة 5:40. رفعت بلاغ سلامة وصورة الموقع.", attachmentRef: "HSE-0912", createdAt: iso(5, 52) },
-    { id: "m2", companyId, channelId: "jbl2", authorId: "u_saud", authorName: "سعود الحربي", text: "وصلت الموقع. التسريب من وصلة التغذية رقم 3، أحتاج صمام بديل من المخزون.", createdAt: iso(6, 18) },
-    { id: "m3", companyId, channelId: "jbl2", authorId: "u_you", authorName: "أنت", text: "الصمام تحت الحد في المخزون — أنشأت أمر شراء عاجل وأرسلته للتوقيع.", createdAt: iso(6, 31) },
-    { id: "m4", companyId, channelId: "jbl2", authorId: "u_khalid", authorName: "خالد الزهراني", text: "يوجد صمام مطابق في مخزون ينبع. أنقله اليوم بدل انتظار التوريد.", createdAt: iso(6, 44) },
+    { id: "m2", companyId, channelId: "jbl2", authorId: "u_saud", authorName: "سعود الحربي", text: "وصلت الموقع. التسريب من وصلة التغذية رقم 3، أحتاج فنيًا ثانيًا في الوردية.", createdAt: iso(6, 18) },
+    { id: "m3", companyId, channelId: "jbl2", authorId: "u_you", authorName: "أنت", text: "أسندت مهمة الإصلاح بوزن جهد ومهلة، والإثبات مطلوب عند الإغلاق.", createdAt: iso(6, 31) },
+    { id: "m4", companyId, channelId: "jbl2", authorId: "u_khalid", authorName: "خالد الزهراني", text: "فني من ينبع متاح اليوم — أكلّفه بدل انتظار الوردية القادمة.", createdAt: iso(6, 44) },
     { id: "m5", companyId, channelId: "jbl2", authorId: "u_you", authorName: "أنت", text: "وافق. حدّث أمر العمل بعد التركيب وأرفق صورة الإثبات.", createdAt: iso(6, 47) },
     { id: "m6", companyId, channelId: "supervisors", authorId: "u_fahd", authorName: "فهد القحطاني", text: "جدول الورديات القادم منشور — راجعوا تغطية الليلية قبل الخميس.", createdAt: iso(8, 12) },
     { id: "m7", companyId, channelId: "supervisors", authorId: "u_you", authorName: "أنت", text: "راجعته. ينبع تحتاج مناوبًا إضافيًا يوم الأربعاء.", createdAt: iso(8, 26) },
     { id: "m8", companyId, channelId: "safety", authorId: "u_muna", authorName: "منى العتيبي", text: "تسريب زيت عند مضخة التغذية 3 — أوقفت العمل وعزلت المنطقة.", attachmentRef: "HSE-0908", createdAt: iso(7, 14) },
-    { id: "m9", companyId, channelId: "purchasing", authorId: "u_khalid", authorName: "خالد الزهراني", text: "مخزون الصمامات تحت حد إعادة الطلب في ثلاث فروع.", createdAt: iso(10, 5) },
+    { id: "m9", companyId, channelId: "purchasing", authorId: "u_khalid", authorName: "خالد الزهراني", text: "ثلاثة طلبات توريد بانتظار الاعتماد هذا الأسبوع.", createdAt: iso(10, 5) },
     { id: "m10", companyId, channelId: "jbl1", authorId: "u_noura", authorName: "نورة الرشيد", text: "ثلاث شهادات سلامة تنتهي هذا الشهر — أرفقت القائمة.", createdAt: iso(12, 10) },
   ];
 

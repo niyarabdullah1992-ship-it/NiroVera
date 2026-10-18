@@ -10,6 +10,8 @@
  * currentSignerIndex are placement / progress only.
  */
 
+import { isPastArchiveDue } from "./archiveRule.js";
+
 export const emailValid = (value) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(value || "").trim());
 export const MAX_PARALLEL_SIGNERS = 100;
 
@@ -27,9 +29,19 @@ export function isOpenSigningState(state) {
   return state === "pending" || state === "awaiting_release";
 }
 
-/** Completed, refused, and voided envelopes leave the active desk. */
+/**
+ * The archive rule (lib/archiveRule) on an envelope: a completed or refused envelope stays under
+ * «مكتملة» / «مرفوضة» for 30 days from its release — time to download and share the signed copy —
+ * then moves to «الأرشيف» only. A voided (deleted) envelope goes to the archive at once.
+ */
+export function signingSettledAt(request) {
+  return request?.releasedAt || request?.completedAt || request?.closedAt || request?.deletedAt || request?.updatedAt || request?.createdAt || "";
+}
+
 export function isArchivedSigningEnvelope(request, now = Date.now()) {
-  return !isOpenSigningState(settledState(request, now).state);
+  const { state } = settledState(request, now);
+  if (isOpenSigningState(state)) return false;
+  return isPastArchiveDue({ settledAt: signingSettledAt(request), immediate: state === "deleted" }, now);
 }
 
 export function splitSigningDesk(requests = [], now = Date.now()) {
@@ -232,6 +244,8 @@ export function normalizeIncomingSigners(signersIn) {
         role: String(signer.role || "").slice(0, 80),
         stationId: String(signer.stationId || "").slice(0, 64) || null,
         signatureUrl: String(signer.signatureUrl || "").slice(0, 2000),
+        external: signer.external === true,
+        stampRequired: signer.stampRequired === true,
         spots,
         spot: spots.find((field) => field.type === "signature") || null,
       };
@@ -243,6 +257,21 @@ export function normalizeIncomingSigners(signersIn) {
       && list.findIndex((other) => other.email === row.email) === index
     ));
   return rows;
+}
+
+/**
+ * What the sender wrote on «مظروف جديد» beyond the parties: subject, message, the reminder cadence
+ * and the link lifetime — clamped the same way on the server (base44/functions/multiSign).
+ */
+export function envelopeMetaOf(payload = {}) {
+  const every = Math.round(Number(payload?.reminderEveryDays) || 0);
+  const expiry = Math.round(Number(payload?.expiryDays) || 0);
+  return {
+    subject: String(payload?.subject || "").trim().slice(0, 160),
+    message: String(payload?.message || "").trim().slice(0, 2000),
+    reminderEveryDays: every > 0 ? Math.min(30, every) : 0,
+    expiryDays: expiry >= 1 ? Math.min(90, expiry) : 30,
+  };
 }
 
 export function checkCreateGate(payload) {
@@ -524,6 +553,11 @@ export function projectRequest(record, actor = {}) {
     lastActivityAt: record.lastActivityAt || record.updated_date || record.createdAt,
     docUrl: record.docUrl,
     stationId: record.stationId || null,
+    signingMode: record.signingMode === "sequential" ? "sequential" : "parallel",
+    subject: record.subject || "",
+    message: record.message || "",
+    reminderEveryDays: Number(record.reminderEveryDays) || 0,
+    expiresAt: record.expiresAt || null,
     currentSignerIndex: record.currentSignerIndex || 0,
     rejectionReason: record.rejectionReason || null,
     verificationId: record.verificationId || null,
@@ -558,6 +592,8 @@ export function projectRequest(record, actor = {}) {
       retractDays: row.retractDays ?? null,
       retractUntil: row.retractUntil || null,
       canRetract: !isDeletedRequest(record) && canRetractSigner(row),
+      external: row.external === true,
+      stampRequired: row.stampRequired === true,
       signToken: isCreator && row.token ? `${record.id}.${row.token}` : null,
     })),
     coolingUntil: coolingUntilOf(rows),
@@ -594,17 +630,22 @@ export function applyCreate(store, payload, actor = {}, { now = new Date().toISO
     creatorName: String(actor.name || payload.creatorName || "").slice(0, 120),
     creatorEmail: String(actor.email || payload.creatorEmail || "").toLowerCase().slice(0, 160),
     fileName: String(payload.fileName).slice(0, 200),
-    docUrl: String(payload.docUrl || "").slice(0, 4000),
+    // A preview envelope may carry its small file inline (data: URL) so it survives a reload;
+    // any other address keeps the short cap.
+    docUrl: /^data:application\/pdf;base64,/.test(String(payload.docUrl || ""))
+      ? String(payload.docUrl).slice(0, 6 * 1024 * 1024)
+      : String(payload.docUrl || "").slice(0, 4000),
     verificationId,
     finalHash: null,
     status: "pending",
     signingMode: payload.signingMode === "sequential" ? "sequential" : "parallel",
     currentSignerIndex: 0,
     stationId: actor.stationId || payload.stationId || null,
-    expiresAt: new Date(Date.parse(now) + 30 * 86400000).toISOString(),
+    expiresAt: new Date(Date.parse(now) + envelopeMetaOf(payload).expiryDays * 86400000).toISOString(),
     lastActivityAt: now,
     createdAt: now,
     rejectionReason: null,
+    ...envelopeMetaOf(payload),
     signers,
     auditTrail: [{ type: "created", at: now, actorId: actor.userId || actor.id || null, actorName: actor.name || "", actorRole: actor.role || "admin" }],
   };

@@ -14,6 +14,7 @@ import Layout from '@/components/Layout';
 import TrialExpiryGate from '@/components/TrialExpiryGate';
 import AppErrorBoundary from '@/components/AppErrorBoundary';
 import { canAccessPath, canAccessPlanPath } from '@/lib/navVisibility';
+import { canCreateTasks } from '@/lib/permissions';
 import { isBase44BackendConfigured } from '@/lib/localPreview';
 
 import { lazy, Suspense, useEffect } from 'react';
@@ -39,13 +40,13 @@ const Mobile = lazy(() => import('./pages/Mobile'));
 const SalesDeck = lazy(() => import('./pages/SalesDeck'));
 const Careers = lazy(() => import('./pages/Careers'));
 const Workspace = lazy(() => import('./pages/Workspace'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Operations = lazy(() => import('./pages/Operations'));
 const Complaints = lazy(() => import('./pages/Complaints'));
 const Discipline = lazy(() => import('./pages/Discipline'));
 const EmployeeProfile = lazy(() => import('./pages/EmployeeProfile'));
 const HRStructureManagement = lazy(() => import('./pages/HRStructureManagement'));
 const OrgStructure = lazy(() => import('./pages/OrgStructure'));
+const OrgChart = lazy(() => import('./pages/OrgChart'));
 const CompanySettings = lazy(() => import('./pages/CompanySettings'));
 const Payroll = lazy(() => import('./pages/Payroll'));
 const Performance = lazy(() => import('./pages/Performance'));
@@ -70,10 +71,6 @@ const CopyrightDoc = lazy(() => import('./pages/CopyrightDoc'));
 const SourceCodeDoc = lazy(() => import('./pages/SourceCodeDoc'));
 const TiktokAd = lazy(() => import('./pages/TiktokAd'));
 const TruePerformanceDoc = lazy(() => import('./pages/TruePerformanceDoc'));
-const Inventory = lazy(() => import('./pages/Inventory'));
-const Assets = lazy(() => import('./pages/Assets'));
-const Expenses = lazy(() => import('./pages/Expenses'));
-const StationExpenses = lazy(() => import('./pages/StationExpenses'));
 const WorkProof = lazy(() => import('./pages/WorkProof'));
 const VisitorProof = lazy(() => import('./pages/VisitorProof'));
 const ProofVerify = lazy(() => import('./pages/ProofVerify'));
@@ -81,7 +78,6 @@ const ProofVerify = lazy(() => import('./pages/ProofVerify'));
 // Start the workspace chunk immediately when a session already exists so /app
 // does not wait for window load — that delay was a blank spinner then a jump.
 if (typeof window !== "undefined" && localStorage.getItem("powercare_session")) {
-  import('./pages/Dashboard');
   const prefetch = () => {
     import('./pages/Operations');
     import('./pages/Attendance');
@@ -109,6 +105,21 @@ function OpenEmployeeFile() {
   const { currentUser } = usePowerCareAuth();
   if (!currentUser?.id) return <InteriorLoader />;
   return <Navigate to={`/app/employees/${encodeURIComponent(currentUser.id)}`} replace />;
+}
+
+function HomeRedirect() {
+  // لوحة القيادة retired — the home is the day's work. A manager lands on the management lane of
+  // الحضور والدوام; everyone else on بصمتي. If the plan or role closes it, the next open section.
+  const { company, data, currentUser } = usePowerCareAuth();
+  if (!currentUser?.id) return <InteriorLoader />;
+  const manager = canCreateTasks(currentUser, data);
+  const candidates = [
+    manager ? "/app/attendance?lane=manage" : "/app/attendance",
+    "/app/requests",
+    `/app/employees/${encodeURIComponent(currentUser.id)}`,
+  ];
+  const to = candidates.find((path) => canAccessPath(path.split("?")[0], currentUser, data, company)) || candidates[candidates.length - 1];
+  return <Navigate to={to} replace />;
 }
 
 function RequireAuth({ children }) {
@@ -228,7 +239,9 @@ function AppRoutes() {
         <Route path="/owner" element={<CompanyOwnerBoard />} />
         <Route path="/owner-panel" element={<Navigate to="/owner" replace />} />
       </Route>
-      <Route path="/app" element={<RequireAuth><Dashboard /></RequireAuth>} />
+      {/* لوحة القيادة retired — every figure lives in its own section. The home is the day's work:
+          الحضور والدوام (the rail side decides the employee or management lane). */}
+      <Route path="/app" element={<RequireAuth><HomeRedirect /></RequireAuth>} />
       <Route path="/app/executive" element={<Navigate to="/app" replace />} />
       <Route path="/app/tasks" element={<RequireAuth><Operations /></RequireAuth>} />
       <Route path="/app/escalation" element={<RequireAuth><Escalation /></RequireAuth>} />
@@ -243,6 +256,7 @@ function AppRoutes() {
       <Route path="/app/employees/:employeeId" element={<RequireAuth><EmployeeProfile /></RequireAuth>} />
       <Route path="/app/hr" element={<RequireAuth><HRStructureManagement /></RequireAuth>} />
       <Route path="/app/org" element={<RequireAuth><OrgStructure /></RequireAuth>} />
+      <Route path="/app/org/chart" element={<OrgChart />} />
       <Route path="/app/owner" element={<Navigate to="/owner" replace />} />
       <Route path="/app/settings" element={<RequireAuth><CompanySettings /></RequireAuth>} />
       <Route path="/app/payroll" element={<RequireAuth><Payroll /></RequireAuth>} />
@@ -263,12 +277,13 @@ function AppRoutes() {
       <Route path="/app/requests/archive" element={<RequireAuth><Requests /></RequireAuth>} />
       <Route path="/app/calendar" element={<RequireAuth><Attendance /></RequireAuth>} />
       <Route path="/app/files" element={<RequireAuth><Files /></RequireAuth>} />
-      <Route path="/app/inventory" element={<RequireAuth><Inventory /></RequireAuth>} />
-      <Route path="/app/assets" element={<RequireAuth><Assets /></RequireAuth>} />
-      <Route path="/app/custody" element={<Navigate to="/app/assets" replace />} />
+      {/* Inventory, assets and expenses were removed from NiroVera (HR scope) — old links land on the dashboard. */}
+      <Route path="/app/inventory" element={<Navigate to="/app" replace />} />
+      <Route path="/app/assets" element={<Navigate to="/app" replace />} />
+      <Route path="/app/custody" element={<Navigate to="/app/requests" replace />} />
       <Route path="/app/accounting" element={<Navigate to="/app/payroll" replace />} />
-      <Route path="/app/expenses" element={<RequireAuth><Expenses /></RequireAuth>} />
-      <Route path="/app/stations/:stationId/expenses" element={<RequireAuth><StationExpenses /></RequireAuth>} />
+      <Route path="/app/expenses" element={<Navigate to="/app" replace />} />
+      <Route path="/app/stations/:stationId/expenses" element={<Navigate to="/app" replace />} />
       <Route path="/app/signing" element={<RequireAuth><FileSigning /></RequireAuth>} />
       <Route path="/app/client-proof" element={<Navigate to="/app/work-proof" replace />} />
       <Route path="/app/work-proof" element={<RequireAuth><WorkProof /></RequireAuth>} />

@@ -1,10 +1,13 @@
 
-import React, { useState, useEffect, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { checkEarlyCheckInGate, checkLateCheckInGate, checkSelfCheckoutGate, dutyClockMinutes, dutyDayOf, earlyCheckInMinutes, earlyLeaveMinutesOf, getShiftOnDate, isOvernightShift, lateMinutesFromScheduledStart, overnightClosedLinger, previousDateKey, riyadhMinutesOf } from "@/lib/attendanceDerivations";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
+import { Link, useLocation } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { getTodaysShift, isAttendancePolicyError, isForgottenCheckout, isLocationRequired } from "@/lib/attendance";
 import { checkCheckInLeaveGate } from "@/lib/attendanceGate";
+import LeaveCutOffer from "@/components/attendance/LeaveCutOffer";
 import { isStatutoryOffDay } from "@/lib/leaveTypes";
 import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { getAccuratePosition, startGeoWarmup } from "@/lib/geo";
@@ -17,20 +20,44 @@ import { isServiceOutage } from "@/lib/serviceErrors";
 import {
   getLocalTodayAttendance,
   localAttendanceSettings,
+  localBreakPunch,
   localCheckIn,
   localCheckOut,
 } from "@/lib/localAttendanceFallback";
-import { ACCENT, BORDER, CARD, MUTED, NAVY, SURFACE, ui } from "@/lib/platformStyles";
-import { submitOtherRequest } from "@/lib/store";
+import { BORDER, CARD, MUTED, NAVY, SURFACE, ui } from "@/lib/platformStyles";
+import { closeAttendanceDay, setRestPlan, submitOtherRequest } from "@/lib/store";
+import RestPlanPicker, { RestCard } from "@/components/attendance/RestPlanPicker";
 import { checkSubmitOtherRequestGate } from "@/lib/otherRequestDerivations";
 import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import { parsePunchClock, riyadhNowClock } from "@/lib/attendancePunch";
+import { dutyTone } from "@/components/schedules/dutyStatus";
+import RightHint from "@/components/shared/RightHint";
+import { attRightHint } from "@/lib/rightHints.att.js";
+import { citeRule, isRamadanDay, ruleValue } from "@/lib/laborRules";
+import NvIcon from "@/components/shared/NvIcon";
+import { employeeShiftOnDay, isWeekDayPublished, prayerBreakHint, prayersInShift, rosterBreakWindows, sunExposureMark, SUN_FIELD, SUN_OFFICE } from "@/lib/shiftWeek";
+import { heatBanClockState, heatBanWindow, isHeatBanDate } from "@/lib/contractLawDerivations";
+import { stationPrayerTimes } from "@/lib/prayerTimes";
+import { deriveDutyAlerts, minutesAr } from "@/lib/dutyAlerts";
+import { breakClockOf, countdownLabel, dutyContextOf } from "@/lib/dutyTicker";
+import { autoOvertimeLine } from "@/lib/autoOvertime";
+import { punchClockMinutes, resolveDayBreaks } from "@/lib/actualDuty";
+import { nursingCreditOf, nursingHourOn, nursingWindowsOf } from "@/lib/dutyRequests";
+import { checkFlexBreakPunchGate, checkRestPlanGate, formatShiftHm } from "@/lib/shiftDerivations";
+import { hoursPolicyOf } from "@/lib/laborHoursPolicy";
 
 const STATUS_PILL = {
   present: { bg: "var(--nv-accent-soft)", fg: "#15803D", bd: "#BBF7D0", ar: "حاضر", en: "Present" },
   late: { bg: "var(--tint-amber-bg)", fg: "var(--tint-amber-fg)", bd: "var(--nv-warn-line)", ar: "متأخر", en: "Late" },
   absent: { bg: "var(--nv-bad-soft)", fg: "var(--nv-bad-ink)", bd: "var(--nv-bad-line)", ar: "غائب", en: "Absent" },
 };
+
+/** A punch instant as a clock on the Riyadh time zone — the punch's own clock, never the device's. */
+function riyadhTime(iso, format, locale) {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return formatTime(iso, format, locale);
+  return at.toLocaleTimeString(locale || undefined, { timeZone: "Asia/Riyadh", hour: "2-digit", minute: "2-digit", hourCycle: format === "12" ? "h12" : "h23" });
+}
 
 function elapsedLabel(checkInAt, lang) {
   if (!checkInAt) return "";
@@ -46,15 +73,29 @@ function elapsedLabel(checkInAt, lang) {
 /**
  * Employee daily check-in/out — primary punch surface on the attendance hub.
  */
-export default function CheckInOutCard({ currentUser, company, t, onStatusChange, compact = false, manualAsk = 0 }) {
+export default function CheckInOutCard({ currentUser, company, t, onStatusChange, compact = false, manualAsk = 0, dockOnPhone = false }) {
   const { data, refresh } = useAuth();
+  // «وقت راحتك» renders into the side slot under «سلسلة البصمة» when the page provides one.
+  const [restSlot, setRestSlot] = useState(null);
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    setRestSlot(document.getElementById("nv-rest-plan-slot"));
+  }, []);
   const { lang } = useI18n();
   const ar = lang === "ar";
   const { format } = useTimeFormat();
+  // The header's 12/24 choice reaches every clock on the card: each HH:MM in a value (a time or a range) is
+  // re-read in the chosen format; anything else passes as is.
+  const clockText = (value) => (format === "12" && typeof value === "string"
+    ? value.replace(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g, (hm) => formatShiftHm(hm, "12", lang))
+    : value);
   const local = isLocalPreviewActive();
-  const shift = getTodaysShift(data, currentUser);
+  // The duty day: today, or last night's overnight shift after midnight — open, not punched yet
+  // (a late check-in lands on its own date), or just checked out (the closed day, not «لا وردية»).
+  const dutyNow = dutyDayOf(data, currentUser, new Date(), null, { includeClosed: true });
+  const baseShift = dutyNow.shift;
   const defaultStationId = data?.stations?.[0]?.id || null;
-  const scheduledStationId = shift?.stationId || currentUser?.stationId || defaultStationId;
+  const scheduledStationId = baseShift?.stationId || currentUser?.stationId || defaultStationId;
   const [punchStationId, setPunchStationId] = useState(scheduledStationId || "");
   const [reqTime, setReqTime] = useState(() => riyadhNowClock());
   const [reqReason, setReqReason] = useState("");
@@ -64,11 +105,47 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const hasAssignedStation = assignedStationIds.some((id) => data?.stations?.some((station) => station.id === id));
   const [settings, setSettings] = useState(local ? localAttendanceSettings() : null);
   const [attendance, setAttendance] = useState(null);
+  // The cloud answers with the duty-day row; after midnight that may be yesterday's open overnight one,
+  // or — right after its checkout — that closed night (overnightClosedLinger, the local reading).
+  const attDay = String(attendance?.date || "").slice(0, 10);
+  const todayKeyNow = toRiyadhDateKey();
+  const attShift = attDay && attDay !== dutyNow.dateKey ? getShiftOnDate(data, currentUser, attDay) : null;
+  const cloudCarry = !!attShift && !!attendance?.check_in_at && isOvernightShift(attShift)
+    && (!attendance?.check_out_at || (attDay === previousDateKey(todayKeyNow) && overnightClosedLinger({
+      yesterdayRow: attendance,
+      yesterdayShift: attShift,
+      todayShift: getShiftOnDate(data, currentUser, todayKeyNow),
+      nowMin: riyadhMinutesOf(new Date()),
+      earlyWindowMin: earlyCheckInMinutes(data),
+      today: todayKeyNow,
+    })));
+  const shift = cloudCarry ? getShiftOnDate(data, currentUser, attDay) : baseShift;
+  const dutyDateKey = cloudCarry ? attDay : dutyNow.dateKey;
+  const [confirmOut, setConfirmOut] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [leaveCut, setLeaveCut] = useState(false);
   const [localMode, setLocalMode] = useState(local);
   const [tick, setTick] = useState(Date.now());
   const [manualOpen, setManualOpen] = useState(false);
+  const [dockBottom, setDockBottom] = useState(0);
+
+  /** Phone dock sits above the bottom tab bar when one is shown (it already pads the safe area). */
+  useEffect(() => {
+    if (!dockOnPhone || typeof window === "undefined") return undefined;
+    const measure = () => {
+      const nav = document.querySelector(".tech-bottom-nav");
+      const rect = nav ? nav.getBoundingClientRect() : null;
+      setDockBottom(rect && rect.height > 0 && getComputedStyle(nav).display !== "none" ? Math.round(rect.height) : 0);
+    };
+    measure();
+    const late = window.setTimeout(measure, 400);
+    window.addEventListener("resize", measure);
+    return () => {
+      window.clearTimeout(late);
+      window.removeEventListener("resize", measure);
+    };
+  }, [dockOnPhone]);
 
   useEffect(() => {
     if (scheduledStationId && !punchStationId) setPunchStationId(scheduledStationId);
@@ -119,8 +196,12 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   }, [manualAsk]);
 
   const scheduleBlocks = !shift;
-  const onLeaveToday = !!isStatutoryOffDay(currentUser, toRiyadhDateKey(), laborCalendarOf(data));
-  const statusPill = attendance?.status ? STATUS_PILL[attendance.status] : null;
+  const offDay = isStatutoryOffDay(currentUser, dutyDateKey, laborCalendarOf(data));
+  // An official holiday blocks only when nothing is rostered: rostered holiday work is punched,
+  // and every hour of it is overtime (Art. 107(3)). Approved leave always blocks.
+  const onLeaveToday = !!offDay && (offDay.kind === "approved" || !shift);
+  const onApprovedLeave = offDay?.kind === "approved";
+  const statusPill = attendance?.status ? STATUS_PILL[attendance.status === "late" && nursingExcusedLate(currentUser, data, attendance, shift) ? "present" : attendance.status] : null;
   const elapsed = useMemo(
     () => elapsedLabel(attendance?.check_in_at, lang),
     [attendance?.check_in_at, lang, tick],
@@ -128,13 +209,34 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
 
   const punch = async (action) => {
     if (action === "in") {
-      const leaveGate = checkCheckInLeaveGate(currentUser, toRiyadhDateKey(), laborCalendarOf(data));
+      const leaveGate = checkCheckInLeaveGate(currentUser, dutyDateKey, laborCalendarOf(data));
       if (!leaveGate.ok) {
         setError(ar ? leaveGate.reason : leaveGate.reasonEn);
+        setLeaveCut(leaveGate.error === "ON_APPROVED_LEAVE");
         return;
       }
+      setLeaveCut(false);
       if (scheduleBlocks) {
         setError(ar ? "لا يمكنك تسجيل الحضور لأنك غير مدرج في جدول اليوم." : "You cannot check in because you are not scheduled today.");
+        return;
+      }
+      // The check-in opens a set time before the published shift (policy, default 60 min) — on the
+      // Riyadh clock of the duty day (after midnight of an overnight shift: +1440), never the device's.
+      const dutyMin = dutyClockMinutes(dutyDateKey, new Date());
+      if (closedDay) {
+        setError(ar ? "انتهت ورديتك — يومك مسجّل." : "Your shift is over — the day is on file.");
+        return;
+      }
+      const early = checkEarlyCheckInGate(shift, dutyMin, earlyCheckInMinutes(data));
+      if (!early.ok) {
+        setError(ar ? early.reason : early.reasonEn);
+        return;
+      }
+      // After the shift has ended the self check-in is closed — the day is a manual entry.
+      const lateGate = checkLateCheckInGate(shift, dutyMin);
+      if (!lateGate.ok) {
+        setError(ar ? lateGate.reason : lateGate.reasonEn);
+        setManualOpen(true);
         return;
       }
       if (!hasAssignedStation && !localMode) {
@@ -183,6 +285,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             }
           : {
               shiftEnd: shift?.end,
+              ...(assumedAtCheckout() ? { assumedBreak: assumedAtCheckout() } : {}),
             }),
       });
       const att = res?.data?.attendance;
@@ -190,6 +293,16 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         setAttendance(att);
         onStatusChange?.(att);
         window.dispatchEvent(new CustomEvent("attendance-updated", { detail: att }));
+        // The day closed: its overtime is recorded automatically (Art. 107), on the server's week count.
+        if (action === "out" && company?.id) {
+          try {
+            closeAttendanceDay(company.id, currentUser.id, String(att.date || toRiyadhDateKey()).slice(0, 10), {
+              row: att,
+              weekPriorOrdinaryMinutes: res?.data?.overtime?.weekPriorOrdinaryMinutes ?? null,
+            });
+            await refresh?.();
+          } catch { /* best-effort; the checkout is saved */ }
+        }
       }
     } catch (err) {
       const code = err?.code || err?.response?.data?.error;
@@ -217,6 +330,10 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           /* fall through */
         }
       }
+      // A gate that names its reason (TOO_EARLY, the late check-in gate, …) is shown in its own words.
+      const payload = err?.response?.data || {};
+      const named = ar ? (err?.reason || payload.reason) : (err?.reasonEn || payload.reasonEn);
+      if (named) { setError(named); return; }
       setError(
         code === "ON_APPROVED_LEAVE"
           ? (ar ? "لا يمكنك تسجيل الحضور — لديك إجازة معتمدة لهذا اليوم." : "You cannot check in — you have approved leave for today.")
@@ -247,21 +364,106 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       ? "awaiting_out"
       : "done";
 
-  const accentColor = phase === "awaiting_out" ? ACCENT : phase === "done" ? "#137a49" : NAVY;
-  const clockLabel = toWesternDigits(formatTime(new Date(tick).toISOString(), format, "en-GB"));
   const locationFailed = /OUTSIDE_STATION|GPS_REQUIRED|STATION_LOCATION|location|موقع|النطاق/i.test(error || "");
   const forgotten = isForgottenCheckout(shift, attendance, tick);
-  const inTime = attendance?.check_in_at ? toWesternDigits(formatTime(attendance.check_in_at, format, "en-GB")) : "—";
-  const outTime = attendance?.check_out_at ? toWesternDigits(formatTime(attendance.check_out_at, format, "en-GB")) : "—";
-  const lateMinutes = Number(attendance?.late_minutes || attendance?.lateMinutes || 0);
-  const isLate = attendance?.status === "late" || lateMinutes > 0;
-  const punchBlocked = loading || (phase === "awaiting_in" && (scheduleBlocks || onLeaveToday)) || phase === "done";
+  const inTime = attendance?.check_in_at ? toWesternDigits(riyadhTime(attendance.check_in_at, format, "en-GB")) : "—";
+  const outTime = attendance?.check_out_at ? toWesternDigits(riyadhTime(attendance.check_out_at, format, "en-GB")) : "—";
+  // Art. 154: arriving inside her nursing minutes at the start is on time — read from the punch clock,
+  // so a row stored before the excuse (late) and one stored after it (present) read the same.
+  const nursingEmployee = (data?.employees || []).find((row) => String(row.id) === String(currentUser?.id)) || currentUser;
+  const nursingToday = shift ? nursingHourOn(nursingEmployee, String(attendance?.date || dutyDateKey).slice(0, 10)) : null;
+  const shiftStartMin = shift?.start ? punchClockMinutes(shift.start) : null;
+  const shiftEndMin = shift?.end && shiftStartMin != null ? (() => { const e = punchClockMinutes(shift.end); return e <= shiftStartMin ? e + 1440 : e; })() : null;
+  const inClockMin = attendance?.check_in_at ? punchClockMinutes(attendance.check_in_at) : null;
+  const storedLate = Number(attendance?.late_minutes || attendance?.lateMinutes || 0);
+  const afterStart = nursingToday?.startMinutes && inClockMin != null && shiftStartMin != null ? Math.max(0, inClockMin - shiftStartMin) : 0;
+  const inNursing = !!nursingToday?.startMinutes && afterStart > 0 && afterStart <= nursingToday.startMinutes;
+  const lateMinutes = nursingToday?.startMinutes && inClockMin != null && shiftStartMin != null
+    ? Math.max(0, afterStart - nursingToday.startMinutes)
+    : storedLate;
+  const isLate = !inNursing && (lateMinutes > 0 || (attendance?.status === "late" && !nursingToday?.startMinutes));
+  // Before the check-in window the orb is closed and says when it opens — not a live button that refuses.
+  // Read on the duty day's Riyadh clock (dutyClockMinutes), never the device's.
+  const tickMin = dutyClockMinutes(dutyDateKey, new Date(tick));
+  const earlyGate = phase === "awaiting_in" && shift
+    ? checkEarlyCheckInGate(shift, tickMin, earlyCheckInMinutes(data))
+    : { ok: true };
+  // After the shift (+ the forgotten hour) the self check-in is closed and points to the manual request.
+  const lateInGate = phase === "awaiting_in" && shift
+    ? checkLateCheckInGate(shift, tickMin)
+    : { ok: true };
+  // A just-closed overnight day whose row this card does not hold (cloud reload): calm, never a new punch.
+  const closedDay = !!dutyNow.closed && !cloudCarry && phase === "awaiting_in";
+  // Not checked in past the start + grace: the lateness so far, said before the punch (deriveActualDuty's reading).
+  const lateSoFar = phase === "awaiting_in" && shift?.start && !closedDay && earlyGate.ok && lateInGate.ok
+    ? lateMinutesFromScheduledStart(tickMin, shift.start, ruleValue("hours.grace.minutes", dutyDateKey), nursingToday?.startMinutes || 0).lateMinutes
+    : 0;
+  // The self checkout: closed while a «تثبيت الانصراف» request waits; early or forgotten asks once.
+  const pendingFixRow = phase === "awaiting_out"
+    ? ((data?.employees || []).find((row) => String(row.id) === String(currentUser?.id))?.otherRequests || [])
+      .find((row) => row?.type === "checkout_fix" && (row.status || "pending") === "pending" && (!row.date || String(row.date).slice(0, 10) === (attDay || dutyDateKey)))
+    : null;
+  const outGate = phase === "awaiting_out"
+    ? checkSelfCheckoutGate({
+      shift,
+      attendance,
+      now: tick,
+      pendingFix: pendingFixRow ? { time: pendingFixRow.time || String(pendingFixRow.reason || "").slice(0, 5) } : null,
+      nursingEndMinutes: nursingToday?.endMinutes || 0,
+    })
+    : { ok: true, confirm: null };
+  const punchBlocked = loading
+    || (phase === "awaiting_in" && (scheduleBlocks || onLeaveToday || closedDay || !earlyGate.ok || !lateInGate.ok))
+    || (phase === "awaiting_out" && !outGate.ok)
+    || phase === "done";
+  /** Every punch goes through here: a checkout that is early or past the forgotten hour is confirmed once. */
+  const requestPunch = (action) => {
+    if (action === "out") {
+      const gate = checkSelfCheckoutGate({
+        shift,
+        attendance,
+        now: Date.now(),
+        pendingFix: pendingFixRow ? { time: pendingFixRow.time || "" } : null,
+        nursingEndMinutes: nursingToday?.endMinutes || 0,
+      });
+      if (!gate.ok) { setError(ar ? gate.reason : gate.reasonEn); return; }
+      if (gate.confirm && !confirmOut) { setConfirmOut(gate.confirm); return; }
+    }
+    setConfirmOut(null);
+    punch(action);
+  };
+  const confirmBlock = confirmOut && phase === "awaiting_out" ? (
+    <div data-confirm-out={confirmOut.kind} role="alertdialog" aria-live="polite" style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 300, padding: "10px 12px", border: "1px solid var(--nv-warn-line)", background: "var(--nv-warn-soft)", borderRadius: 10, fontSize: 12, lineHeight: 1.7, color: "var(--nv-ink)" }}>
+      <span>
+        {confirmOut.kind === "early"
+          ? (ar
+            ? <>تنصرف قبل نهاية ورديتك بـ <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700 }}>{confirmOut.minutes}</span> دقيقة — يُسجَّل انصرافاً مبكراً يراه مديرك.</>
+            : <>You are leaving <span style={{ fontWeight: 700 }}>{confirmOut.minutes}</span> min before your shift ends — it is recorded as an early checkout your manager sees.</>)
+          : (ar
+            ? <>مرّت <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700 }}>{confirmOut.minutes}</span> دقيقة على نهاية ورديتك — انصرافك الآن يُحتسب وقتاً إضافياً بانتظار قرار مديرك. إن كنت نسيت البصمة فاطلب تثبيت الانصراف بوقته الصحيح.</>
+            : <><span style={{ fontWeight: 700 }}>{confirmOut.minutes}</span> min have passed since your shift ended — checking out now counts as overtime pending your manager. If you forgot to punch, ask to fix the checkout at its real time.</>)}
+      </span>
+      <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button type="button" data-confirm-out-go onClick={() => { setConfirmOut(null); punch("out"); }} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 700, padding: "6px 12px", borderRadius: 8, border: "none", background: "var(--nv-navy, #0B3D27)", color: "#fff", cursor: "pointer" }}>
+          {ar ? "انصرف الآن" : "Check out now"}
+        </button>
+        {confirmOut.kind === "forgotten" ? (
+          <button type="button" onClick={() => { setConfirmOut(null); setManualOpen(true); }} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "6px 12px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ok-ink)", cursor: "pointer" }}>
+            {ar ? "اطلب تثبيت الانصراف" : "Ask to fix the checkout"}
+          </button>
+        ) : null}
+        <button type="button" onClick={() => setConfirmOut(null)} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "6px 12px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ink2)", cursor: "pointer" }}>
+          {ar ? "ألغِ" : "Cancel"}
+        </button>
+      </span>
+    </div>
+  ) : null;
 
   const punchButton = (action, label) => (
     <button
       type="button"
-      onClick={() => punch(action)}
-      disabled={loading || (action === "in" && (scheduleBlocks || onLeaveToday))}
+      onClick={() => requestPunch(action)}
+      disabled={loading || (action === "in" && (scheduleBlocks || onLeaveToday || closedDay || !lateInGate.ok)) || (action === "out" && !outGate.ok)}
       style={{
         ...ui.btnPrimary,
         height: compact ? 34 : 40,
@@ -282,6 +484,146 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     </button>
   );
 
+  const dutyDay = dutyDateKey;
+  const laborCal = laborCalendarOf(data);
+  const dutySchedule = shift ? (data?.schedules || []).find((row) => String(row.stationId) === String(shift.stationId)) : null;
+  // The published shift type behind today's assignment: its rest, placed breaks and exposure mark.
+  const dutyShift = shift ? { ...(employeeShiftOnDay(dutySchedule, currentUser?.id, dutyDay) || {}), ...shift } : null;
+  const dutyEmployee = (data?.employees || []).find((row) => String(row.id) === String(currentUser?.id)) || currentUser;
+  const dutyStation = (data?.stations || []).find((row) => String(row.id) === String(shift?.stationId || scheduledStationId));
+  const ramadanToday = isRamadanDay(dutyDay, laborCal);
+  // The prayer right never disappears for a missing branch field: the branch's pin, else its city, else an
+  // approximate Riyadh day that says so (prayerTimes.stationPrayerPlace).
+  const prayerStation = dutyStation
+    || (data?.stations || []).find((row) => String(row.id) === String(dutyEmployee?.stationId || dutyEmployee?.profile?.workStationId))
+    || { id: "_default" };
+  const prayerDay = shift ? stationPrayerTimes(prayerStation, dutyDay, { ramadan: ramadanToday }) : null;
+  const prayerApprox = prayerDay?.place?.via === "default";
+  const prayerPoints = dutyShift ? prayersInShift(dutyShift, prayerDay) : [];
+  const exposedToday = dutyShift ? sunExposureMark(dutySchedule, currentUser?.id, dutyDay, dutyShift).mark === SUN_FIELD : false;
+  const breakHint = dutyShift ? prayerBreakHint({ shift: dutyShift, onDate: dutyDay, prayers: prayerDay, employee: dutyEmployee, company: data, published: isWeekDayPublished(dutySchedule, dutyDay) }) : null;
+  // The worker sets his break time; when it comes he is told — no punch is required (lib/shiftDerivations).
+  // No rest plan any more (owner's rule): the statutory 30 minutes are deducted on their own, placed at the nearest prayer.
+  const restPlan = null;
+  const dutyAlerts = deriveDutyAlerts({
+    shift: dutyShift,
+    punches: { checkIn: attendance?.check_in_at, checkOut: attendance?.check_out_at, breaks: attendance?.breaks, restPlan: restPlan?.parts || null },
+    prayers: prayerDay,
+    exposed: exposedToday,
+    onDate: dutyDay,
+    laborCalendar: laborCal,
+    ramadan: ramadanToday,
+    employee: dutyEmployee,
+    company: data,
+    now: new Date(tick),
+  });
+  const currentAlert = dutyAlerts.current;
+  // Bell / toast / device notices are sent by the one app-level ticker (Layout → useDutyTicker), on any page.
+
+  // The running break, to the second — the same clock as the header pill (dutyTicker.breakClockOf).
+  const breakClock = shift && attendance?.check_in_at && !attendance?.check_out_at
+    ? breakClockOf(dutyContextOf({ data, user: currentUser, attendance, now: tick, shift }), tick)
+    : null;
+  const [secNow, setSecNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!breakClock) return undefined;
+    const id = window.setInterval(() => setSecNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [!!breakClock, breakClock?.endAt]);
+  const breakLeftMs = breakClock ? breakClock.endAt - Math.max(secNow, tick) : 0;
+  // The minute the break's end passes, re-read the alerts at once (not on the next 30-s tick).
+  useEffect(() => {
+    if (!breakClock || breakLeftMs > 0) return;
+    setTick(Date.now());
+  }, [breakClock?.endAt, breakLeftMs <= 0]);
+
+  // «فعّل تنبيهات الجهاز» — asked only from this explicit button, never automatically.
+  const notifySupported = typeof window !== "undefined" && "Notification" in window;
+  const [notifyPerm, setNotifyPerm] = useState(() => (notifySupported ? window.Notification.permission : "unsupported"));
+  const askDeviceNotify = async () => {
+    if (!notifySupported) return;
+    try {
+      const result = await window.Notification.requestPermission();
+      setNotifyPerm(result);
+    } catch { /* the browser refused to ask */ }
+  };
+
+  // A notice «بدأت راحتي» lands here with focus=break: the button is focused and in view.
+  const location = useLocation();
+  const breakBtnRef = useRef(null);
+  const wantsBreakFocus = new URLSearchParams(location?.search || "").get("focus") === "break";
+
+  // Overtime recorded automatically by the day's close (Art. 107) — one quiet line.
+  const otLine = attendance?.check_out_at
+    ? autoOvertimeLine(data?.otDecisions?.[`${currentUser?.id}:${String(attendance?.date || dutyDay).slice(0, 10)}`], { ar, onDate: dutyDay })
+    : null;
+
+  // «راحة مرنة ببصمة»: the day read from the break punches — the buttons, the timeline and the bar use it.
+  const continuous103 = hoursPolicyOf(data, dutyEmployee).continuousWork103 === true;
+  const prayerPolicy = hoursPolicyOf(data, dutyEmployee);
+  // The worker's own rest plan for the day (he places his break where it suits him) — lib/shiftDerivations.
+  const flexDay = resolveDayBreaks({
+    plan: restPlan?.parts || null,
+    shift: dutyShift,
+    breaks: attendance?.breaks,
+    checkIn: attendance?.check_in_at,
+    checkOut: attendance?.check_out_at,
+    now: new Date(tick),
+    onDate: dutyDay,
+    prayers: prayerDay,
+    company: data,
+    employee: dutyEmployee,
+  });
+  const flexOn = !!flexDay.flex;
+  const breakAction = flexDay.open ? "end" : "start";
+  const breakGate = flexOn && attendance?.check_in_at && !attendance?.check_out_at
+    ? checkFlexBreakPunchGate({ action: breakAction, shift: dutyShift, breaks: attendance?.breaks, checkIn: attendance?.check_in_at, now: new Date(tick), onDate: dutyDay, continuous103 })
+    : null;
+  useEffect(() => {
+    if (!wantsBreakFocus || !breakBtnRef.current) return;
+    breakBtnRef.current.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    breakBtnRef.current.focus?.({ preventScroll: true });
+  }, [wantsBreakFocus, !!breakGate]);
+  /** Where the card would place an unpunched break if the day closed now — sent with a cloud checkout. */
+  function assumedAtCheckout() {
+    if (!flexOn) return null;
+    const closing = resolveDayBreaks({ plan: restPlan?.parts || null, shift: dutyShift, breaks: attendance?.breaks, checkIn: attendance?.check_in_at, checkOut: new Date().toISOString(), onDate: dutyDay, prayers: prayerDay, company: data, employee: dutyEmployee });
+    return closing.assumed && !closing.punched.length ? { start: closing.assumed.start, end: closing.assumed.end } : null;
+  }
+  const [breakBusy, setBreakBusy] = useState(false);
+  const [breakError, setBreakError] = useState("");
+  const breakPunch = async () => {
+    if (!breakGate?.ok) return;
+    setBreakError("");
+    setBreakBusy(true);
+    try {
+      let att = null;
+      if (localMode || isLocalPreviewActive()) {
+        att = localBreakPunch(company.id, { employeeId: currentUser.id, action: breakAction });
+      } else {
+        // Art. 102: in his rest the worker is not under the employer's authority and may not be held at the
+        // workplace — so the break asks for no location and records none, on site or off.
+        const res = await base44.functions.invoke("supabaseAttendance", {
+          action: breakAction === "start" ? "breakStart" : "breakEnd",
+          companyId: company.id,
+          employeeId: currentUser.id,
+        });
+        att = res?.data?.attendance || null;
+      }
+      if (att) {
+        setAttendance(att);
+        onStatusChange?.(att);
+        window.dispatchEvent(new CustomEvent("attendance-updated", { detail: att }));
+      }
+      setTick(Date.now());
+    } catch (err) {
+      const payload = err?.response?.data || {};
+      setBreakError((ar ? (err?.reason || payload.reason) : (err?.reasonEn || payload.reasonEn)) || err?.code || payload.error || (ar ? "تعذّر تسجيل الراحة." : "Could not record the break."));
+    } finally {
+      setBreakBusy(false);
+    }
+  };
+
   if (compact) {
     return (
       <section
@@ -295,7 +637,6 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         className="nv-att-card"
         data-testid="check-in-out-card"
       >
-        <div style={{ height: 3, background: accentColor }} />
         <div style={{ padding: "10px 14px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
           <div style={{ flex: "1 1 180px", minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: NAVY }}>
@@ -306,9 +647,9 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                   : (ar ? "اكتملت ورديتك" : "Shift complete")}
             </p>
             <p style={{ margin: "3px 0 0", fontSize: 11, color: MUTED }}>
-              {ar ? "حضور" : "In"} {attendance?.check_in_at ? formatTime(attendance.check_in_at, format, lang) : "—"}
+              {ar ? "حضور" : "In"} {attendance?.check_in_at ? riyadhTime(attendance.check_in_at, format, lang) : "—"}
               {" · "}
-              {ar ? "انصراف" : "Out"} {attendance?.check_out_at ? formatTime(attendance.check_out_at, format, lang) : "—"}
+              {ar ? "انصراف" : "Out"} {attendance?.check_out_at ? riyadhTime(attendance.check_out_at, format, lang) : "—"}
               {elapsed ? ` · ${elapsed}` : ""}
             </p>
           </div>
@@ -322,8 +663,11 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             </span>
           )}
           {error && <p style={{ margin: 0, fontSize: 11, color: "var(--nv-bad-ink)", flex: "1 1 100%" }}>{error}</p>}
+          {leaveCut || (onApprovedLeave && phase === "awaiting_in") ? <LeaveCutOffer ar={ar} companyId={company?.id} employee={currentUser} onDone={async () => { setError(""); setLeaveCut(false); await refresh?.(); }} /> : null}
           {phase === "awaiting_in" && punchButton("in", ar ? "حضر" : "Present")}
           {phase === "awaiting_out" && punchButton("out", ar ? "انصرف" : "Out")}
+          {confirmBlock}
+          {phase === "awaiting_out" && !outGate.ok ? <p style={{ margin: 0, fontSize: 11, color: "var(--nv-warn-ink)", flex: "1 1 100%" }}>{ar ? outGate.reason : outGate.reasonEn}</p> : null}
         </div>
       </section>
     );
@@ -340,10 +684,14 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     : shift?.outdoor === false
       ? (ar ? "موقع مظلّل" : "Shaded site")
       : "";
-  const siteLine = [station?.name || "—", shade].filter(Boolean).join(" · ");
+  // The station is named once, in the header context line («محطتي») — only the shade note stays here.
+  const siteLine = shade || "";
   const startClock = toWesternDigits(shift?.start || "—");
   const endClock = toWesternDigits(shift?.end || "—");
-  const pvDate = new Date(tick).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", {
+  // The header names the duty day — after midnight an open overnight shift still reads as its start day.
+  const pastDuty = !!dutyDateKey && dutyDateKey !== toRiyadhDateKey(new Date(tick));
+  const pvDate = new Date(pastDuty ? `${dutyDateKey}T12:00:00+03:00` : tick).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", {
+    timeZone: "Asia/Riyadh",
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -351,24 +699,74 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const shiftLine = shift
     ? `${shift.label || (ar ? "وردية" : "Shift")} · \u2066${startClock}–${endClock}\u2069`
     : (ar ? "لا وردية منشورة" : "No published shift");
-  const band = breakBand(shift);
-  const worked = workedClock(attendance?.check_in_at, attendance?.check_out_at, tick, band);
-  const targetLabel = band?.targetLabel || "8:00";
-  const dayPct = Math.min(100, Math.round((worked.minutes / (band?.targetMin || 480)) * 100));
+  const band = breakBand(dutyShift, dutyDay);
+  // While the day is open past the shift end, «المنجز اليوم» stops at the end — the rest is unconfirmed
+  // until the checkout (or its fix) says otherwise.
+  const shiftEndAt = shift?.end && /^\d{4}-\d{2}-\d{2}$/.test(dutyDay)
+    ? (() => { const at = new Date(`${dutyDay}T${shift.end}:00+03:00`).getTime(); return isOvernightShift(shift) ? at + 86400000 : at; })()
+    : null;
+  const openPastEnd = !!attendance?.check_in_at && !attendance?.check_out_at && shiftEndAt != null && tick > shiftEndAt;
+  const workedNow = openPastEnd ? shiftEndAt : tick;
+  // An early punch is presence, not work — «المنجز اليوم» counts from the published start (same as the OT close).
+  const shiftStartAt = shift?.start && /^\d{4}-\d{2}-\d{2}$/.test(dutyDay) ? new Date(`${dutyDay}T${shift.start}:00+03:00`).getTime() : null;
+  const inAt = attendance?.check_in_at ? new Date(attendance.check_in_at).getTime() : null;
+  const workFrom = inAt != null && shiftStartAt != null && inAt < shiftStartAt && shiftStartAt - inAt <= 720 * 60000
+    ? new Date(shiftStartAt).toISOString()
+    : attendance?.check_in_at;
+  const workedRaw = workedClock(workFrom, attendance?.check_out_at, workedNow, band, flexOn ? flexDay : null);
+  // Art. 154: the nursing minutes she was away for count as work — the start part from the check-in,
+  // the end and middle parts once the day closes. Never overtime (the day's close reads the punches).
+  const outClockMin = attendance?.check_out_at ? punchClockMinutes(attendance.check_out_at) : null;
+  const nursingCredit = nursingToday && inClockMin != null && shiftStartMin != null && shiftEndMin != null
+    ? nursingCreditOf(nursingToday, {
+      inMinutes: inClockMin,
+      outMinutes: outClockMin == null ? shiftEndMin : (outClockMin < inClockMin ? outClockMin + 1440 : outClockMin),
+      shiftStart: shiftStartMin,
+      shiftEnd: shiftEndMin,
+      workedMinutes: outClockMin == null ? Infinity : workedRaw.minutes,
+      rosteredMinutes: Math.max(0, (band?.targetMin || 0) - (band?.rest || 0)),
+    })
+    : { minutes: 0 };
+  const workedMin = workedRaw.minutes + (nursingCredit.minutes || 0);
+  const worked = { minutes: workedMin, label: `${Math.floor(workedMin / 60)}:${String(workedMin % 60).padStart(2, "0")}` };
+  // «المنجز اليوم» counts work (rest excluded, Art. 102), so its target is the shift less its rest —
+  // 07:00–16:00 with a 60-minute break is 8:00 of work, not 9:00. The bar stays a timeline of the
+  // shift span (presence so far), with the break bands laid on it.
+  const restPlanned = flexOn ? Math.max(0, Number(flexDay.flex?.minutes) || 0) : Math.max(0, Number(band?.rest) || 0);
+  const workTargetMin = Math.max(0, (band?.targetMin || 480) - restPlanned);
+  const targetLabel = band ? `${Math.floor(workTargetMin / 60)}:${String(workTargetMin % 60).padStart(2, "0")}` : "8:00";
+  const presenceMin = attendance?.check_in_at
+    ? Math.max(0, Math.round(((attendance?.check_out_at ? new Date(attendance.check_out_at).getTime() : workedNow) - new Date(attendance.check_in_at).getTime()) / 60000))
+    : 0;
+  const dayPct = Math.min(100, Math.round((presenceMin / (band?.targetMin || 480)) * 100));
   const inn = phase !== "awaiting_in";
   const done = phase === "done";
+  // An early checkout is said as such — never «سُجّل اليوم كاملاً».
+  const earlyLeftMin = done
+    ? earlyLeaveMinutesOf({ shift, checkIn: attendance?.check_in_at, checkOut: attendance?.check_out_at, nursingEndMinutes: nursingToday?.endMinutes || 0 })
+    : 0;
   const statusText = onLeaveToday && !inn
     ? (ar ? "إجازة معتمدة اليوم" : "Approved leave today")
     : !shift && !inn
       ? (ar ? "لا وردية منشورة — لا بصمة" : "No published shift — no punch")
-      : !inn
+      : closedDay
+        ? (ar ? "انتهت ورديتك — يومك مسجّل" : "Your shift is over — the day is on file")
+        : !inn && lateSoFar > 0
+          ? (ar ? `لم تسجّل حضورك — متأخر ${lateSoFar} دقيقة عن ورديتك` : `Not checked in — ${lateSoFar} min late for your shift`)
+        : !inn
         ? (ar ? "لم تسجّل حضورك بعد" : "Not checked in yet")
         : isLate
           ? (ar ? `حضرت متأخراً ${lateMinutes || "—"} دقيقة — يُحسب من الجدول المنشور` : `Late by ${lateMinutes || "—"} min — measured from the published rota`)
           : done
-            ? (ar ? `اكتمل اليوم · ${worked.label}` : `Day complete · ${worked.label}`)
-            : (ar ? "حضرت في الوقت" : "Checked in on time");
-  const statusColor = (!inn || (onLeaveToday && !inn))
+            ? (earlyLeftMin > 0
+              ? (ar ? `انصرفت مبكراً بـ ${earlyLeftMin} دقيقة · ${worked.label}` : `Left ${earlyLeftMin} min early · ${worked.label}`)
+              : (ar ? `اكتمل اليوم · ${worked.label}` : `Day complete · ${worked.label}`))
+            : inNursing
+              ? (ar ? "حضرت في الوقت — ضمن ساعة الرضاعة" : "On time — inside your nursing hour")
+              : (ar ? "حضرت في الوقت" : "Checked in on time");
+  const statusColor = !inn && lateSoFar > 0
+    ? "var(--nv-warn-ink)"
+    : (!inn || (onLeaveToday && !inn))
     ? "var(--nv-muted)"
     : isLate
       ? "var(--nv-warn-ink)"
@@ -379,12 +777,26 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       ? (ar ? "حضر" : "In")
       : !done
         ? (ar ? "انصرف" : "Out")
-        : (ar ? "اكتمل اليوم ✓" : "Day complete ✓");
+        : <><NvIcon name="check" size={14} /> {ar ? "اكتمل اليوم" : "Day complete"}</>;
   const orbSub = !inn
-    ? (ar ? `تبدأ ورديتك ${startClock}` : `Shift starts ${startClock}`)
+    ? (onLeaveToday
+      ? (ar ? "إجازة اليوم — لا بصمة" : "On leave today — no punch")
+      : !shift
+        ? (ar ? "لا وردية لك اليوم" : "No shift for you today")
+        : closedDay
+          ? (ar ? `انتهت ورديتك ${endClock}` : `Shift ended ${endClock}`)
+        : !earlyGate.ok
+          ? (ar ? `يُفتح الحضور ${earlyGate.opensAt} · ورديتك ${startClock}` : `Opens ${earlyGate.opensAt} · shift ${startClock}`)
+          : !lateInGate.ok
+            ? (ar ? `انتهت ورديتك ${endClock} — اطلب تسجيلاً يدوياً` : `Shift ended ${endClock} — request a manual entry`)
+            : (ar ? `تبدأ ورديتك ${startClock}` : `Shift starts ${startClock}`))
     : !done
-      ? (ar ? `تنتهي ورديتك ${endClock}` : `Shift ends ${endClock}`)
-      : (ar ? "سُجّل اليوم كاملاً" : "Today is on file");
+      ? (!outGate.ok
+        ? (ar ? "بانتظار قرار مديرك" : "Awaiting your manager")
+        : (ar ? `تنتهي ورديتك ${endClock}` : `Shift ends ${endClock}`))
+      : earlyLeftMin > 0
+        ? (ar ? `انصراف مبكر · ${earlyLeftMin} د` : `Early checkout · ${earlyLeftMin} min`)
+        : (ar ? "سُجّل اليوم كاملاً" : "Today is on file");
   const orbStyle = done
     ? { background: "var(--nv-ok-soft, #E6F2EA)", color: "var(--nv-ok-ink, #2F6B43)", boxShadow: "0 0 0 10px var(--nv-soft, #F2F5F3)" }
     : !inn
@@ -409,6 +821,297 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       : null,
   ].filter(Boolean);
 
+  const toned = (key) => {
+    const tone = dutyTone(key);
+    return { bg: tone.soft, fg: tone.ink, bd: tone.line };
+  };
+  const lanePill = onLeaveToday && !inn
+    ? { t: ar ? "إجازة" : "On leave", ...toned("leave") }
+    : !shift && !inn
+      ? { t: ar ? "لا وردية" : "No shift", ...toned("rest") }
+      : closedDay
+        ? { t: ar ? "انتهت" : "Ended", ...toned("rest") }
+      : !inn && lateSoFar > 0
+        ? { t: ar ? "متأخر" : "Late", ...toned("warn") }
+      : !inn
+        ? { t: ar ? "لم تبدأ" : "Not started", ...toned("rest") }
+        : !done
+          ? (isLate
+            ? { t: ar ? "متأخر" : "Late", ...toned("warn") }
+            : { t: ar ? "حاضر" : "In", ...toned("ok") })
+          : { t: ar ? "انصرفت" : "Checked out", bg: "var(--nv-ok-fill, #3C7D50)", fg: "#fff", bd: "var(--nv-ok-fill, #3C7D50)" };
+  const orbReady = !punchBlocked && (phase === "awaiting_in" || phase === "awaiting_out");
+  const orbClick = () => { if (phase === "awaiting_in") requestPunch("in"); else if (phase === "awaiting_out") requestPunch("out"); };
+  const steps = shift
+    ? [
+        { key: "start", kind: "plan", label: ar ? "بداية الوردية" : "Shift starts", note: ar ? "من الجدول المنشور" : "From the published rota", value: startClock },
+        {
+          key: "in",
+          kind: "punch",
+          state: inn ? (isLate ? "late" : "done") : (phase === "awaiting_in" && !punchBlocked ? "now" : "wait"),
+          label: ar ? "بصمة الحضور" : "Check-in",
+          note: inn
+            ? (isLate
+              ? (ar ? `متأخر ${lateMinutes || "—"} دقيقة` : `Late ${lateMinutes || "—"} min`)
+              : inNursing
+                ? (ar ? "في الوقت — ضمن ساعة الرضاعة" : "On time — inside your nursing hour")
+                : (ar ? "في الوقت" : "On time"))
+            : lateSoFar > 0
+              ? (ar ? `لم تُسجَّل — متأخر ${lateSoFar} دقيقة` : `Not punched — ${lateSoFar} min late`)
+              : (ar ? "بانتظار ضغطتك" : "Waiting for your tap"),
+          value: inn ? inTime : "—",
+          hint: inn && isLate && lateMinutes ? attRightHint("lateness", { date: dutyDateKey, minutes: lateMinutes }, { view: "employee", ar }) : null,
+        },
+        ...(band?.label
+          ? (band.windows?.length > 1 ? band.windows : [null]).map((win, wi, list) => ({ key: wi ? `rest-${wi}` : "rest", kind: "plan", at: band.start + (win ? win.from : band.offset), label: list.length > 1 ? (ar ? `الراحة ${wi + 1} من ${list.length}` : `Break ${wi + 1} of ${list.length}`) : (ar ? "الراحة" : "Break"), note: (() => {
+            if (list.length > 1 && wi > 0) return ar ? `${win.minutes} دقيقة — راحة ثانية حتى لا تعمل أكثر من 5 ساعات متواصلة` : `${win.minutes} min — a second rest so no stretch runs past 5 hours`;
+            // Plain words: the rest is not working time (Art. 102), so the day's work is the shift minus it.
+            const restMin = Number(band.rest) || 0;
+            const hm = (m) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+            if (!restMin) return ar ? "لا تُحسب من ساعات عملك" : "Not counted as working time";
+            if (list.length > 1) {
+              return ar
+                ? `${win.minutes} دقيقة — راحتك ${list.length === 2 ? "فترتان" : `${list.length} فترات`} مجموعها ${restMin} دقيقة لا تُحسب من عملك، فعملك اليوم ${hm(band.targetMin - restMin)} من ${hm(band.targetMin)}`
+                : `${win.minutes} min — ${list.length} rests, ${restMin} min in all, not counted as work; your work today is ${hm(band.targetMin - restMin)} of ${hm(band.targetMin)}`;
+            }
+            return ar
+              ? `${restMin} دقيقة لا تُحسب من ساعات عملك — عملك اليوم ${hm(band.targetMin - restMin)} من ${hm(band.targetMin)}`
+              : `${restMin} min not counted as work — your work today is ${hm(band.targetMin - restMin)} of ${hm(band.targetMin)}`;
+          })(), sub: breakHint && (breakHint.windowIndex ?? 0) === wi ? (ar ? breakHint.textAr : breakHint.textEn) : "", value: win ? `${win.start}–${win.end}` : band.label, hint: wi === 0 ? attRightHint("rest", {}, { view: "employee", ar }) : null }))
+          : []),
+        ...(flexOn ? flexSteps(flexDay, { ar, hint: attRightHint("rest", {}, { view: "employee", ar }), plan: restPlan?.parts ? checkRestPlanGate({ shift: dutyShift, onDate: dutyDay, parts: restPlan.parts, continuous103 }) : null }) : []),
+        { key: "end", kind: "plan", at: (band?.start ?? 0) + (band?.targetMin ?? 0), label: ar ? "نهاية الوردية" : "Shift ends", note: ar ? "من الجدول المنشور" : "From the published rota", value: endClock },
+        {
+          key: "out",
+          kind: "punch",
+          state: done ? "done" : (phase === "awaiting_out" && !punchBlocked ? "now" : "wait"),
+          label: ar ? "بصمة الانصراف" : "Check-out",
+          note: done
+            ? (ar ? `أُغلق اليوم · ${worked.label}` : `Day closed · ${worked.label}`)
+            : (inn ? (elapsed || (ar ? "اليوم مفتوح" : "Day open")) : (ar ? "بعد الحضور" : "After check-in")),
+          value: done ? outTime : "—",
+        },
+      ]
+    : [];
+  // Prayers inside the shift window — quiet points placed by time between the plan steps. Each names its
+  // law: the prayer sits inside the Art. 101 rest, and that rest is not working time (Art. 102).
+  const restCite = citeRule("hours.rest.duringShiftMinutes", dutyDay);
+  const notWorkCite = citeRule("hours.rest.notWorkingHours.cite", dutyDay);
+  const consecCite = citeRule("hours.rest.maxConsecutiveHours", dutyDay);
+  const lawBadge = (...cites) => {
+    const arts = [...new Set(cites.map((c) => c?.article).filter(Boolean))];
+    return arts.length ? (ar ? `م ${arts.join(" · ")}` : `Art. ${arts.join(" · ")}`) : "";
+  };
+  const placeByTime = (point, minutes) => {
+    const at = steps.findIndex((step, i) => i > 1 && step.at != null && step.at > minutes);
+    if (at < 0) steps.splice(Math.max(2, steps.length - 1), 0, point);
+    else steps.splice(at, 0, point);
+  };
+  for (const p of prayerPoints) {
+    placeByTime({
+      key: `prayer-${p.key}`,
+      kind: "prayer",
+      at: p.minutes,
+      label: ar ? p.ar : p.en,
+      value: p.clock,
+      // Company policy first: a prayer allowance counted as work; otherwise the law's reading (inside the rest).
+      badge: prayerPolicy.prayerPaid ? (ar ? "سياسة المنشأة" : "Company policy") : lawBadge(restCite, notWorkCite),
+      note: (prayerPolicy.prayerPaid
+        ? (ar ? `${prayerPolicy.prayerMinutes} دقيقة للصلاة تُحسب من عملك ولا تُستقطع` : `${prayerPolicy.prayerMinutes} min for prayer counted as your work — company policy`)
+        : (ar ? "الصلاة من فترة الراحة: «فترة للراحة والصلاة والطعام» (المادة 101)." : "Prayer belongs to the rest: «a period for rest, prayer and food» (Art. 101)."))
+        + (prayerApprox ? (ar ? " · الوقت تقريبي بتوقيت الرياض حتى تُحدَّد مدينة الفرع" : " · approximate (Riyadh) until the branch city is set") : ""),
+      hint: prayerPolicy.prayerPaid ? null : attRightHint("rest", {}, { view: "employee", ar }),
+    }, p.minutes);
+  }
+  // Art. 101: the five-hour mark from the shift start — the rest must begin before it (Art. 103 is exempt).
+  const consecMax = Number(ruleValue("hours.rest.maxConsecutiveHours", dutyDay)) || 0;
+  const restMin = Number(ruleValue("hours.rest.duringShiftMinutes", dutyDay)) || 0;
+  // A saved rest plan is already checked against this limit — the five-hour mark would only repeat it.
+  const planHoldsLimit = flexOn && !!restPlan?.parts && checkRestPlanGate({ shift: dutyShift, onDate: dutyDay, parts: restPlan.parts, continuous103 }).ok;
+  // The count restarts after every rest already in the day (the roster's fixed break, or the punched parts):
+  // a break at 10:45–11:15 on 07:00–15:00 leaves no five-hour stretch, so no mark is shown at all.
+  const knownRests = flexOn
+    ? (flexDay.punched || []).filter((row) => !row.open && row.endMin != null).map((row) => ({ start: row.startMin, end: row.endMin }))
+    : (dutyShift ? rosterBreakWindows(dutyShift, dutyDay) : []).map((w) => ({ start: (band?.start || 0) + w.from, end: (band?.start || 0) + w.from + w.minutes }));
+  // The stretch starts when he actually started — a late check-in moves the five-hour mark with it.
+  const inLifted = inClockMin != null && band ? (inClockMin + 720 < band.start ? inClockMin + 1440 : inClockMin) : null;
+  let consecFrom = Math.max(band?.start ?? 0, inLifted ?? -Infinity);
+  for (const rest of knownRests.sort((a, b) => a.start - b.start)) {
+    if (rest.start - consecFrom <= consecMax * 60) consecFrom = Math.max(consecFrom, rest.end);
+  }
+  const bandEndMin = (band?.start ?? 0) + (band?.targetMin ?? 0);
+  if (band && !continuous103 && !planHoldsLimit && consecMax > 0 && consecFrom + consecMax * 60 < bandEndMin) {
+    const markAt = consecFrom + consecMax * 60;
+    const hh = String(Math.floor((markAt % 1440) / 60)).padStart(2, "0");
+    const mm = String(markAt % 60).padStart(2, "0");
+    placeByTime({
+      key: "limit-5h",
+      kind: "limit",
+      at: markAt,
+      label: ar ? `حد ${consecMax} ساعات متواصلة` : `${consecMax}-hour limit`,
+      value: `${hh}:${mm}`,
+      badge: lawBadge(consecCite),
+      note: ar
+        ? (consecFrom > band.start
+          ? `لا عمل أكثر من ${consecMax} ساعات متواصلة بعد راحتك — خذ راحة (${restMin} دقيقة على الأقل) قبل هذا الوقت`
+          : `لا عمل أكثر من ${consecMax} ساعات متواصلة — تبدأ راحتك (${restMin} دقيقة على الأقل) قبل هذا الوقت`)
+        : `No more than ${consecMax} hours in a row — your rest (at least ${restMin} min) starts before this time`,
+      hint: attRightHint("rest", {}, { view: "employee", ar }),
+    }, markAt);
+  }
+  // Art. 154: her nursing hour in time order — counted as actual work, no wage cut, until its last day.
+  if (nursingToday && band) {
+    const nursingCite = citeRule("leave.nursing.dailyMinutes", dutyDay);
+    const clockAt = (m) => `${String(Math.floor((((m % 1440) + 1440) % 1440) / 60)).padStart(2, "0")}:${String((((m % 1440) + 1440) % 1440) % 60).padStart(2, "0")}`;
+    const untilTxt = nursingToday.until ? `\u2066${toWesternDigits(nursingToday.until)}\u2069` : "";
+    const nursingNote = ar
+      ? `تُحسب من ساعات العمل الفعلية ولا يُخصم بها الأجر${untilTxt ? ` — حتى\u00A0${untilTxt}` : ""}`
+      : `Counted as actual working time, no wage cut${untilTxt ? ` — until\u00A0${untilTxt}` : ""}`;
+    const nursingHint = attRightHint("nursing", { birthDate: nursingEmployee?.profile?.nursingHour?.childBirthDate || "", nurseryOnSite: hoursPolicyOf(data).nurseryOnSite === true }, { view: "employee", ar });
+    const parts = nursingWindowsOf(nursingToday, band.start, band.start + band.targetMin);
+    if (nursingToday.midMinutes) parts.push({ part: "mid", from: band.start + Math.round(band.targetMin / 2), to: null });
+    for (const part of parts) {
+      const point = {
+        key: `nursing-${part.part}`,
+        kind: "nursing",
+        at: part.from,
+        label: ar
+          ? `ساعة الرضاعة${parts.length > 1 ? (part.part === "start" ? " · أول الدوام" : part.part === "end" ? " · آخر الدوام" : " · وسط الدوام") : ""}`
+          : `Nursing hour${parts.length > 1 ? ` · ${part.part}` : ""}`,
+        value: part.to == null ? (ar ? `${nursingToday.midMinutes} د` : `${nursingToday.midMinutes} min`) : `${clockAt(part.from)}–${clockAt(part.to)}`,
+        badge: lawBadge(nursingCite),
+        note: nursingNote,
+        hint: nursingHint,
+      };
+      // The start part opens with the shift — it sits before the check-in it covers.
+      if (part.part === "start") steps.splice(1, 0, point);
+      else placeByTime(point, part.from);
+    }
+  }
+
+  // Decision 3337: the midday sun ban sits on «مسار اليوم» whenever the shift touches its hours — every day of
+  // the year. Outside its season it reads as reference; in season it says what the day's sun mark means and
+  // gives the way: refuse exposed work and report it from طلباتي («بلاغ عمل مكشوف»).
+  if (band && dutyShift) {
+    const win = heatBanWindow(dutyDay);
+    const banFrom = win.startHour * 60;
+    const banTo = win.endHour * 60;
+    const shiftEnd = band.start + (band.spanMin || band.targetMin || 0);
+    const touches = [0, 1440].some((d) => Math.min(shiftEnd, d + banTo) > Math.max(band.start, d + banFrom));
+    if (touches) {
+      const inSeason = isHeatBanDate(dutyDay);
+      const sunMark = sunExposureMark(dutySchedule, currentUser?.id, dutyDay, dutyShift).mark;
+      const clockState = inSeason ? heatBanClockState({ dayKey: dutyDay, minutes: riyadhMinutesOf(new Date()) }) : "off_season";
+      const heatCite = citeRule("hours.heat.startHour", dutyDay);
+      let note;
+      let tone = "cite";
+      let action = null;
+      if (!inSeason) {
+        note = ar ? `خارج موسمه — يُطبَّق ${win.seasonAr}. لا قيد اليوم.` : `Out of season — it applies ${win.seasonEn}. No limit today.`;
+      } else if (sunMark === SUN_FIELD) {
+        tone = clockState === "in_window" ? "block" : "alert";
+        note = clockState === "in_window"
+          ? (ar ? `الآن ساعات الحظر وورديتك «مكشوف» — لا عمل تحت الشمس المباشرة حتى ${win.endLabel}. يحق لك رفض العمل المكشوف والانتقال إلى مكان مظلّل.` : `Ban hours now and your shift is marked exposed — no work in direct sun until ${win.endLabel}. You may refuse exposed work and move to shade.`)
+          : (ar ? `ورديتك اليوم «مكشوف» — لا عمل تحت الشمس المباشرة في هذه الساعات. يحق لك رفض العمل المكشوف.` : `Your shift today is marked exposed — no work in direct sun in these hours. You may refuse exposed work.`);
+        action = { to: "/app/complaints?channel=heat", label: ar ? "بلّغ عن عمل مكشوف ›" : "Report exposed work ›" };
+      } else if (sunMark === SUN_OFFICE) {
+        tone = "ok";
+        note = ar ? "يومك «مظلّل» — لا عمل تحت الشمس في هذه الساعات." : "Your day is marked shaded — no sun work in these hours.";
+      } else {
+        tone = "alert";
+        note = ar ? "في موسم الحظر ولم يُحدَّد يومك «مكشوف / مظلّل». إن شُغّلت تحت الشمس في هذه الساعات فبلّغ." : "In the ban season and your day has no exposed/shaded mark. If you are put in the sun in these hours, report it.";
+        action = { to: "/app/complaints?channel=heat", label: ar ? "بلّغ عن عمل مكشوف ›" : "Report exposed work ›" };
+      }
+      const heatBadge = heatCite?.article ? (ar ? `م ${heatCite.article}` : `Art. ${heatCite.article}`) : (ar ? "القرار 3337" : "Dec. 3337");
+      placeByTime({
+        key: "heat-ban",
+        kind: "heat",
+        at: banFrom,
+        tone,
+        season: inSeason,
+        live: clockState === "in_window",
+        label: ar ? "بداية حظر الشمس" : "Sun ban starts",
+        value: win.startLabel,
+        badge: heatBadge,
+        note,
+        action,
+      }, banFrom);
+      // The end mark: where the ban lifts — only while the shift is still running then.
+      if ([0, 1440].some((d) => shiftEnd >= d + banTo && band.start < d + banTo)) {
+        const endNote = !inSeason
+          ? (ar ? "خارج موسمه — لا قيد اليوم." : "Out of season — no limit today.")
+          : sunMark === SUN_FIELD
+            ? (ar ? "ينتهي الحظر — يجوز العمل المكشوف بعده." : "The ban lifts — exposed work is allowed after it.")
+            : (ar ? "ينتهي الحظر." : "The ban lifts.");
+        placeByTime({
+          key: "heat-ban-end",
+          kind: "heat",
+          at: banTo,
+          season: inSeason,
+          live: clockState === "in_window",
+          tone: !inSeason ? "cite" : (clockState === "after_window" ? "ok" : "cite"),
+          label: ar ? "نهاية حظر الشمس" : "Sun ban ends",
+          value: win.endLabel,
+          badge: heatBadge,
+          note: endNote,
+        }, banTo - 0.5); // before «نهاية الوردية» when both fall on the same minute
+      }
+    }
+  }
+
+  // «وقت راحتك» — its own card under «سلسلة البصمة» on بصمتي (portal into the side slot); inline elsewhere.
+  const restCardEl = (flexOn && !done && !flexDay.punched.length) ? (
+            <RestPlanPicker
+              key={`${dutyDay}:${restPlan?.at || ""}`}
+              ar={ar}
+              shift={dutyShift}
+              onDate={dutyDay}
+              continuous103={continuous103}
+              saved={restPlan}
+              avoid={[
+                ...prayerPoints.map((p) => ({ from: p.minutes, to: p.minutes + (prayerPolicy.prayerMinutes || 20) })),
+                ...(nursingToday && band ? nursingWindowsOf(nursingToday, band.start, band.start + band.targetMin).filter((w) => w.to != null).map((w) => ({ from: w.from, to: w.to })) : []),
+              ]}
+              avoidNames={[
+                ...prayerPoints.map((p) => (ar ? p.ar : p.en)),
+                ...(nursingToday ? [ar ? "ساعة الرضاعة" : "nursing hour"] : []),
+              ]}
+              locked={!!flexDay.assumed && !flexDay.assumedRunning && !!attendance?.check_in_at}
+              onSave={async (parts) => {
+                setRestPlan(company.id, currentUser.id, dutyDay, parts);
+                await refresh?.();
+              }}
+            />
+  ) : (!flexOn && !continuous103 && band && !done) ? (
+    <RestCard ar={ar} note={ar ? "من الجدول المنشور — لا تُحسب من ساعات عملك." : "From the published roster — not counted as working time."}>
+      <div data-rest-plan="fixed" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {band.windows?.length ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {band.windows.map((win, wi) => (
+              <span key={wi} dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, fontWeight: 700, padding: "4px 10px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-soft, #F7F9F8)", color: "var(--nv-ink)" }}>{win.start}–{win.end}</span>
+            ))}
+          </div>
+        ) : null}
+        {/* How the platform lays the rest out — the rule in plain words (Arts. 101–102). */}
+        <ul data-rest-rule="1" style={{ margin: 0, paddingInlineStart: 18, listStyle: "disc", display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.6 }}>
+          <li>{ar ? "لا تعمل أكثر من 5 ساعات متصلة — فإن طال الدوام قُسّمت الراحة فترات." : "Never more than 5 hours in a row — a long day splits the rest into periods."}</li>
+          <li>{ar ? "كل فترة نصف ساعة على الأقل «في المرة الواحدة»." : "Each period is at least half an hour «at a time»."}</li>
+          <li>{ar ? "الفترة للراحة والصلاة والطعام معاً، ولا تُحسب من عملك (المادة 102)." : "Each period holds rest, prayer and food together, and is not counted as work (Art. 102)."}</li>
+          <li data-rest-free="1">{ar ? "وقت راحتك لك: لست فيه تحت سلطة صاحب العمل، ولا يُلزمك بالبقاء في مكان العمل (المادة 102)." : "Your rest is yours: you are not under the employer's authority and may not be required to stay at the workplace (Art. 102)."}</li>
+          <li>{ar ? "لا يزيد بقاؤك في مكان العمل على 12 ساعة." : "No more than 12 hours at the workplace."}</li>
+        </ul>
+        <div data-rest-plan="info" style={{ display: "flex", gap: 8, alignItems: "center", padding: "7px 10px", border: "1px dashed var(--nv-line)", borderRadius: 10 }}>
+          <NvIcon name="lock" size={13} inline={false} style={{ color: "var(--nv-muted)" }} />
+          <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.6 }}>
+            {band.targetMin > 480
+              ? (ar ? "اختار مديرك لهذه الوردية راحة ثابتة من الجدول." : "Your manager set a fixed break for this shift on the roster.")
+              : (ar ? "الراحة المرنة — ترتاح متى شئت — تُفتح حين يكون دوامك أكثر من 8 ساعات، فهي راحتك النظامية (المادة 101) لا تُحسب من عملك." : "The flexible break — rest when you choose — opens when your duty is longer than 8 hours — your statutory rest (Art. 101), not counted as work.")}
+          </span>
+        </div>
+      </div>
+    </RestCard>
+  ) : null;
+
   return (
     <section
       style={{
@@ -421,117 +1124,368 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         borderRadius: 14,
       }}
       dir={ar ? "rtl" : "ltr"}
-      className="nv-att-card"
+      className="nv-att-card nv-punch-hero"
       data-testid="check-in-out-card"
+      data-phase={phase}
     >
-      <header style={{ background: "linear-gradient(135deg,#0B3D27,#0F5535)", color: "#fff", padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-          <span style={{ fontSize: 11, color: "#A9CDB8", fontWeight: 600 }}>{pvDate}</span>
-          <strong style={{ fontSize: 16 }}>{shiftLine}</strong>
-          <span style={{ fontSize: 11.5, color: "#C5DBCD" }}>{siteLine}</span>
+      <header className="nv-punch-head" style={{ background: "var(--nv-soft, #FAFBFA)", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", color: "var(--nv-ink)", padding: "16px 22px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: "1 1 220px" }}>
+          <span style={{ fontSize: 11.5, color: "var(--nv-muted)", fontWeight: 600 }}>{pastDuty ? (ar ? `ورديتك · ${pvDate}` : `Your shift · ${pvDate}`) : (ar ? `ورديتك اليوم · ${pvDate}` : `Today's shift · ${pvDate}`)}</span>
+          <strong style={{ fontSize: 18, fontFamily: "var(--font-heading)", letterSpacing: 0, color: "var(--nv-ink)" }}>{shiftLine}</strong>
+          {siteLine ? <span style={{ fontSize: 12, color: "var(--nv-ink3, var(--nv-muted))" }}>{siteLine}</span> : null}
         </div>
-        <strong dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, fontSize: 30, letterSpacing: ".02em" }}>{clockLabel}</strong>
-      </header>
-      <div style={{ padding: "22px 20px", display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
-        <button
-          type="button"
-          className="nv-att-punch-orb"
-          onClick={() => { if (phase === "awaiting_in") punch("in"); else if (phase === "awaiting_out") punch("out"); }}
-          disabled={punchBlocked}
-          style={{
-            fontFamily: "inherit",
-            border: "none",
-            textAlign: "center",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 4,
-            cursor: punchBlocked ? "default" : "pointer",
-            opacity: punchBlocked && !done ? 0.55 : 1,
-            ...orbStyle,
-          }}
-        >
-          <span style={{ fontSize: 12, fontWeight: 600, opacity: 0.85, whiteSpace: "nowrap" }}>{orbSub}</span>
-          <strong style={{ fontSize: 22 }}>{orbLabel}</strong>
-        </button>
-        <span style={{ fontSize: 13, fontWeight: 600, color: statusColor, textAlign: "center" }}>{statusText}</span>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-          {checks.map((chip) => (
-            <span
-              key={chip.t}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-                height: 26,
-                padding: "0 10px",
-                borderRadius: 999,
-                fontSize: 11.5,
-                fontWeight: 600,
-                whiteSpace: "nowrap",
-                background: chip.ok ? "var(--nv-ok-soft, #E6F2EA)" : chip.wait ? "var(--nv-soft)" : "var(--nv-bad-soft, #FBEBED)",
-                color: chip.ok ? "var(--nv-ok-ink, #2F6B43)" : chip.wait ? "var(--nv-muted)" : "var(--nv-bad-ink, #9B2335)",
-                border: `1px solid ${chip.ok ? "var(--nv-ok-line)" : chip.wait ? "var(--nv-line)" : "var(--nv-bad-line)"}`,
-              }}
-            >
-              <span>{chip.ok ? "✓" : chip.wait ? "—" : "✕"}</span>
-              {chip.t}
-            </span>
-          ))}
-        </div>
-        {forgotten ? (
-          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-warn-ink)", textAlign: "center" }}>
-            {ar ? "انصراف منسي — أُحيل إلى مديرك. السجل يبقى مفتوحاً حتى يضع وقت الانصراف." : "Forgotten checkout — sent to your manager. The register stays open until they set the time."}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+          {/* No clock here: the time is already in the page header. */}
+          <span
+            data-punch-state
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              height: 24,
+              padding: "0 10px",
+              borderRadius: 999,
+              fontSize: 11.5,
+              fontWeight: 700,
+              whiteSpace: "nowrap",
+              background: lanePill.bg,
+              color: lanePill.fg,
+              border: `1px solid ${lanePill.bd}`,
+            }}
+          >
+            <span aria-hidden style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
+            {lanePill.t}
           </span>
-        ) : null}
-        {error ? <span style={{ fontSize: 12, color: "var(--nv-bad-ink)", textAlign: "center", lineHeight: 1.7 }}>{error}</span> : null}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", borderTop: "1px solid var(--nv-line2, #EEF1EF)" }}>
-        {[
-          [ar ? "الحضور" : "In", inn ? inTime : "—", ar ? `الجدول ${startClock}` : `Rota ${startClock}`],
-          [ar ? "الانصراف" : "Out", done ? outTime : "—", ar ? `الجدول ${endClock}` : `Rota ${endClock}`],
-          [ar ? "المنجز" : "Worked", inn ? worked.label : "—", ar ? `من ${targetLabel}` : `of ${targetLabel}`],
-        ].map((cell) => (
-          <div key={cell[0]} style={{ display: "flex", flexDirection: "column", gap: 2, padding: "12px 16px", borderInlineStart: "1px solid var(--nv-line2, #EEF1EF)" }}>
-            <span style={{ fontSize: 11, color: MUTED }}>{cell[0]}</span>
-            <strong dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 18, textAlign: "start", color: "var(--nv-ink)" }}>{cell[1]}</strong>
-            <span style={{ fontSize: 10.5, color: "var(--nv-ink3, var(--nv-muted))" }}>{cell[2]}</span>
-          </div>
-        ))}
-      </div>
-      <div style={{ padding: "12px 20px 16px", display: "flex", flexDirection: "column", gap: 6, borderTop: "1px solid var(--nv-line2, #EEF1EF)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: MUTED }}>
-          <span>{ar ? "ساعات اليوم" : "Today"}</span>
-          <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{inn ? worked.label : "0:00"} / {targetLabel}</span>
         </div>
-        <div style={{ height: 8, borderRadius: 999, background: "var(--nv-line2, #EEF1EF)", overflow: "hidden", position: "relative" }}>
-          <div style={{ height: "100%", width: `${inn ? dayPct : 0}%`, background: done ? "var(--nv-ok-fill, #3C7D50)" : "var(--nv-warn-fill, #C8A45A)", borderRadius: 999 }} />
-          {band?.label ? (
-            <span
-              title={ar ? `راحة ${band.label}` : `Break ${band.label}`}
-              style={{
-                position: "absolute",
-                top: 0,
-                bottom: 0,
-                insetInlineStart: `${band.leftPct}%`,
-                width: `${band.widthPct}%`,
-                background: "repeating-linear-gradient(45deg,#C8A45A 0 3px,transparent 3px 6px)",
-                opacity: 0.85,
-              }}
+      </header>
+
+      <div className="nv-punch-body">
+        <div className="nv-punch-orb-col" style={{ padding: "26px 20px 22px", display: "flex", flexDirection: "column", alignItems: "center", gap: 14, minWidth: 0 }}>
+          <button
+            type="button"
+            className={`nv-att-punch-orb${orbReady ? " is-ready" : ""}`}
+            onClick={orbClick}
+            disabled={punchBlocked}
+            style={{
+              fontFamily: "inherit",
+              border: "none",
+              textAlign: "center",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              position: "relative",
+              cursor: punchBlocked ? "default" : "pointer",
+              opacity: punchBlocked && !done ? 0.55 : 1,
+              ...orbStyle,
+            }}
+          >
+            {loading
+              ? <Loader2 style={{ width: 22, height: 22, animation: "spin 1s linear infinite" }} />
+              : !inn
+                ? <LogIn style={{ width: 22, height: 22 }} strokeWidth={1.75} />
+                : !done
+                  ? <LogOut style={{ width: 22, height: 22 }} strokeWidth={1.75} />
+                  : null}
+            <strong style={{ fontSize: 24, lineHeight: 1.2 }}>{orbLabel}</strong>
+            <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.85, whiteSpace: "nowrap" }}>{orbSub}</span>
+          </button>
+          <span style={{ fontSize: 13.5, fontWeight: 700, color: statusColor, textAlign: "center", lineHeight: 1.6 }}>{statusText}</span>
+          {confirmBlock}
+          {phase === "awaiting_out" && !outGate.ok ? (
+            <span data-out-gate={outGate.error} style={{ fontSize: 11.5, color: "var(--nv-warn-ink)", textAlign: "center", lineHeight: 1.7, maxWidth: 300 }}>{ar ? outGate.reason : outGate.reasonEn}</span>
+          ) : null}
+          {phase === "awaiting_in" && shift && !lateInGate.ok ? (
+            <span data-in-gate={lateInGate.error} style={{ fontSize: 11.5, color: "var(--nv-warn-ink)", textAlign: "center", lineHeight: 1.7, maxWidth: 300 }}>{ar ? lateInGate.reason : lateInGate.reasonEn}</span>
+          ) : null}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
+            {checks.map((chip) => (
+              <span
+                key={chip.t}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  height: 26,
+                  padding: "0 10px",
+                  borderRadius: 999,
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                  background: chip.ok ? "var(--nv-ok-soft, #E6F2EA)" : chip.wait ? "var(--nv-soft)" : "var(--nv-bad-soft, #FBEBED)",
+                  color: chip.ok ? "var(--nv-ok-ink, #2F6B43)" : chip.wait ? "var(--nv-muted)" : "var(--nv-bad-ink, #9B2335)",
+                  border: `1px solid ${chip.ok ? "var(--nv-ok-line)" : chip.wait ? "var(--nv-line)" : "var(--nv-bad-line)"}`,
+                }}
+              >
+                <span aria-hidden style={{ display: "inline-flex" }}>{chip.ok ? <NvIcon name="check" size={12} strokeWidth={2} inline={false} /> : chip.wait ? "—" : <NvIcon name="cross" size={12} strokeWidth={2} inline={false} />}</span>
+                {chip.t}
+              </span>
+            ))}
+          </div>
+          {/* With a saved break time the rest needs no punch — the buttons stay for a day without one. */}
+          {false ? (
+            <BreakPunch
+              ar={ar}
+              day={flexDay}
+              gate={breakGate}
+              busy={breakBusy}
+              error={breakError}
+              onPunch={breakPunch}
+              leftMs={breakClock?.kind === "flex" ? breakLeftMs : null}
+              buttonRef={breakBtnRef}
             />
           ) : null}
+          {(() => {
+            // Taking the whole break now would leave more than five hours of work after it — say so before he taps.
+            return null; // no break button — nothing to warn before
+            const consecLimit = (Number(ruleValue("hours.rest.maxConsecutiveHours", dutyDay)) || 5) * 60;
+            let nowM = riyadhMinutesOf(new Date(tick));
+            if (nowM + 720 < band.start) nowM += 1440;
+            const after = band.start + band.targetMin - (nowM + (flexDay.remaining || 0));
+            if (after <= consecLimit) return null;
+            const hm = (m) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+            return (
+              <span data-break-early-warn="1" style={{ fontSize: 11.5, color: "var(--nv-warn-ink)", textAlign: "center", lineHeight: 1.7, maxWidth: 320 }}>
+                {ar
+                  ? `إن أخذت راحتك كاملة الآن يبقى بعدها ${hm(after)} عمل متواصل — أكثر من ${consecLimit / 60} ساعات.${flexDay.flex?.splitEffective ? ` خذ ${minutesAr(flexDay.flex.minPart)} الآن والباقي لاحقاً، أو أخّرها.` : " أخّرها قليلاً."}`
+                  : `Taking your whole break now leaves ${hm(after)} of work in a row after it — over ${consecLimit / 60} hours.${flexDay.flex?.splitEffective ? ` Take ${flexDay.flex.minPart} min now and the rest later, or wait.` : " Wait a little."}`}
+              </span>
+            );
+          })()}
+          {breakClock?.kind === "fixed" ? (
+            <span data-break-countdown="fixed" style={{ fontSize: 12, color: "var(--nv-ink2)", textAlign: "center" }}>
+              {ar ? "راحتك" : "Your break"} <span dir="ltr" style={MONO}>{breakClock.start}–{breakClock.end}</span>
+              {" · "}{ar ? "باقٍ" : "left"} <span dir="ltr" style={{ ...MONO, fontWeight: 700 }}>{countdownLabel(Math.max(0, breakLeftMs))}</span>
+            </span>
+          ) : null}
+          {inn && !done && shift && notifySupported && notifyPerm === "default" ? (
+            <button
+              type="button"
+              data-device-notify="ask"
+              onClick={askDeviceNotify}
+              style={{ fontFamily: "inherit", fontSize: 11.5, fontWeight: 600, color: "var(--nv-ok-ink)", background: "none", border: "none", padding: 0, cursor: "pointer" }}
+            >
+              {ar ? "فعّل تنبيهات الجهاز ›" : "Turn on device alerts ›"}
+            </button>
+          ) : null}
+          {forgotten ? (
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-warn-ink)", textAlign: "center", lineHeight: 1.7 }}>
+              {ar ? "انصراف منسي — أُحيل إلى مديرك. السجل يبقى مفتوحاً حتى يضع وقت الانصراف." : "Forgotten checkout — sent to your manager. The register stays open until they set the time."}
+            </span>
+          ) : null}
+          {error ? <span style={{ fontSize: 12, color: "var(--nv-bad-ink)", textAlign: "center", lineHeight: 1.7 }}>{error}</span> : null}
+          {onApprovedLeave && !inn ? <LeaveCutOffer ar={ar} companyId={company?.id} employee={currentUser} onDone={async () => { setError(""); setLeaveCut(false); await refresh?.(); }} /> : null}
         </div>
-        <span style={{ fontSize: 10.5, color: "var(--nv-ink3, var(--nv-muted))" }}>
-          {band?.label
-            ? (ar ? `الشريط المخطّط: راحة ${band.label} (المادة 101)` : `Hatched band: break ${band.label} (Art. 101)`)
-            : (ar ? "راحة الوردية تُخصم من المنجز — المادة 101" : "Shift rest is excluded from worked time — Art. 101")}
-        </span>
+
+        <div className="nv-punch-day" style={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <strong style={{ fontSize: 14, fontWeight: 700, color: "var(--nv-ink)", letterSpacing: 0 }}>{ar ? "مسار اليوم" : "Today's timeline"}</strong>
+            <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{ar ? "الجدول يحدّد الوقت، وبصمتك تثبته." : "The rota sets the time; your punch proves it."}</span>
+          </div>
+          {currentAlert ? (
+            <div
+              role="status"
+              aria-live="polite"
+              data-duty-alert={currentAlert.id}
+              data-breach={currentAlert.breach ? "1" : "0"}
+              style={{ display: "grid", gridTemplateColumns: "16px minmax(0,1fr) auto", gap: 8, alignItems: "start", padding: "8px 0", borderBottom: "1px solid var(--nv-line2, #EEF1EF)" }}
+            >
+              <span aria-hidden style={{ display: "inline-flex", paddingTop: 2, color: currentAlert.breach ? "var(--nv-warn-ink)" : "var(--nv-muted)" }}>
+                <NvIcon name={currentAlert.breach ? "warning" : currentAlert.id === "prayer_next" ? "prayer" : String(currentAlert.id).startsWith("nursing_") ? "nursing" : "clock"} size={14} inline={false} />
+              </span>
+              <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                <span style={{ fontSize: 12, lineHeight: 1.7, fontWeight: currentAlert.breach ? 700 : 500, color: currentAlert.breach ? "var(--nv-warn-ink)" : "var(--nv-ink2)" }}>
+                  {clockText(ar ? currentAlert.textAr : currentAlert.textEn)}
+                </span>
+                {currentAlert.hint ? <RightHint ar={ar} hint={attRightHint(currentAlert.hint.kind, currentAlert.hint.item, { view: "employee", ar, employee: dutyEmployee })} style={{ alignSelf: "flex-start" }} /> : null}
+              </span>
+              {currentAlert.at ? (
+                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: 12.5, fontWeight: 600, color: "var(--nv-ink)", paddingTop: 1 }}>{clockText(currentAlert.at)}</span>
+              ) : null}
+            </div>
+          ) : null}
+          {steps.length ? (
+            <ol className="nv-punch-steps" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" }}>
+              {steps.map((step, index) => {
+                const last = index === steps.length - 1;
+                if (step.kind === "prayer" || step.kind === "limit" || step.kind === "nursing" || step.kind === "heat") {
+                  const heatInk = step.kind === "heat"
+                    ? (step.tone === "block" ? "var(--nv-bad-ink)" : step.tone === "alert" ? "var(--nv-warn-ink)" : step.tone === "ok" ? "var(--nv-ok-ink)" : "var(--nv-muted)")
+                    : null;
+                  // In season the sun-ban marks glow in the sun's own amber — brighter while the ban hours run.
+                  const glow = step.kind === "heat" && step.season;
+                  return (
+                    <li key={step.key} data-step={step.key} data-state={step.kind} data-heat-season={glow ? (step.live ? "live" : "on") : undefined} className={glow ? "nv-heat-glow" : undefined} style={{ display: "grid", gridTemplateColumns: "22px minmax(0,1fr) auto", gap: 12, alignItems: "start", position: "relative", paddingBottom: last ? 0 : 12, ...(glow ? { padding: "8px 8px", marginBottom: last ? 0 : 12, marginInline: -8, borderRadius: 10, background: `linear-gradient(${ar ? 270 : 90}deg, rgba(232,163,23,.18), rgba(232,163,23,.05))`, boxShadow: step.live ? "0 0 0 1px rgba(214,138,0,.55), 0 0 18px rgba(232,163,23,.38)" : "0 0 0 1px rgba(214,138,0,.32), 0 0 12px rgba(232,163,23,.18)" } : {}) }}>
+                      {!last && !glow ? <span aria-hidden style={{ position: "absolute", insetInlineStart: 10, top: 18, bottom: 0, width: 2, background: "var(--nv-line2, #EEF1EF)", borderRadius: 2 }} /> : null}
+                      <span aria-hidden style={{ width: 22, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1, color: glow ? "#B86E00" : (heatInk || (step.kind === "limit" ? "var(--nv-ink2)" : step.kind === "nursing" ? "var(--nv-ok-ink)" : "var(--nv-muted)")), background: glow ? "#FFE9B8" : "var(--nv-card)", ...(glow ? { borderRadius: 999, boxShadow: "0 0 10px rgba(232,163,23,.55)" } : {}) }}>
+                        <NvIcon name={step.kind === "heat" ? "sun" : step.kind === "limit" ? "clock" : step.kind === "nursing" ? "nursing" : "prayer"} size={12} inline={false} />
+                      </span>
+                      <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink2)" }}>{step.label}</span>
+                          {step.badge ? <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--nv-ink2)", background: "var(--nv-soft)", border: "1px solid var(--nv-line)", borderRadius: 999, padding: "0 7px", lineHeight: "17px", whiteSpace: "nowrap" }}>{step.badge}</span> : null}
+                        </span>
+                        {step.note ? <span data-heat-tone={step.kind === "heat" ? step.tone : undefined} style={{ fontSize: 11, color: heatInk && step.tone !== "cite" ? heatInk : "var(--nv-muted)", fontWeight: heatInk && (step.tone === "block" || step.tone === "alert") ? 600 : 400, lineHeight: 1.6 }}>{step.note}</span> : null}
+                        {step.action ? <Link to={step.action.to} data-heat-action="1" style={{ alignSelf: "flex-start", fontSize: 11.5, fontWeight: 700, color: "var(--nv-ok-ink)", textDecoration: "none" }}>{step.action.label}</Link> : null}
+                        {step.hint ? <RightHint ar={ar} hint={step.hint} style={{ alignSelf: "flex-start" }} /> : null}
+                      </span>
+                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: 12, fontWeight: 500, color: "var(--nv-ink2)", whiteSpace: "nowrap", paddingTop: 1 }}>{clockText(step.value)}</span>
+                    </li>
+                  );
+                }
+                const tone = step.kind === "plan"
+                  ? { bg: "var(--nv-card)", bd: "var(--nv-mute-fill, #C5CEC9)", fg: "var(--nv-muted)" }
+                  : step.state === "done"
+                    ? { bg: "var(--nv-ok-fill, #3C7D50)", bd: "var(--nv-ok-fill, #3C7D50)", fg: "#fff" }
+                    : step.state === "late"
+                      ? { bg: "var(--nv-warn-fill, #C8A45A)", bd: "var(--nv-warn-fill, #C8A45A)", fg: "#fff" }
+                      : step.state === "now"
+                        ? { bg: "var(--nv-ok-soft, #E6F2EA)", bd: "var(--nv-ok-fill, #3C7D50)", fg: "var(--nv-ok-ink)" }
+                        : { bg: "var(--nv-card)", bd: "var(--nv-line)", fg: "var(--nv-muted)" };
+                return (
+                  <li key={step.key} data-step={step.key} data-state={step.state || "plan"} style={{ display: "grid", gridTemplateColumns: "22px minmax(0,1fr) auto", gap: 12, alignItems: "start", position: "relative", paddingBottom: last ? 0 : 14 }}>
+                    {!last ? <span aria-hidden style={{ position: "absolute", insetInlineStart: 10, top: 22, bottom: 0, width: 2, background: "var(--nv-line2, #EEF1EF)", borderRadius: 2 }} /> : null}
+                    <span aria-hidden style={{ width: 22, height: 22, display: "inline-flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1 }}>
+                      {step.kind === "plan" ? (
+                        <span style={{ width: 10, height: 10, borderRadius: "50%", boxSizing: "border-box", background: "var(--nv-card)", border: `2px ${step.assumed ? "dashed" : "solid"} var(--nv-mute-fill, #C5CEC9)` }} />
+                      ) : (
+                        <span
+                          className={step.state === "now" ? "nv-punch-step-now" : undefined}
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: "50%",
+                            boxSizing: "border-box",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            background: tone.bg,
+                            color: tone.fg,
+                            border: `${step.state === "wait" ? "1.5px dashed" : "2px solid"} ${tone.bd}`,
+                          }}
+                        >
+                          {step.state === "done" || step.state === "late" ? <NvIcon name="check" size={12} strokeWidth={2.25} inline={false} /> : step.state === "now" ? <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--nv-ok-fill, #3C7D50)" }} /> : ""}
+                        </span>
+                      )}
+                    </span>
+                    <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 12.5, fontWeight: step.kind === "punch" ? 700 : 600, color: step.kind === "punch" ? "var(--nv-ink)" : "var(--nv-ink2)" }}>{step.label}</span>
+                      <span style={{ fontSize: 11, color: step.state === "late" ? "var(--nv-warn-ink)" : "var(--nv-muted)", lineHeight: 1.5 }}>{step.note}</span>
+                      {step.sub ? (
+                        <span data-break-hint style={{ fontSize: 11, color: "var(--nv-ink3, var(--nv-muted))", lineHeight: 1.6, display: "inline-flex", gap: 5, alignItems: "baseline" }}>
+                          <NvIcon name="prayer" size={11} />
+                          <span>{step.sub}</span>
+                        </span>
+                      ) : null}
+                      {step.hint ? <RightHint ar={ar} hint={step.hint} style={{ alignSelf: "flex-start" }} /> : null}
+                    </span>
+                    <span style={{ whiteSpace: "nowrap", paddingTop: 1 }}>
+                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: step.kind === "punch" ? 15 : 13, fontWeight: step.kind === "punch" ? 700 : 500, color: step.value === "—" ? "var(--nv-mute-fill, #C5CEC9)" : step.kind === "punch" ? "var(--nv-ink)" : "var(--nv-ink2)" }}>{clockText(step.value)}</span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : (
+            <div className="nv-att-well" style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.8 }}>
+              {onLeaveToday
+                ? (ar ? "إجازة معتمدة اليوم — لا بصمة ولا يُحتسب غياب." : "Approved leave today — no punch and no absence.")
+                : (ar ? "لا وردية منشورة لك اليوم. البصمة تُفتح حين تُنشر ورديتك في جدول الدوام." : "No published shift for you today. The punch opens once your shift is published.")}
+              {" "}
+              <Link to="/app/shifts" style={{ color: "var(--nv-ok-ink)", fontWeight: 700, textDecoration: "none" }}>{ar ? "جدولي ←" : "My roster →"}</Link>
+            </div>
+          )}
+
+          {otLine ? (
+            <div data-ot-auto={otLine.open ? "open" : "decided"} style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontSize: 12, lineHeight: 1.7, color: "var(--nv-ink2)" }}>
+              <span>
+                {ar ? "إضافي اليوم " : "Overtime today "}
+                <span dir="ltr" style={{ ...MONO, fontWeight: 700 }}>{otLine.clock}</span>
+                {ar ? ` — سُجّل تلقائياً (المادة ${otLine.article}) · ${otLine.status}` : ` — recorded automatically (Art. ${otLine.article}) · ${otLine.status}`}
+              </span>
+              <Link to="/app/requests" style={{ color: "var(--nv-ok-ink)", fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>{ar ? "طلباتي ›" : "My requests ›"}</Link>
+            </div>
+          ) : null}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 12, borderTop: "1px solid var(--nv-line2, #EEF1EF)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink2)" }}>
+                {ar ? "المنجز اليوم" : "Worked today"}
+                {openPastEnd ? <span data-worked-capped style={{ fontWeight: 500, color: "var(--nv-warn-ink)" }}>{ar ? " · بانتظار الانصراف" : " · awaiting checkout"}</span> : null}
+              </span>
+              <span style={{ whiteSpace: "nowrap" }}>
+                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: 13, fontWeight: 700, color: "var(--nv-ink)" }}>{inn ? worked.label : "0:00"} / {targetLabel}</span>
+              </span>
+            </div>
+            <div style={{ height: 8, borderRadius: 999, background: "var(--nv-line2, #EEF1EF)", overflow: "hidden", position: "relative" }}>
+              <div style={{ height: "100%", width: `${inn ? dayPct : 0}%`, background: done ? "var(--nv-ok-fill, #3C7D50)" : "var(--nv-warn-fill, #C8A45A)", borderRadius: 999 }} />
+              {flexOn && band?.targetMin ? flexDay.rows.map((row, i) => (
+                <span
+                  key={`brk-bar-${i}`}
+                  data-break-bar={row.source}
+                  title={ar ? `راحة ${row.start}–${row.end || "…"}${row.source === "assumed" ? " · مفترضة" : ""}` : `Break ${row.start}–${row.end || "…"}${row.source === "assumed" ? " · assumed" : ""}`}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    bottom: 0,
+                    insetInlineStart: `${Math.max(0, Math.min(100, ((row.startMin - band.start) / band.targetMin) * 100))}%`,
+                    width: `${Math.max(0, Math.min(100, ((Math.max(row.startMin, row.endMin ?? row.startMin) - row.startMin) / band.targetMin) * 100))}%`,
+                    background: row.source === "assumed"
+                      ? "repeating-linear-gradient(45deg,var(--nv-mute-fill, #C5CEC9) 0 3px,transparent 3px 6px)"
+                      : "repeating-linear-gradient(45deg,var(--nv-card, #fff) 0 3px,transparent 3px 6px)", // a break cut into the presence bar
+                    opacity: 0.85,
+                  }}
+                />
+              )) : null}
+              {band?.label ? (band.windows?.length ? band.windows : [band]).map((win, wi) => (
+                <span
+                  key={`brk-bar-${wi}`}
+                  title={ar ? `راحة ${win.start ? `${win.start}–${win.end}` : band.label}` : `Break ${win.start ? `${win.start}–${win.end}` : band.label}`}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    bottom: 0,
+                    insetInlineStart: `${win.leftPct}%`,
+                    width: `${win.widthPct}%`,
+                    background: "repeating-linear-gradient(45deg,var(--nv-card, #fff) 0 3px,transparent 3px 6px)", // a break cut into the presence bar
+                    opacity: 0.85,
+                  }}
+                />
+              )) : null}
+            </div>
+            <span style={{ fontSize: 10.5, color: "var(--nv-ink3, var(--nv-muted))" }}>
+              {flexOn
+                ? (flexDay.rows.length
+                  ? (flexDay.assumed
+                    ? (flexDay.assumed.fromPlan
+                      ? (ar ? "الجزء المخطّط راحتك كما حددتها — لا تُحسب من ساعات عملك (المادة 102)." : "The hatched part is your break as you set it — not counted as work (Art. 102).")
+                      : (ar ? "الجزء المخطّط راحتك النظامية — لا تُحسب من ساعات عملك (المادة 102)." : "The hatched part is your statutory rest — not counted as work (Art. 102)."))
+                    : (ar ? "الجزء المخطّط راحتك كما بصمتها — لا تُحتسب ساعات عمل." : "The hatched part is your break as punched — not counted as work."))
+                  : (ar ? "راحتك النظامية 30 دقيقة قبل أن تكمل 5 ساعات — لا تُحتسب ساعات عمل." : "Your statutory 30-minute rest before five hours — not counted as work."))
+                : band?.label
+                  ? (ar ? "الجزء المخطّط هو الراحة — لا تُحتسب ساعات عمل." : "The hatched part is the break — not counted as work.")
+                  : (ar ? "راحة الوردية لا تُحسب من ساعات عملك" : "Shift rest is not counted as working time")}
+              {nursingCredit.minutes ? (
+                <span data-nursing-credit={nursingCredit.minutes}>
+                  {ar ? " · يشمل ساعة الرضاعة " : " · includes the nursing hour "}
+                  <span dir="ltr" style={{ ...MONO, color: "var(--nv-ink)" }}>{nursingCredit.minutes}</span>
+                  {ar ? " د (م 154)" : " min (Art. 154)"}
+                </span>
+              ) : null}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: "12px 22px 16px", display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid var(--nv-line2, #EEF1EF)", background: "var(--nv-soft, #FAFBFA)" }}>
         <button
           type="button"
           onClick={() => setManualOpen((open) => !open)}
+          aria-expanded={manualOpen}
           style={{
-            marginTop: 4,
             alignSelf: "flex-start",
             fontFamily: "inherit",
             fontSize: 12,
@@ -549,6 +1503,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           <ManualPunchRequest
             ar={ar}
             phase={phase}
+            date={attDay || dutyDateKey}
             companyId={company?.id}
             employee={currentUser}
             attendance={attendance}
@@ -565,8 +1520,57 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           />
         ) : null}
       </div>
+      {dockOnPhone && (orbReady || loading) && typeof document !== "undefined" ? createPortal(
+        <div
+          className="nv-punch-dock"
+          data-punch-dock="1"
+          dir={ar ? "rtl" : "ltr"}
+          style={{ bottom: dockBottom ? dockBottom + 10 : "calc(10px + env(safe-area-inset-bottom, 0px))" }}
+        >
+          <button
+            type="button"
+            onClick={orbClick}
+            disabled={punchBlocked}
+            style={{
+              fontFamily: "inherit",
+              width: "100%",
+              minHeight: 54,
+              border: "none",
+              borderRadius: 14,
+              background: phase === "awaiting_out" ? "var(--nv-navy)" : "var(--nv-ok-fill, #3C7D50)",
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 10,
+              padding: "8px 16px",
+              cursor: punchBlocked ? "default" : "pointer",
+              boxShadow: "0 10px 26px rgba(6,61,38,.28)",
+            }}
+          >
+            {loading
+              ? <Loader2 style={{ width: 20, height: 20, animation: "spin 1s linear infinite" }} />
+              : phase === "awaiting_out"
+                ? <LogOut style={{ width: 20, height: 20 }} strokeWidth={1.9} />
+                : <LogIn style={{ width: 20, height: 20 }} strokeWidth={1.9} />}
+            <strong style={{ fontSize: 17, fontWeight: 700 }}>{orbLabel}</strong>
+            <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.85, whiteSpace: "nowrap" }}>{orbSub}</span>
+          </button>
+        </div>,
+        document.body,
+      ) : null}
     </section>
   );
+}
+
+/** A stored «late» row that sits inside her Art. 154 nursing minutes at the start (the compact card). */
+function nursingExcusedLate(user, data, attendance, shift) {
+  if (!attendance?.check_in_at || !shift?.start) return false;
+  const employee = (data?.employees || []).find((row) => String(row.id) === String(user?.id)) || user;
+  const allow = nursingHourOn(employee, String(attendance.date || toRiyadhDateKey()).slice(0, 10))?.startMinutes || 0;
+  const start = punchClockMinutes(shift.start);
+  const inM = punchClockMinutes(attendance.check_in_at);
+  return !!allow && start != null && inM != null && inM - start <= allow;
 }
 
 function parseHm(value) {
@@ -575,56 +1579,194 @@ function parseHm(value) {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
-function breakBand(shift) {
+/** The roster's (first) break as a band on the day bar — the same window `rosterBreakWindows` places. */
+export function breakBand(shift, onDate) {
   const start = parseHm(shift?.start);
   const end = parseHm(shift?.end);
   if (start == null || end == null) return null;
   let span = end - start;
   if (span <= 0) span += 1440;
-  const rest = shift?.restMinutes == null ? (span > 5 * 60 ? 30 : 0) : Math.max(0, Number(shift.restMinutes) || 0);
-  if (!rest || span <= 5 * 60) {
-    return { leftPct: 0, widthPct: 0, label: "", targetMin: span, targetLabel: `${Math.floor(span / 60)}:${String(span % 60).padStart(2, "0")}` };
-  }
-  const offset = Math.round((span - rest) / 2);
-  const fmt = (mins) => {
-    const clock = (start + mins) % 1440;
-    return `${String(Math.floor(clock / 60)).padStart(2, "0")}:${String(clock % 60).padStart(2, "0")}`;
-  };
+  const targetLabel = `${Math.floor(span / 60)}:${String(span % 60).padStart(2, "0")}`;
+  const all = rosterBreakWindows(shift, onDate);
+  const w = all[0];
+  if (!w) return { leftPct: 0, widthPct: 0, label: "", targetMin: span, targetLabel, start, windows: [] };
+  // Every rest period of the day (Art. 101 may need more than one) — the first keeps the old single fields.
+  const windows = all.map((row) => ({ from: row.from, minutes: row.minutes, start: row.start, end: row.end, leftPct: (row.from / span) * 100, widthPct: (row.minutes / span) * 100 }));
   return {
-    leftPct: (offset / span) * 100,
-    widthPct: (rest / span) * 100,
-    label: `${fmt(offset)}–${fmt(offset + rest)}`,
-    rest,
+    leftPct: (w.from / span) * 100,
+    widthPct: (w.minutes / span) * 100,
+    label: windows.map((row) => `${row.start}–${row.end}`).join(" · "),
+    rest: windows.reduce((sum, row) => sum + row.minutes, 0),
     start,
-    offset,
+    offset: w.from,
     targetMin: span,
-    targetLabel: `${Math.floor(span / 60)}:${String(span % 60).padStart(2, "0")}`,
+    targetLabel,
+    windows,
   };
 }
 
-function workedClock(checkIn, checkOut, now, band) {
+/**
+ * «المنجز اليوم»: presence minus the rest. A flex day (`flexDay`, resolveDayBreaks) subtracts its
+ * actual break punches — the open one up to now — or the assumed one; otherwise the roster's band.
+ */
+export function workedClock(checkIn, checkOut, now, band, flexDay = null) {
   if (!checkIn) return { label: "0:00", minutes: 0 };
   const start = new Date(checkIn).getTime();
   const end = checkOut ? new Date(checkOut).getTime() : now;
   let minutes = Math.max(0, Math.round((end - start) / 60000));
-  if (band?.rest) {
-    const inMin = new Date(checkIn).getHours() * 60 + new Date(checkIn).getMinutes();
+  if (flexDay?.flex) {
+    const rest = (flexDay.rows || []).reduce((sum, row) => sum + Math.max(0, (row.endMin ?? row.startMin) - row.startMin), 0);
+    minutes = Math.max(0, minutes - rest);
+  } else if (band?.rest) {
+    // On the Riyadh clock, never the device's.
+    const inMin = riyadhMinutesOf(checkIn);
     const outDate = checkOut ? new Date(checkOut) : new Date(now);
-    const outMin = outDate.getHours() * 60 + outDate.getMinutes() + (outDate.getDate() !== new Date(checkIn).getDate() ? 1440 : 0);
-    const breakStart = band.start + band.offset;
-    const breakEnd = breakStart + band.rest;
-    const overlap = Math.max(0, Math.min(outMin, breakEnd) - Math.max(inMin, breakStart));
+    const outMin = riyadhMinutesOf(outDate) + (toRiyadhDateKey(outDate) !== toRiyadhDateKey(checkIn) ? 1440 : 0);
+    const list = band.windows?.length ? band.windows : [{ from: band.offset, minutes: band.rest }];
+    const overlap = list.reduce((sum, row) => {
+      const breakStart = band.start + row.from;
+      const breakEnd = breakStart + row.minutes;
+      return sum + Math.max(0, Math.min(outMin, breakEnd) - Math.max(inMin, breakStart));
+    }, 0);
     minutes = Math.max(0, minutes - overlap);
   }
   return { label: `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`, minutes };
 }
 
-const REQ_REASONS_AR = ["خارج النطاق", "تعذّر الموقع", "عمل ميداني", "سبب آخر"];
-const REQ_REASONS_EN = ["Outside range", "Location failed", "Field work", "Other"];
+/** «مسار اليوم» rows of a flex day: the window as a range, then each punched part or the assumed one. */
+export function flexSteps(day, { ar = true, hint = null, plan = null } = {}) {
+  const flex = day?.flex;
+  if (!flex) return [];
+  // No «نافذة الراحة» row: the break's time is his to write (card «وقت راحتك»), so the day shows only what is
+  // fixed — his planned parts, his punched parts, or the assumed one. The five-hour mark says the limit.
+  const steps = [];
+  const parts = day.rows.filter((row) => row.source === "punch");
+  // His own plan, before he punches it: «راحتك المخطّطة» in time order (one row per part).
+  if (!parts.length && plan?.ok) {
+    // A part already under way is shown by its assumed row below; the parts still ahead stay as planned.
+    const begun = new Set(day.rows.filter((row) => row.source === "assumed").map((row) => row.startMin));
+    plan.rows.forEach((row, i) => !begun.has(row.startMin) && steps.push({
+      key: `brk-plan-${i}`,
+      kind: "plan",
+      at: row.startMin,
+      label: plan.rows.length > 1 ? (ar ? `راحتك المخطّطة · الجزء ${i + 1}` : `Planned break · part ${i + 1}`) : (ar ? "راحتك المخطّطة" : "Your planned break"),
+      note: ar ? `${minutesAr(row.minutes)} اخترتها أنت (المادة 101) — نخبرك حين تبدأ، بلا بصمة` : `${row.minutes} min you chose (Art. 101) — we tell you when it starts, no punch`,
+      value: `${row.start}–${row.end}`,
+    }));
+  }
+  day.rows.forEach((row, i) => {
+    if (row.source === "assumed") {
+      steps.push({
+        key: `brk-assumed-${i}`,
+        kind: "plan",
+        assumed: !row.fromPlan,
+        at: row.startMin,
+        label: row.fromPlan ? (ar ? "راحتك" : "Your break") : (ar ? "راحتك النظامية" : "Your statutory rest"),
+        note: row.fromPlan
+          ? (ar ? "في الوقت الذي حددته — تُحتسب بلا بصمة، ولا تُحسب من عملك" : "At the time you set — counted without a punch, not as work")
+          : (ar ? `${minutesAr(row.minutes)} للراحة والصلاة والطعام (المادة 101) — لا تُحسب من عملك (المادة 102)، بلا بصمة` : `${row.minutes} min for rest, prayer and food (Art. 101) — not counted as work (Art. 102), no punch`),
+        value: `${row.start}–${row.end}`,
+      });
+      return;
+    }
+    const n = parts.indexOf(row) + 1;
+    const short = !row.open && row.minutes < flex.minPart;
+    // A closed part that carried the day past its break is a late return — said on the row, in minutes.
+    const before = parts.slice(0, n - 1).reduce((sum, part) => sum + (Number(part.minutes) || 0), 0);
+    const over = !row.open ? Math.max(0, before + (Number(row.minutes) || 0) - Math.max(before, Number(flex.minutes) || 0)) : 0;
+    steps.push({
+      key: `brk-${i}`,
+      kind: "punch",
+      at: row.startMin,
+      state: row.open ? (day.overMinutes > 0 ? "late" : "now") : (short || over > 0) ? "late" : "done",
+      label: parts.length > 1 ? (ar ? `راحتك · الجزء ${n}` : `Your break · part ${n}`) : (ar ? "راحتك" : "Your break"),
+      note: row.open
+        ? (ar ? `مفتوحة منذ ${row.start} · ${minutesAr(row.minutes)}` : `Open since ${row.start} · ${row.minutes} min`)
+        : over > 0
+          ? (ar ? `ببصمة · ${minutesAr(row.minutes)} — عودة متأخرة ${minutesAr(over)} فوق راحتك (${minutesAr(flex.minutes)})` : `Punched · ${row.minutes} min — back ${over} min late over your ${flex.minutes}-min break`)
+          : (ar ? `ببصمة · ${minutesAr(row.minutes)}${short ? " · قصيرة" : ""}` : `Punched · ${row.minutes} min${short ? " · short" : ""}`),
+      value: row.open ? `${row.start}–…` : `${row.start}–${row.end}`,
+    });
+  });
+  return steps;
+}
 
-function ManualPunchRequest({
+/** «بدأت راحتي» / «أنهيت راحتي» — a plain button inside the card; a disabled one names its reason. */
+function BreakPunch({ ar, day, gate, busy, error, onPunch, leftMs = null, buttonRef = null }) {
+  if (!gate) return null;
+  const open = !!day.open;
+  const label = open ? (ar ? "أنهيت راحتي" : "I ended my break") : (ar ? "بدأت راحتي" : "I started my break");
+  const disabled = busy || !gate.ok;
+  const clockAt = (mins) => {
+    const m = ((Math.round(mins) % 1440) + 1440) % 1440;
+    return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  };
+  const reason = !gate.ok
+    ? `${ar ? gate.reason : gate.reasonEn}${gate.error === "BREAK_BELOW_MIN" && gate.endsAtMin != null ? (ar ? ` — تنهيها من ${clockAt(gate.endsAtMin)}` : ` — you can end it from ${clockAt(gate.endsAtMin)}`) : ""}`
+    : gate.short
+      ? (ar ? `${gate.reason} — إن أنهيتها الآن تُسجَّل راحة قصيرة.` : `${gate.reasonEn} — ending now records a short break.`)
+      : gate.warn
+        ? (ar ? gate.warn : gate.warnEn)
+        : "";
+  const remaining = !open && day.punched.length && day.flex.splitEffective && day.remaining > 0 && day.windowState !== "closed"
+    ? (ar ? `باقٍ ${minutesAr(day.remaining)} من راحتك` : `${day.remaining} min of your break left`)
+    : "";
+  // The live countdown («باقٍ 12:34») — reaching 0:00 the minute «انتهت راحتك» is sent.
+  const running = open
+    ? (leftMs != null && leftMs > 0
+      ? (ar
+        ? <>في راحتك منذ <span dir="ltr" style={MONO}>{day.open.start}</span> · باقٍ <span dir="ltr" data-break-countdown="flex" style={{ ...MONO, fontWeight: 700 }}>{countdownLabel(leftMs)}</span></>
+        : <>On break since <span dir="ltr" style={MONO}>{day.open.start}</span> · <span dir="ltr" data-break-countdown="flex" style={{ ...MONO, fontWeight: 700 }}>{countdownLabel(leftMs)}</span> left</>)
+      : leftMs != null
+        ? <span style={{ color: "var(--nv-warn-ink)", fontWeight: 600 }}>{ar ? "انتهت راحتك — عُد للعمل واضغط «أنهيت راحتي»." : "Your break is over — back to work, then tap “I ended my break”."}</span>
+        : (ar ? <>في راحتك منذ <span dir="ltr" style={MONO}>{day.open.start}</span> · {minutesAr(day.runningMinutes)}</> : <>On break since <span dir="ltr" style={MONO}>{day.open.start}</span> · {day.runningMinutes} min</>))
+    : day.assumedRunning && day.assumed
+      // None punched: the assumed break counts down like a punched one; «بدأت راحتي» replaces it.
+      ? (ar
+        ? <span data-break-assumed-running="1">راحتك <span dir="ltr" style={MONO}>{day.assumed.start}–{day.assumed.end}</span> تُحتسب تلقائياً{leftMs != null && leftMs > 0 ? <> · باقٍ <span dir="ltr" data-break-countdown="flex" style={{ ...MONO, fontWeight: 700 }}>{countdownLabel(leftMs)}</span></> : null}</span>
+        : <span data-break-assumed-running="1">Your break <span dir="ltr" style={MONO}>{day.assumed.start}–{day.assumed.end}</span> counts automatically{leftMs != null && leftMs > 0 ? <> · <span dir="ltr" data-break-countdown="flex" style={{ ...MONO, fontWeight: 700 }}>{countdownLabel(leftMs)}</span> left</> : null}</span>)
+      : null;
+  return (
+    <div data-break-punch={open ? "open" : "closed"} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, maxWidth: 280, textAlign: "center" }}>
+      <button
+        type="button"
+        ref={buttonRef}
+        data-break-action={open ? "end" : "start"}
+        onClick={onPunch}
+        disabled={disabled}
+        aria-describedby={reason ? "nv-break-reason" : undefined}
+        style={{
+          ...ui.btnSecondary,
+          height: 34,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          fontWeight: 600,
+          color: disabled ? "var(--nv-muted)" : "var(--nv-ink)",
+          opacity: disabled ? 0.6 : 1,
+          cursor: disabled ? "not-allowed" : "pointer",
+        }}
+      >
+        {busy ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <NvIcon name="clock" size={14} inline={false} />}
+        {label}
+      </button>
+      {running ? <span style={{ fontSize: 11.5, color: "var(--nv-ink2)" }}>{running}</span> : null}
+      {remaining ? <span data-break-remaining style={{ fontSize: 11.5, color: "var(--nv-ink2)", fontWeight: 600 }}>{remaining}</span> : null}
+      {reason ? <span id="nv-break-reason" data-break-reason={gate.error || (gate.warn ? "BREAK_LEFTOVER_SHORT" : "")} style={{ fontSize: 11, lineHeight: 1.6, color: gate.short || gate.warn ? "var(--nv-warn-ink)" : "var(--nv-muted)" }}>{reason}</span> : null}
+      {error ? <span style={{ fontSize: 11, lineHeight: 1.6, color: "var(--nv-bad-ink)" }}>{error}</span> : null}
+    </div>
+  );
+}
+
+const MONO = { fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", color: "var(--nv-ink)" };
+
+const REQ_REASONS_AR = ["نسيت البصمة", "خارج النطاق", "تعذّر الموقع", "عمل ميداني", "سبب آخر"];
+const REQ_REASONS_EN = ["Forgot to punch", "Outside range", "Location failed", "Field work", "Other"];
+
+export function ManualPunchRequest({
   ar,
   phase,
+  date = "",
   companyId,
   employee,
   attendance,
@@ -641,12 +1783,16 @@ function ManualPunchRequest({
 }) {
   const reasons = ar ? REQ_REASONS_AR : REQ_REASONS_EN;
   const punchType = phase === "awaiting_out" ? "checkout_fix" : "manual_punch";
-  const pending = (employee?.otherRequests || []).find((row) => row.type === punchType && (row.status || "pending") === "pending");
-  const decided = (employee?.otherRequests || []).find((row) => row.type === punchType && (row.status === "approved" || row.status === "rejected"));
+  const day = date || toRiyadhDateKey();
+  // A named day (سجلي) reads only that day's request; today's card keeps its original reading.
+  const sameDay = (row) => !date || String(row.date || "").slice(0, 10) === date;
+  const pending = (employee?.otherRequests || []).find((row) => row.type === punchType && (row.status || "pending") === "pending" && sameDay(row));
+  const decided = (employee?.otherRequests || []).find((row) => row.type === punchType && (row.status === "approved" || row.status === "rejected") && sameDay(row));
   const noteReady = String(reqNote || "").trim().length >= 3;
   const timeReady = !!parsePunchClock(reqTime);
-  const canSend = noteReady && timeReady;
-  const reasonLabel = reqReason || reasons[0];
+  // No reason is preselected — the worker names it (a wrong default would travel to the manager).
+  const reasonLabel = reasons.includes(reqReason) ? reqReason : "";
+  const canSend = noteReady && timeReady && !!reasonLabel;
 
   const send = () => {
     if (!companyId || !employee?.id) return;
@@ -654,7 +1800,7 @@ function ManualPunchRequest({
     const gate = checkSubmitOtherRequestGate({
       type: phase === "awaiting_out" ? "checkout_fix" : "manual_punch",
       reason,
-      date: toRiyadhDateKey(),
+      date: day,
       time: reqTime,
       employee,
       attendance,
@@ -667,7 +1813,7 @@ function ManualPunchRequest({
     submitOtherRequest(companyId, employee.id, {
       type: phase === "awaiting_out" ? "checkout_fix" : "manual_punch",
       reason,
-      date: toRiyadhDateKey(),
+      date: day,
       time: reqTime,
     });
     setReqNote("");
@@ -783,10 +1929,50 @@ function ManualPunchRequest({
               ? (ar ? "أرسل الطلب للمدير" : "Send to the manager")
               : !timeReady
                 ? (phase === "awaiting_out" ? (ar ? "حدد وقت الانصراف." : "Set the checkout time.") : (ar ? "حدد وقت الحضور." : "Set the check-in time."))
-                : (ar ? "اكتب تفصيل السبب أولاً" : "Write the reason first")}
+                : !reasonLabel
+                  ? (ar ? "اختر السبب" : "Pick the reason")
+                  : (ar ? "اكتب تفصيل السبب أولاً" : "Write the reason first")}
           </button>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The same manual-punch / checkout-fix request, for a named day (سجلي → اطلب تصحيح).
+ * Owns its own form state; the gate and the store call are the card's.
+ */
+export function ManualPunchRequestBox({ ar, date, attendance, companyId, employee, onLeave = false }) {
+  const { refresh } = useAuth();
+  const [reqTime, setReqTime] = useState(() => {
+    const at = attendance?.check_in_at || attendance?.checkInAt;
+    return at && !(attendance?.check_out_at || attendance?.checkOutAt) ? "" : riyadhNowClock();
+  });
+  const [reqReason, setReqReason] = useState("");
+  const [reqNote, setReqNote] = useState("");
+  const [reqError, setReqError] = useState("");
+  const inAt = attendance?.check_in_at || attendance?.checkInAt;
+  const outAt = attendance?.check_out_at || attendance?.checkOutAt;
+  const phase = !inAt ? "awaiting_in" : !outAt ? "awaiting_out" : "done";
+  return (
+    <ManualPunchRequest
+      ar={ar}
+      phase={phase}
+      date={date}
+      companyId={companyId}
+      employee={employee}
+      attendance={attendance}
+      onLeave={onLeave}
+      reqTime={reqTime}
+      setReqTime={setReqTime}
+      reqReason={reqReason}
+      setReqReason={setReqReason}
+      reqNote={reqNote}
+      setReqNote={setReqNote}
+      reqError={reqError}
+      setReqError={setReqError}
+      refresh={refresh}
+    />
   );
 }

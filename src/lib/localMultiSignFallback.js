@@ -204,7 +204,7 @@ export function invokeLocalMultiSign(body = {}, { actor, employees } = {}) {
     const next = {
       ...rec,
       lastActivityAt: now,
-      auditTrail: [...(rec.auditTrail || []), { type: "reminder_sent", at: now, actorName: actor?.name, targetName: signer.name, targetEmail: signer.email }],
+      auditTrail: [...(rec.auditTrail || []), { type: "reminder_sent", at: now, actorName: actor?.name, targetName: signer.name, targetEmail: signer.email, auto: body.auto === true }],
     };
     write(companyId, store.map((row) => (row.id === rec.id ? next : row)));
     return { ok: true, signerEmail: signer.email, local: true };

@@ -2,6 +2,8 @@
 
 import { citeRule, ruleValue } from "./laborRules.js";
 import { countDaysExcludingOfficialHolidays } from "./ummAlQuraCalendar.js";
+import { compareToRegulation, regulationRef, regulationStanding, regulationStepFor } from "./workRegulation.js";
+import { ART80 } from "./dutyYears.js";
 
 export const DISCIPLINE_STEPS = [
   { id: "incident", ar: "واقعة", en: "Incident" },
@@ -67,8 +69,142 @@ export const DISCIPLINE_PENALTY_KINDS = [
   { id: "increment", limb: "3", ar: "حرمان من العلاوة أو تأجيلها لمدة لا تزيد على سنة", en: "Withhold or defer an increment for up to one year", days: [0], deferMonths: 12 },
   { id: "promotion", limb: "4", ar: "تأجيل الترقية مدة لا تزيد على سنة", en: "Defer promotion for up to one year", days: [0], deferMonths: 12 },
   { id: "suspend", limb: "5", ar: "الإيقاف عن العمل مع الحرمان من الأجر", en: "Unpaid suspension from work", days: [1, 2, 3, 4, 5] },
-  { id: "dismiss", limb: "6", ar: "فصل من العمل في الحالات المقررة في النظام", en: "Dismissal in the cases prescribed in the Law", days: [0] },
+  { id: "dismissal_with_award", limb: "6", ar: "الفصل من العمل مع المكافأة", en: "Dismissal with the end-of-service award", days: [0] },
+  { id: "dismiss", limb: "6", ar: "الفصل بدون مكافأة أو إشعار أو تعويض — حالات المادة 80", en: "Dismissal without award, notice or compensation — Article 80 cases", days: [0] },
 ];
+
+/**
+ * Labour Law Art. 80 — the only cases in which the employer may end the contract without the award,
+ * notice or compensation, "provided he gives the worker the opportunity to state his reasons for
+ * objecting to the dismissal". The ground is picked from this list, never written freely.
+ */
+export const ART80_GROUNDS = [
+  { id: "assault", para: 1, ar: "اعتداء على صاحب العمل أو المدير المسؤول أو أحد رؤسائه أو مرؤوسيه أثناء العمل أو بسببه", en: "Assault on the employer, the responsible manager, a superior or subordinate during or because of work" },
+  { id: "duties", para: 2, ar: "عدم أداء الالتزامات الجوهرية أو عدم إطاعة الأوامر المشروعة أو عدم مراعاة تعليمات السلامة المعلنة عمداً — رغم إنذاره كتابة", en: "Not performing essential obligations, disobeying lawful orders, or deliberately ignoring posted safety instructions — despite a written warning", warning: true },
+  { id: "conduct", para: 3, ar: "سلوك سيئ أو عمل مخل بالشرف أو الأمانة", en: "Bad conduct or an act against honour or integrity" },
+  { id: "loss", para: 4, ar: "فعل أو تقصير متعمد يقصد به إلحاق خسارة مادية بصاحب العمل — بشرط إبلاغ الجهات المختصة خلال 24 ساعة من العلم", en: "A deliberate act or omission meant to cause the employer material loss — provided the authorities are told within 24 hours", report24h: true },
+  { id: "forgery", para: 5, ar: "اللجوء إلى التزوير للحصول على العمل", en: "Forgery to obtain the job" },
+  { id: "probation", para: 6, ar: "معيّن تحت الاختبار", en: "Appointed on probation" },
+  { id: "absence", para: 7, ar: "الغياب دون سبب مشروع أكثر من 30 يوماً في السنة العقدية أو أكثر من 15 يوماً متتالية — بعد إنذار كتابي", en: "Absence without a legitimate reason for more than 30 days in a contract year or 15 consecutive days — after a written warning", absence: true },
+  { id: "position", para: 8, ar: "استغلال المركز الوظيفي بطريقة غير مشروعة للحصول على نتائج ومكاسب شخصية", en: "Unlawful use of the position for personal gain" },
+  { id: "secrets", para: 9, ar: "إفشاء الأسرار الصناعية أو التجارية الخاصة بالعمل", en: "Disclosing the work's industrial or commercial secrets" },
+];
+
+export function art80Ground(id) {
+  return ART80_GROUNDS.find((row) => row.id === String(id || "")) || null;
+}
+
+/** The absence figures for an Art. 80(7) dismissal from a dutyYears `art80Reading` (information only). */
+export function art80AbsenceFromReading(reading, mode = "consecutive") {
+  const part = mode === "intermittent" ? reading?.intermittent : reading?.consecutive;
+  return { mode, days: Number(part?.value) || 0, notice: part?.notice, limit: part?.limit };
+}
+
+function art80Fail(error, reason, reasonEn, day) {
+  return { ok: false, error, reason, reasonEn, cite: citeRule("eos.art80.cite", day) };
+}
+
+/**
+ * Art. 80 gate for a dismissal without award. `stage` "raise" checks the ground is from the list;
+ * "sign" also checks what the paragraph makes a condition:
+ *   - the worker was given the chance to object (a hearing on file),
+ *   - para 2: a prior written warning,
+ *   - para 4: the authorities were told within 24 hours,
+ *   - para 7: a written warning after 10 consecutive / 20 intermittent days, and more than 15 / 30 days absent.
+ * `art80` on the case: { mode, days, warnedAt, warnedAtDays, reportedAt, discoveredAt }.
+ */
+export function checkArt80DismissGate(caseRow, { today, stage = "sign" } = {}) {
+  const day = dateOnly(today) || todayRiyadh();
+  const ground = art80Ground(caseRow?.dismissGround);
+  if (!ground) {
+    return art80Fail(
+      "DISCIPLINE_DISMISS_GROUND",
+      "موقوف — الفصل بدون مكافأة لا يكون إلا في إحدى حالات المادة 80؛ اختر الحالة من القائمة.",
+      "Blocked — dismissal without award is only in one of the Article 80 cases; pick the case from the list.",
+      day,
+    );
+  }
+  if (stage !== "sign") return { ok: true, ground, cite: citeRule("eos.art80.cite", day) };
+  const a = caseRow?.art80 || {};
+  const heard = Boolean(String(caseRow?.hearingMinutes || "").trim() || dateOnly(caseRow?.hearingEndedAt) || dateOnly(caseRow?.objectionHeardAt));
+  if (!heard) {
+    return art80Fail(
+      "ART80_OBJECTION_REQUIRED",
+      "موقوف — لا فسخ بموجب المادة 80 قبل إتاحة الفرصة للعامل لإبداء أسباب معارضته للفسخ؛ أثبت سماعه في المحضر.",
+      "Blocked — no Article 80 dismissal before the worker is given the chance to state his objection; record the hearing.",
+      day,
+    );
+  }
+  if (ground.warning && !dateOnly(a.warnedAt)) {
+    return art80Fail(
+      "ART80_WARNING_REQUIRED",
+      "موقوف — الفقرة 2 من المادة 80 تشترط إنذار العامل كتابة قبل الفسخ؛ سجّل تاريخ الإنذار الكتابي.",
+      "Blocked — Article 80(2) requires a prior written warning; record its date.",
+      day,
+    );
+  }
+  if (ground.report24h) {
+    const knew = dateOnly(a.discoveredAt || caseRow?.discoveredAt);
+    const reported = dateOnly(a.reportedAt);
+    if (!reported || (knew && daysBetween(knew, reported) > 1)) {
+      return art80Fail(
+        "ART80_LOSS_REPORT",
+        "موقوف — الفقرة 4 من المادة 80 تشترط إبلاغ الجهات المختصة بالحادث خلال أربع وعشرين ساعة من العلم به.",
+        "Blocked — Article 80(4) requires reporting the incident to the authorities within 24 hours of knowing.",
+        day,
+      );
+    }
+  }
+  if (ground.absence) {
+    const mode = a.mode === "intermittent" ? "intermittent" : "consecutive";
+    const notice = mode === "intermittent" ? ART80.intermittentNotice : ART80.consecutiveNotice;
+    const limit = mode === "intermittent" ? ART80.intermittentLimit : ART80.consecutiveLimit;
+    const warnedAt = dateOnly(a.warnedAt);
+    if (!warnedAt) {
+      return art80Fail(
+        "ART80_ABSENCE_WARNING_REQUIRED",
+        `موقوف — يسبق الفصل إنذار كتابي بعد غياب ${notice} ${mode === "intermittent" ? "يوماً متقطعة" : "أيام متتالية"} (المادة 80/7)؛ سجّل تاريخ الإنذار.`,
+        `Blocked — dismissal must be preceded by a written warning after ${notice} ${mode} days of absence (Art. 80(7)).`,
+        day,
+      );
+    }
+    if (warnedAt > day) {
+      return art80Fail("ART80_ABSENCE_WARNING_FUTURE", "تاريخ الإنذار لا يكون بعد اليوم.", "The warning date cannot be after today.", day);
+    }
+    if (!(Number(a.warnedAtDays) >= notice)) {
+      return art80Fail(
+        "ART80_ABSENCE_WARNING_EARLY",
+        `موقوف — الإنذار يُوجَّه بعد بلوغ الغياب ${notice} ${mode === "intermittent" ? "يوماً في السنة العقدية" : "أيام متتالية"} (المادة 80/7).`,
+        `Blocked — the warning is given once absence reaches ${notice} ${mode} days (Art. 80(7)).`,
+        day,
+      );
+    }
+    if (!(Number(a.days) > limit)) {
+      return art80Fail(
+        "ART80_ABSENCE_UNDER_LIMIT",
+        `موقوف — الفصل للغياب يكون إذا زاد على ${limit} ${mode === "intermittent" ? "يوماً في السنة العقدية" : "يوماً متتالية"} (المادة 80/7).`,
+        `Blocked — absence dismissal needs more than ${limit} ${mode} days (Art. 80(7)).`,
+        day,
+      );
+    }
+  }
+  return { ok: true, ground, cite: citeRule("eos.art80.cite", day) };
+}
+
+/** Model regulation Art. 58(6): dismissal with the award rests on a legitimate reason, written on the case. */
+export function checkAwardDismissGate(caseRow, { today } = {}) {
+  const day = dateOnly(today) || todayRiyadh();
+  if (String(caseRow?.dismissGround || "").trim() || String(caseRow?.regulationClauseId || "").trim()) {
+    return { ok: true, cite: citeRule("discipline.penalties.cite", day) };
+  }
+  return {
+    ok: false,
+    error: "DISCIPLINE_AWARD_DISMISS_REASON",
+    reason: "الفصل مع المكافأة يكون لسبب مشروع لارتكاب المخالفة — اذكر بند اللائحة أو السبب المشروع (النموذج الموحد م58/6).",
+    reasonEn: "Dismissal with award rests on a legitimate reason for the offence — name the regulation clause or the reason (model regulation Art. 58(6)).",
+    cite: citeRule("discipline.penalties.cite", day),
+  };
+}
 
 const LISTED_KIND = new Set(DISCIPLINE_PENALTY_KINDS.map((row) => row.id));
 
@@ -86,6 +222,8 @@ export function listedPenaltyLabel(kindId, days = 0, ar = true) {
   if (!kind) return ar ? "جزاء" : "Sanction";
   const n = Number(days) || 0;
   if (kind.id === "fine") {
+    // A share of one day's wage, as the regulation's percentage steps read (e.g. 10%).
+    if (n > 0 && n < 1) return ar ? `غرامة ${Math.round(n * 100)}% من أجر يوم` : `Fine of ${Math.round(n * 100)}% of a day's wage`;
     if (n === 1) return ar ? "غرامة أجر يوم" : "Fine of one day's wage";
     if (n === 2) return ar ? "غرامة أجر يومين" : "Fine of two days' wage";
     return ar ? `غرامة أجر ${n} أيام` : `Fine of ${n} days' wage`;
@@ -118,9 +256,11 @@ export function resolvePenaltyKind(item) {
   if (id.startsWith("suspend")) return "suspend";
   if (id === "increment" || id === "increment_defer") return "increment";
   if (id === "promotion" || id === "promotion_defer") return "promotion";
+  if (id === "dismissal_with_award") return "dismissal_with_award";
   if (id === "dismiss") return "dismiss";
   if (id === "warning" || id === "caution") return "warning";
   const text = `${item?.penalty || ""} ${item?.penaltyLabel || ""}`;
+  if (/مع\s*(?:ال)?مكافأة|with (?:the )?award/i.test(text)) return "dismissal_with_award";
   if (/فصل|dismiss/i.test(text)) return "dismiss";
   if (/إيقاف|suspend/i.test(text)) return "suspend";
   if (/علاوة|increment/i.test(text)) return "increment";
@@ -177,6 +317,7 @@ export function penaltyRank(item) {
   if (kind === "fine") return 20 + days;
   if (kind === "increment" || kind === "promotion") return 40;
   if (kind === "suspend") return 50 + days;
+  if (kind === "dismissal_with_award") return 80;
   if (kind === "dismiss") return 90;
   return days;
 }
@@ -205,7 +346,8 @@ export function checkListedPenaltyGate(item, today) {
       cite: citeRule("discipline.fine.maxDays", day),
     };
   }
-  if (spec.days.length && !spec.days.includes(days) && !(days === 0 && spec.days.includes(0))) {
+  const regulationShare = kind === "fine" && days > 0 && days < 1;
+  if (!regulationShare && spec.days.length && !spec.days.includes(days) && !(days === 0 && spec.days.includes(0))) {
     return {
       ok: false,
       error: "DISCIPLINE_PENALTY_NOT_LISTED",
@@ -330,14 +472,9 @@ export function checkRaiseDisciplineGate({
   if (!listed.ok) return listed;
   const place = checkWorkplaceDisciplineGate(draft, { today: day });
   if (!place.ok) return place;
-  if (listed.kind === "dismiss" && !String(dismissGround || "").trim()) {
-    return {
-      ok: false,
-      error: "DISCIPLINE_DISMISS_GROUND",
-      reason: "الفصل لا يُفتح إلا بذكر الحالة المقررة في النظام — المادة 66 مع المادة 80 عند الفصل بغير مكافأة.",
-      reasonEn: "Dismissal does not open without the prescribed statutory case — Article 66, with Article 80 when dismissal is without award.",
-      cite: citeRule("eos.art80.cite", day),
-    };
+  if (listed.kind === "dismiss") {
+    const art80 = checkArt80DismissGate({ dismissGround }, { today: day, stage: "raise" });
+    if (!art80.ok) return art80;
   }
   const double = checkDisciplineDoubleFileGate(draft, { cases, today: day });
   if (!double.ok) return double;
@@ -370,6 +507,8 @@ export function deriveRaiseDisciplineChips({
   workConnected = "",
   cases = [],
   ar = true,
+  regulation = null,
+  clauseId = "",
 } = {}) {
   const day = dateOnly(today) || todayRiyadh();
   const kind = listedPenaltyKind(penaltyKind);
@@ -392,20 +531,61 @@ export function deriveRaiseDisciplineChips({
   let text66 = kind
     ? (ar ? `الجزاء من قائمة المادة ${art66}: ${kindName}.` : `Penalty on the Article ${art66} list: ${kindName}.`)
     : (ar ? (listed.reason || "—") : (listed.reasonEn || "—"));
-  if (kind?.id === "dismiss" && !String(dismissGround || "").trim()) {
-    state66 = "fail";
-    text66 = ar
-      ? "الفصل لا يُفتح إلا بذكر الحالة المقررة في النظام — المادة 66."
-      : "Dismissal does not open without the prescribed statutory case — Article 66.";
+  if (kind?.id === "dismiss") {
+    const art80 = checkArt80DismissGate({ dismissGround }, { today: day, stage: "raise" });
+    if (!art80.ok) {
+      state66 = "fail";
+      text66 = ar ? art80.reason : art80.reasonEn;
+    } else {
+      state66 = "warn";
+      text66 = ar
+        ? `المادة 80/${art80.ground.para}: ${art80.ground.ar}. لا يُوقَّع الفسخ قبل سماع معارضته${art80.ground.absence ? " والإنذار الكتابي بعد 10 أيام متتالية أو 20 متقطعة" : art80.ground.warning ? " والإنذار الكتابي السابق" : ""}.`
+        : `Art. 80(${art80.ground.para}): ${art80.ground.en}. Not signed before the worker's objection is heard.`;
+    }
   }
 
   const art67 = articleOf("discipline.listedOnly.cite");
-  const state67 = kind ? "pass" : "fail";
-  const text67 = kind
-    ? (ar ? "الجزاء وارد في لائحة تنظيم العمل المعتمدة." : "The penalty is in the adopted work-organization regulations.")
+  let state67 = kind ? "pass" : "fail";
+  let text67 = kind
+    ? (ar ? "الجزاء من قائمة النظام." : "The penalty is on the Law's list.")
     : (ar
-      ? "موقوف — لا يُوقَّع جزاء غير وارد في النظام أو في لائحة تنظيم العمل."
+      ? "موقوف — لا يُوقَّع جزاء غير وارد في النظام أو في لائحة تنظيم العمل."
       : "Blocked — no penalty may be imposed that is not in the Law or the work-organization regulations.");
+  if (kind && regulation) {
+    const own = regulation.source === "own";
+    const standing = regulationStanding(regulation, day);
+    const at = clauseId
+      ? regulationStepFor({ regulation, clauseId, cases, employeeId: employee?.id, today: day, cooloffDays: ruleValue("discipline.repeat.cooloffDays", day) || 180, ar })
+      : null;
+    if (!at) {
+      state67 = own ? "fail" : "warn";
+      text67 = own
+        ? (ar ? "موقوف — اختر بند المخالفة من لائحة تنظيم العمل المعتمدة؛ لا جزاء على مخالفة غير واردة فيها." : "Blocked — pick the offence clause from the approved regulation; no penalty for an offence it does not list.")
+        : (ar ? "لم تُسجَّل لائحة المنشأة المعتمدة بعد — اختر البند المقابل من النموذج الاسترشادي، وسجّل لائحتك من «لائحة الجزاءات»." : "The establishment's approved regulation is not recorded — pick the matching model clause, and record yours under the penalty list.");
+    } else {
+      const cmp = compareToRegulation(kind.id, days, at.step);
+      const ref = regulationRef(regulation, at.clause, ar);
+      const says = ar ? `${ref} — ${at.timeLabel}${at.lastAt ? ` (السابقة ${at.lastAtLabel})` : ""}: ${at.label}.` : `${ref} — ${at.timeLabel}: ${at.label}.`;
+      if (cmp === "harsher") {
+        state67 = own ? "fail" : "warn";
+        text67 = ar ? `${own ? "موقوف — " : ""}الجزاء المختار أشد مما تنص عليه اللائحة. ${says}` : `${own ? "Blocked — " : ""}The chosen penalty is harsher than the regulation. ${says}`;
+      } else if (cmp === "lighter") {
+        state67 = "warn";
+        text67 = ar ? `الجزاء المختار أخف مما تنص عليه اللائحة — يجوز. ${says}` : `The chosen penalty is lighter than the regulation — allowed. ${says}`;
+      } else {
+        text67 = says + (at.lapsed && at.time === 1 ? (ar ? " مضى 180 يوماً على السابقة فلا تشديد (المادة 68)." : " 180 days passed since the previous one — no increase (Art. 68).") : "");
+      }
+      if (own && standing.id === "announced" && state67 !== "fail") {
+        state67 = "fail";
+        text67 = ar
+          ? `موقوف — لائحة تنظيم العمل تسري على العمال من اليوم التالي لإعلانها (${standing.effectiveFrom}) — النموذج الموحد م72.`
+          : `Blocked — the regulation binds workers from the day after its announcement (${standing.effectiveFrom}) — model Art. 72.`;
+      } else if (own && standing.id === "draft" && state67 === "pass") {
+        state67 = "warn";
+        text67 = `${text67} ${ar ? "لم تُسجَّل واقعة إعلان اللائحة للعمال بعد (المادة 13) — أعلنها من «لائحة الجزاءات»." : "The regulation's announcement to the workers is not recorded yet (Art. 13)."}`;
+      }
+    }
+  }
 
   const max = ruleValue("discipline.charge.maxDays", day);
   const art69 = articleOf("discipline.charge.maxDays");
@@ -569,12 +749,13 @@ export function checkAdvanceDisciplineGate(caseRow, toStep, { files = [], appeal
     const cite = citeRule("discipline.decision.days", day);
     const days = ruleValue("discipline.decision.days", day);
     const appealed = dateOnly(caseRow.appealedAt);
-    if (appealed && pastChargeWindow(appealed, day, days)) {
+    // Model regulation Art. 71(1): the ruling is due within 15 days «عدا أيام العطل الرسمية».
+    if (appealed && pastHolidayExcludedWindow(appealed, day, days, laborCalendar)) {
       return {
         ok: false,
         error: "DISCIPLINE_RULING_LATE",
-        reason: `موقوف — البت في التظلم خلال ${days} يوماً من تقديمه (المادة 72). انتهت المهلة وللعامل الاعتراض أمام المحاكم العمالية.`,
-        reasonEn: `Blocked — the appeal must be decided within ${days} days of filing (Article 72). The window ended; the worker may challenge before the labour courts.`,
+        reason: `موقوف — البت في التظلم خلال ${days} يوماً من تقديمه عدا أيام العطل الرسمية (المادة 72 · النموذج الموحد م71). انتهت المهلة وللعامل الاعتراض أمام المحاكم العمالية.`,
+        reasonEn: `Blocked — the appeal must be decided within ${days} days of filing, excluding official holidays (Article 72 · model Art. 71). The window ended; the worker may challenge before the labour courts.`,
         cite,
       };
     }
@@ -666,7 +847,7 @@ export function buildDisciplineRegister({
   };
 }
 
-export function deriveDisciplineTimers(caseRow, today) {
+export function deriveDisciplineTimers(caseRow, today, laborCalendar) {
   const signed = String(caseRow?.signedAt || caseRow?.decidedAt || "").slice(0, 10);
   const appealed = String(caseRow?.appealedAt || "").slice(0, 10);
   const appealDays = ruleValue("discipline.appeal.internalDays", today);
@@ -676,22 +857,35 @@ export function deriveDisciplineTimers(caseRow, today) {
     appealWindowDays: appealDays,
     decisionDueDays: decideDays,
     appealOpen: Boolean(signed) && !appealed,
-    rulingLate: Boolean(appealed) && pastChargeWindow(appealed, day, decideDays),
+    rulingLate: Boolean(appealed) && pastHolidayExcludedWindow(appealed, day, decideDays, laborCalendar),
     cite: citeRule("discipline.appeal.internalDays", today),
   };
 }
 
-export function checkSignDisciplineGate(caseRow, { files = [], today, cases = [] } = {}) {
+export function checkSignDisciplineGate(caseRow, { files = [], today, cases = [], regulation = null } = {}) {
   const listed = checkListedPenaltyGate(caseRow, today);
   if (!listed.ok) return listed;
-  if (listed.kind === "dismiss" && !String(caseRow?.dismissGround || "").trim()) {
-    return {
-      ok: false,
-      error: "DISCIPLINE_DISMISS_GROUND",
-      reason: "الفصل لا يُوقَّع إلا بذكر الحالة المقررة في النظام (المادة 66).",
-      reasonEn: "Dismissal is not signed without the prescribed statutory case (Article 66).",
-      cite: citeRule("eos.art80.cite", today),
-    };
+  if (listed.kind === "dismiss") {
+    const art80 = checkArt80DismissGate(caseRow, { today, stage: "sign" });
+    if (!art80.ok) return art80;
+  }
+  if (listed.kind === "dismissal_with_award") {
+    const award = checkAwardDismissGate(caseRow, { today });
+    if (!award.ok) return award;
+  }
+  const dup = checkDisciplineDoubleFileGate(caseRow, { cases, today });
+  if (!dup.ok) return dup;
+  if (regulation?.source === "own" && caseRow?.regulationClauseId) {
+    const standing = regulationStanding(regulation, today);
+    if (standing.id === "announced") {
+      return {
+        ok: false,
+        error: "DISCIPLINE_REGULATION_NOT_IN_FORCE",
+        reason: `موقوف — لائحة تنظيم العمل تسري على العمال من اليوم التالي لإعلانها (${standing.effectiveFrom}) — النموذج الموحد م72.`,
+        reasonEn: `Blocked — the regulation binds workers from the day after its announcement (${standing.effectiveFrom}).`,
+        cite: citeRule("discipline.listedOnly.cite", today),
+      };
+    }
   }
   const place = checkWorkplaceDisciplineGate(caseRow, { today });
   if (!place.ok) return place;
@@ -700,6 +894,54 @@ export function checkSignDisciplineGate(caseRow, { files = [], today, cases = []
   const month = checkDisciplineMonthCapGate(caseRow, { cases, today });
   if (!month.ok) return month;
   return checkDisciplineRepeatGate(caseRow, { cases, today });
+}
+
+/**
+ * Model regulation Art. 68 · Law Art. 72 — how the decision reached the worker. In hand; or, if he
+ * refused or was absent, by registered mail to the address in his file, or to the personal e-mail in his
+ * contract / on record. Each carries all legal effects.
+ */
+export const DISCIPLINE_DELIVERY_METHODS = [
+  { id: "hand", ar: "سُلِّم للعامل يداً بيد ووقّع بالعلم", en: "Handed to the worker, who signed" },
+  { id: "registered_mail", ar: "بالبريد المسجّل على عنوانه المختار الثابت في ملفه (امتنع أو غاب)", en: "Registered mail to the address on file (refused or absent)" },
+  { id: "email", ar: "بالبريد الإلكتروني الشخصي الثابت في العقد أو المعتمد لدى المنشأة (امتنع أو غاب)", en: "Personal e-mail in the contract or on record (refused or absent)" },
+];
+
+export function checkDisciplineDeliveryGate({ method, at, ref = "", employee = null, signedAt = "", today } = {}) {
+  const day = dateOnly(today) || todayRiyadh();
+  const cite = citeRule("discipline.appeal.internalDays", day);
+  const row = DISCIPLINE_DELIVERY_METHODS.find((m) => m.id === method);
+  if (!row) {
+    return { ok: false, error: "DISCIPLINE_DELIVERY_METHOD", reason: "اختر طريقة إبلاغ القرار: يداً بيد، أو بريد مسجّل، أو بريد إلكتروني ثابت في الملف (المادة 72 · النموذج الموحد م68).", reasonEn: "Pick how the decision was delivered: in hand, registered mail, or e-mail on file (Art. 72 · model Art. 68).", cite };
+  }
+  const when = dateOnly(at);
+  if (!when || when > day || (dateOnly(signedAt) && when < dateOnly(signedAt))) {
+    return { ok: false, error: "DISCIPLINE_DELIVERY_DATE", reason: "تاريخ الإبلاغ يقع بين تاريخ توقيع القرار واليوم.", reasonEn: "The delivery date falls between the signing date and today.", cite };
+  }
+  const profile = employee?.profile || {};
+  if (method === "registered_mail" && !String(ref || "").trim()) {
+    return { ok: false, error: "DISCIPLINE_DELIVERY_REF", reason: "اكتب رقم الإرسال المسجّل.", reasonEn: "Enter the registered-mail tracking number.", cite };
+  }
+  if (method === "registered_mail" && !String(profile.address || profile.nationalAddress || employee?.address || "").trim()) {
+    return { ok: false, error: "DISCIPLINE_DELIVERY_ADDRESS", reason: "لا عنوان مختار ثابت في ملف العامل — سجّله في ملفه أولاً (النموذج الموحد م68).", reasonEn: "No chosen address on the worker's file (model Art. 68).", cite };
+  }
+  if (method === "email" && !String(profile.personalEmail || employee?.email || "").trim()) {
+    return { ok: false, error: "DISCIPLINE_DELIVERY_EMAIL", reason: "لا بريد إلكتروني شخصي ثابت في عقد العامل أو ملفه (النموذج الموحد م68).", reasonEn: "No personal e-mail on the worker's contract or file (model Art. 68).", cite };
+  }
+  return { ok: true, cite, method: row };
+}
+
+/** The «on repeat» line of the decision (model Art. 68). */
+export function disciplineRepeatLine(item, ar = true) {
+  const next = String(item?.regulationNext || "").trim();
+  if (next) {
+    return ar
+      ? `إن تكررت المخالفة نفسها خلال 180 يوماً من إبلاغك بهذا القرار: ${next} (المادة 68).`
+      : `If the same offence recurs within 180 days of this notice: ${next} (Art. 68).`;
+  }
+  return ar
+    ? "إن تكررت المخالفة خلال 180 يوماً من إبلاغك بهذا القرار يُطبَّق الجزاء الأشد التالي في لائحة تنظيم العمل (المادة 68)."
+    : "If the offence recurs within 180 days of this notice, the next, harsher step of the work regulation applies (Art. 68).";
 }
 
 export function fineLedgerBalance(ledger = []) {

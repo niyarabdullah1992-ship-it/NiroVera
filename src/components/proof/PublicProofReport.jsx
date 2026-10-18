@@ -2,7 +2,7 @@ import React from "react";
 import { Camera, FileSignature, MapPin, ShieldAlert, ShieldCheck } from "lucide-react";
 import ProofCardsSummary from "@/components/proof/ProofCardsSummary";
 import IdentityCard from "@/components/shared/IdentityCard";
-import { ACCENT, MUTED, NAVY, num } from "@/lib/platformStyles";
+import { MUTED, NAVY, num } from "@/lib/platformStyles";
 
 export default function PublicProofReport({ info, hashMatches, ar }) {
   const items = info.payload?.items || [];
@@ -14,7 +14,9 @@ export default function PublicProofReport({ info, hashMatches, ar }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <IdentityCard
         icon={hashMatches ? ShieldCheck : ShieldAlert}
-        rail={hashMatches ? ACCENT : "#DC2626"}
+        tone={hashMatches ? undefined : "bad"}
+        flag={ar ? "لا يطابق البصمة" : "Fingerprint mismatch"}
+        ar={ar}
         title={hashMatches ? (ar ? "إثبات عمل موثّق" : "Verified work record") : (ar ? "المحتوى لا يطابق البصمة المسجّلة" : "Content does not match the registered fingerprint")}
         subtitle={ar
           ? "بصمة SHA-256 محسوبة من محتوى هذا التقرير ومقارنة بالسجل وقت الإصدار."

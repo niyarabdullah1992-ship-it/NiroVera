@@ -1,7 +1,5 @@
 import { base44 } from "@/api/base44Client";
 import { getCompanyData } from "@/lib/store";
-import { expensesCall } from "@/lib/expensesApi";
-import { localInventoryCall } from "@/lib/localInventoryFallback";
 import { listLocalRangeAttendance, mergeAttendanceRangeRows } from "@/lib/localAttendanceFallback";
 
 function asList(value) {
@@ -68,22 +66,6 @@ export async function collectSectionReportData({
     });
   } catch {
     merged.personalAttendance = listLocalRangeAttendance(companyId, dateFrom, dateTo, merged);
-  }
-
-  try {
-    const exp = await expensesCall(session, "list");
-    merged.expenseClaims = asList(exp?.claims);
-  } catch {
-    merged.expenseClaims = asList(store.expenseClaims || data?.expenseClaims || data?.expenses);
-  }
-
-  try {
-    const inv = localInventoryCall(session, "list", { stations: merged.stations });
-    merged.inventoryItems = asList(inv?.items);
-    merged.stockMovements = asList(inv?.movements);
-  } catch {
-    merged.inventoryItems = asList(store.inventoryItems);
-    merged.stockMovements = asList(store.stockMovements);
   }
 
   return merged;

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useI18n } from "@/lib/i18n";
@@ -11,12 +11,15 @@ import {
   employeeWorkStationId,
   findStationById,
   rosterBranchPhrase,
-  rosterMineScopeCopy,
+  shiftTypeStyle,
   stationDisplayName,
 } from "@/lib/shiftWeek";
 import { isViewerOwnFile } from "@/lib/employeeFileView";
 import { FileSelfBadge } from "@/components/employees/ProfileHero";
 import PlatformDateField from "@/components/shared/PlatformDateField";
+import DateNav from "@/components/schedules/DateNav";
+import { dateFromKey } from "@/components/schedules/dutyLinks";
+import MyMonthLine, { myCellMark, useMyMonthDays } from "@/components/attendance/MyMonthLine";
 import {
   BROKE,
   CHAIN,
@@ -38,6 +41,33 @@ import {
   visibleOpsTasks,
   weekdaysOf,
 } from "@/lib/operationalCalendar";
+import NvIcon from "@/components/shared/NvIcon";
+import { minutesPhrase } from "@/lib/calendarDayFlags";
+import { KindIcon, NameLetter, shiftKindOf } from "@/components/schedules/rosterTile";
+import { getShiftOnDate } from "@/lib/attendanceDerivations";
+import { approvedLeaveOnDay } from "@/lib/leaveTypes";
+
+/** One joined control — the selected part filled dark green; the platform's formal toggle. */
+function Segmented({ items, value, onChange }) {
+  return (
+    <span role="tablist" className="nv-seg">
+      {items.map((item) => {
+        const on = item.id === value;
+        return (
+          <button key={item.id} type="button" role="tab" aria-selected={on} data-seg={item.id} onClick={() => onChange(item.id)} className={on ? "is-on" : ""}>
+            {item.label}
+          </button>
+        );
+      })}
+    </span>
+  );
+}
+
+/** «1:15» for overtime minutes in a narrow column. */
+function minutesShort(total) {
+  const n = Math.max(0, Math.round(Number(total) || 0));
+  return n >= 60 ? `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}` : String(n);
+}
 
 function SearchIcon() {
   return (
@@ -55,7 +85,7 @@ function KickerLine({ kicker }) {
   const parts = String(kicker || "").split("·").map((part) => part.trim()).filter(Boolean);
   return (
     <span style={{ fontSize: 11, letterSpacing: ".14em", color: OC.muted, display: "flex", gap: 7, alignItems: "center" }}>
-      {parts[0] ? <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{parts[0]}</span> : null}
+      {parts[0] ? <span dir={/[\u0600-\u06FF]/.test(parts[0]) ? undefined : "ltr"} style={{ fontFamily: /[\u0600-\u06FF]/.test(parts[0]) ? "inherit" : "'IBM Plex Mono', monospace"}}>{parts[0]}</span> : null}
       {parts[1] ? <span>·</span> : null}
       <span>{parts.slice(1).join(" · ") || (!parts[0] ? kicker : "")}</span>
     </span>
@@ -98,16 +128,27 @@ function fmtArDate(iso, months) {
   return `${Number(parts[2])} ${months[Number(parts[1]) - 1]} ${parts[0]}`;
 }
 
-export default function AttendanceMonthCalendar({ employees = [], currentUser, company, data, kicker, lane, canManage = false }) {
+export default function AttendanceMonthCalendar({ employees = [], currentUser, me = null, company, data, kicker, lane, canManage = false, framed = false }) {
   const { lang } = useI18n();
   const ar = lang === "ar";
   const months = monthsOf(ar);
   const weekdays = weekdaysOf(ar);
   const now = new Date();
   const todayKey = calendarDateKey(now);
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth());
-  const [selected, setSelected] = useState(now.getDate());
+  // «?day=yyyy-mm-dd» (old «سجلي» links, search hits) opens that month with the day picked.
+  const [searchParams] = useSearchParams();
+  const askedDay = searchParams.get("day") || "";
+  const askedDate = dateFromKey(askedDay);
+  const [year, setYear] = useState(askedDate ? askedDate.getFullYear() : now.getFullYear());
+  const [month, setMonth] = useState(askedDate ? askedDate.getMonth() : now.getMonth());
+  const [selected, setSelected] = useState(askedDate ? askedDate.getDate() : now.getDate());
+  useEffect(() => {
+    const date = dateFromKey(askedDay);
+    if (!date) return;
+    setYear(date.getFullYear());
+    setMonth(date.getMonth());
+    setSelected(date.getDate());
+  }, [askedDay]);
   const forcedView = lane ? "team" : null;
   const [view, setView] = useState(forcedView || "team");
   useEffect(() => {
@@ -123,12 +164,18 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
   const [cmpQuery, setCmpQuery] = useState("");
   const [range, setRange] = useState(null);
   const [cmp, setCmp] = useState("late");
+  // «كل النطاق» · «بين موظفين» (search, then pick two or more).
+  const [cmpMode, setCmpMode] = useState("all");
+  const [cmpPicked, setCmpPicked] = useState([]);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const headerScope = useStationScope();
   const stationList = data?.stations || [];
   const workStationId = employeeWorkStationId(currentUser);
   const mineLane = lane === "mine";
+  const myself = mineLane ? (me || currentUser) : null;
+  // My own month (what «سجلي» counted): absences, lateness, attendance against the schedule.
+  const mine = useMyMonthDays({ employee: myself, company, data, year, month, ar });
   const workStation = findStationById(stationList, workStationId);
   const workStationName = stationDisplayName(workStation);
   const workBranch = rosterBranchPhrase(workStationName, ar);
@@ -231,8 +278,27 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
     data,
     safety: scopedSafety,
     view,
+    flagsFor: mineLane ? "self" : "all",
   });
 
+  // Who works which kind of shift that day — the «أيامي» symbols: ☀ صباحي · ◐ مسائي · ☾ ليلي.
+  // Employee lane: my own shift. Management lane: how many of the scope on each kind.
+  const dutyOfDay = (key) => {
+    if (mineLane) {
+      if (!myself || approvedLeaveOnDay(myself, key)) return null;
+      const shift = getShiftOnDate(data, myself, key);
+      return shift ? { mine: shift, kind: shiftKindOf(shift) } : null;
+    }
+    const counts = { morning: 0, evening: 0, night: 0 };
+    for (const employee of roster) {
+      if (approvedLeaveOnDay(employee, key)) continue;
+      const shift = getShiftOnDate(data, employee, key);
+      if (!shift) continue;
+      const kind = shiftKindOf(shift);
+      if (counts[kind] != null) counts[kind] += 1;
+    }
+    return counts.morning + counts.evening + counts.night ? { counts } : null;
+  };
   const days = monthGridDays(year, month);
   const cells = days.map((date) => {
     if (!date) return { blank: true };
@@ -247,6 +313,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
       rec: recordOf(date),
       date,
       key,
+      duty: dutyOfDay(key),
     };
   });
 
@@ -274,6 +341,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
   const taskDays = real.filter((cell) => cell.rec.tasksMine + cell.rec.tasksTeam > 0).length;
   const tasksTotal = real.reduce((acc, cell) => acc + cell.rec.tasksMine + cell.rec.tasksTeam, 0);
   const hseDays = real.filter((cell) => cell.rec.hse).length;
+  const monthSum = sumRecs(real.map((cell) => ({ rec: cell.rec })));
   const sel = cells.find((cell) => cell.d === selected);
   const selRec = sel?.rec || null;
   const rangeOn = !!(rangeFrom && rangeTo);
@@ -294,6 +362,12 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
   }, [rangeOn, startDate, endDate, rowsByDate, view, year, month, headerScope, scopedSchedules, tasks, scopedProofs, scopedVisitors, scopedSafety, roster]);
 
   const agg = rangeOn ? sumRecs(rangeDays) : null;
+  // The picked day's week — a quiet line above the grid, read from the same day records.
+  const selIdx = cells.findIndex((cell) => !cell.blank && cell.d === selected);
+  const weekCells = selIdx >= 0 ? cells.slice(selIdx - (selIdx % 7), selIdx - (selIdx % 7) + 7).filter((cell) => !cell.blank) : [];
+  const weekSum = sumRecs(weekCells.map((cell) => ({ rec: cell.rec })));
+  const weekFrom = weekCells[0]?.key || "";
+  const weekTo = weekCells[weekCells.length - 1]?.key || "";
   const src = rangeOn ? agg : selRec;
   const pickDay = (day, openSheet = false) => {
     setSelected(day);
@@ -315,8 +389,8 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
   };
 
   const rosterPack = rosterFor(rangeOn ? null : selRec, { view, filter, nameQuery, ar });
-  const events = rangeOn ? [] : eventGroups(selRec, ar, currentUser);
-  const noEvents = !rangeOn && !!(selRec && !selRec.tasksMine && !selRec.tasksTeam && !selRec.proofWork && !selRec.proofVisit && !selRec.hse && !selRec.leave && !selRec.leaveClash && !selRec.filed);
+  const events = rangeOn ? [] : eventGroups(selRec, ar, currentUser, { manage: !mineLane });
+  const noEvents = !rangeOn && !!(selRec && !selRec.tasksMine && !selRec.tasksTeam && !selRec.proofWork && !selRec.proofVisit && !selRec.hse && !selRec.leave && !selRec.leaveClash && !selRec.filed && !selRec.flagged?.length);
   const filedPack = useMemo(
     () => filedLeaveInMonth(roster, year, month, ar, data),
     [roster, year, month, ar, data],
@@ -341,33 +415,60 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
       ].filter(Boolean).join(" · ")
       : (!sel ? (ar ? "اضغط أي يوم في الشبكة" : "Tap a day on the grid") : (sel.weekend ? (ar ? "عطلة نهاية الأسبوع" : "Weekend") : (ar ? "لا سجل بعد" : "No record yet")));
 
-  const cmpDays = rangeOn ? rangeDays : real.map((cell) => ({ rec: cell.rec }));
+  // «يوم واحد» compares the people of the scope on the picked day; a range compares that range.
+  const cmpDays = rangeOn ? rangeDays : (selRec ? [{ rec: selRec }] : []);
   const stats = view === "team" ? empStats(cmpDays, roster) : [];
   const cmpQ = String(cmpQuery || "").trim();
   const cmpSorted = stats
     .filter((row) => roster.some((employee) => String(employee.id) === String(row.id)))
-    .filter((row) => !cmpQ || String(row.name || "").includes(cmpQ))
+    // In «كل النطاق» the search narrows the table; in «بين موظفين» it finds people to add.
+    .filter((row) => cmpMode !== "all" || !cmpQ || String(row.name || "").includes(cmpQ))
     .sort((a, b) => ((Number(b[cmp]) || 0) - (Number(a[cmp]) || 0)) || String(a.name).localeCompare(String(b.name), ar ? "ar" : "en"));
-  const top = cmpSorted[0];
+  const pickedSet = new Set(cmpPicked.map(String));
+  const cmpRows = cmpMode === "pick" ? cmpSorted.filter((row) => pickedSet.has(String(row.id))) : cmpSorted;
+  // The people search: names that match, not picked yet — at most eight suggestions.
+  const pickSuggestions = cmpMode === "pick" && cmpQ
+    ? cmpSorted.filter((row) => !pickedSet.has(String(row.id)) && String(row.name || "").includes(cmpQ)).slice(0, 8)
+    : [];
+  const pickedRows = cmpSorted.filter((row) => pickedSet.has(String(row.id)));
+  const addPicked = (id) => { setCmpPicked((list) => (list.map(String).includes(String(id)) ? list : [...list, String(id)])); setCmpQuery(""); };
+  const dropPicked = (id) => setCmpPicked((list) => list.filter((item) => String(item) !== String(id)));
+  const top = cmpRows[0];
   const topScore = top ? (Number(top[cmp]) || 0) : 0;
-  const zero = cmpSorted.filter((row) => (Number(row[cmp]) || 0) === 0).length;
+  const zero = cmpRows.filter((row) => (Number(row[cmp]) || 0) === 0).length;
   const recordedPeople = cmpSorted.filter((row) => (row.on + row.late + row.abs + row.leave) > 0).length;
+  // [pill words — read after «اعرض أولاً من…», colour, short column head, what it means]
   const cmpLabels = {
-    on: [ar ? "حضر في الوقت" : "On time", OC.greenText, ar ? "حضر" : "On"],
-    late: [ar ? "متأخر" : "Late", OC.goldText, ar ? "متأخر" : "Late"],
-    abs: [ar ? "غاب" : "Absent", OC.abs, ar ? "غاب" : "Abs"],
-    leave: [ar ? "إجازة" : "Leave", OC.leave, ar ? "إجازة" : "Leave"],
-    done: [ar ? "مهام منجزة" : "Done tasks", OC.greenText, ar ? "منجزة" : "Done"],
-    prog: [ar ? "قيد التنفيذ" : "In progress", OC.goldText, ar ? "جارية" : "Open"],
-    over: [ar ? "مهام متأخرة" : "Overdue tasks", OC.abs, ar ? "متأخرة" : "Over"],
-    hse: [ar ? "بلاغات سلامة" : "HSE", OC.abs, ar ? "سلامة" : "HSE"],
+    on: [ar ? "حضر في وقته" : "Came on time", OC.greenText, ar ? "حضر" : "On", ar ? "حضر في وقت ورديته." : "Punched in on time."],
+    late: [ar ? "تأخّر" : "Came late", OC.goldText, ar ? "تأخّر" : "Late", ar ? "سجّل حضوره بعد بداية ورديته." : "Punched in after the shift start."],
+    abs: [ar ? "غاب" : "Was absent", OC.abs, ar ? "غاب" : "Abs", ar ? "له وردية منشورة ولم يسجّل ولا إجازة له." : "Had a published shift, no punch and no leave."],
+    leave: [ar ? "في إجازة" : "Was on leave", OC.leave, ar ? "إجازة" : "Leave", ar ? "في إجازة معتمدة — لا تُحسب غياباً." : "On approved leave — not absence."],
+    viol: [ar ? "خالف الدوام" : "Broke duty rules", OC.goldText, ar ? "خالف" : "Breach", ar ? "عاد متأخراً من الراحة أو انصرف قبل نهاية ورديته." : "Came back late from a break or left before the shift end."],
+    ot: [ar ? "اشتغل إضافي" : "Worked overtime", OC.mid, ar ? "إضافي" : "OT", ar ? "عمل بعد ساعاته — بالساعة والدقيقة." : "Worked past his hours — in hours and minutes."],
+    wait: [ar ? "عنده شيء ينتظر" : "Has something waiting", OC.abs, ar ? "ينتظر" : "Waiting", ar ? "بصمة تنتظر قرار المدير، أو طلب لم يُرد عليه بعد." : "A punch waiting for the manager, or a request not answered yet."],
+    done: [ar ? "أنجز مهامه" : "Finished tasks", OC.greenText, ar ? "أنجز" : "Done", ar ? "مهام أُنجزت في هذا المدى." : "Tasks finished in this range."],
+    prog: [ar ? "مهامه جارية" : "Tasks in progress", OC.goldText, ar ? "جارية" : "Open", ar ? "مهام بدأت ولم تنتهِ بعد، وموعدها لم يفت." : "Tasks started, not finished, not yet due."],
+    over: [ar ? "تأخّر في مهامه" : "Late on tasks", OC.abs, ar ? "متأخرة" : "Over", ar ? "مهام فات موعدها ولم تُنجز." : "Tasks past their due date and not finished."],
+    hse: [ar ? "عنده بلاغ سلامة" : "Has a safety report", OC.abs, ar ? "بلاغ" : "HSE", ar ? "بلاغ سلامة مفتوح في يومه." : "An open safety report on his day."],
   };
-  const cmpGrid = "minmax(92px,1.2fr) minmax(70px,1fr) 40px 40px 40px 40px 44px 44px 44px 44px";
+  const CMP_GROUPS = [
+    { id: "att", label: ar ? "الحضور" : "Attendance", keys: ["on", "late", "abs", "leave"] },
+    { id: "duty", label: ar ? "الدوام" : "Duty", keys: ["viol", "ot", "wait"] },
+    { id: "tasks", label: ar ? "المهام" : "Tasks", keys: ["done", "prog", "over"] },
+    { id: "safety", label: ar ? "السلامة" : "Safety", keys: ["hse"] },
+  ];
+  const CMP_ORDER = CMP_GROUPS.flatMap((group) => group.keys);
+  // Each sort pill carries the scope's total for that key — read from the same rows the table shows.
+  const cmpTotals = Object.fromEntries(CMP_ORDER.map((key) => {
+    const sum = cmpSorted.reduce((acc, row) => acc + (Number(row[key]) || 0), 0);
+    return [key, key === "ot" ? minutesShort(sum) : sum];
+  }));
+  const cmpGrid = "minmax(170px,1.6fr) minmax(80px,1fr) repeat(11,minmax(44px,52px))";
   const cmpColor = (key, value) => {
     if (!value) return OC.muted;
     if (key === "on" || key === "done") return OC.greenText;
-    if (key === "late" || key === "prog") return OC.goldText;
-    if (key === "abs" || key === "over" || key === "hse") return OC.abs;
+    if (key === "late" || key === "prog" || key === "viol") return OC.goldText;
+    if (key === "abs" || key === "over" || key === "hse" || key === "wait") return OC.abs;
     if (key === "leave") return OC.leave;
     return OC.mid;
   };
@@ -377,7 +478,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
       ? (ar ? `جدول ${workBranch} كاملاً · ${roster.length} موظفاً` : `Full ${workStationName} roster · ${roster.length} people`)
       : (ar ? `${roster.length} موظفاً على فرعك` : `${roster.length} people on your branch`))
     : (!headerScope || headerScope === "all"
-      ? (ar ? `كل الفروع · ${roster.length} موظفاً` : `All stations · ${roster.length} people`)
+      ? (ar ? `كل نطاقك · ${roster.length} موظفاً` : `Your whole scope · ${roster.length} people`)
       : `${scopedStation?.name || headerScope} · ${roster.length}`);
   const cmpTitle = cmpLabels[cmp][0];
 
@@ -386,6 +487,14 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
     const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
     return isoFromParts(d.getFullYear(), d.getMonth(), d.getDate());
   })();
+  const rangePresets = [
+    { id: "day", label: ar ? "يوم واحد" : "One day", run: () => setRange(null) },
+    { id: "w", label: ar ? "آخر 7 أيام" : "Last 7 days", run: () => setRange({ from: back7, to: todayIso }) },
+    { id: "m", label: ar ? "هذا الشهر" : "This month", run: () => setRange({ from: monthStart, to: monthEnd }) },
+  ];
+  const rangePreset = !rangeOn
+    ? "day"
+    : (rangeFrom === back7 && rangeTo === todayIso ? "w" : (rangeFrom === monthStart && rangeTo === monthEnd ? "m" : ""));
 
   const monthInsight = !real.length
     ? (ar ? "لا سجل بعد لهذا الشهر. الأرقام تُشتق من أول يوم يُسجَّل فيه حضور." : "No record yet this month. Figures appear after the first punch.")
@@ -402,6 +511,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
     { label: ar ? "إثبات زائر" : "Visitor proof", color: OC.goldBg, border: OC.goldBd },
     { label: ar ? "بلاغ سلامة" : "HSE", color: OC.absBg, border: OC.absBd },
     { label: ar ? "إجازة معتمدة" : "Approved leave", color: OC.leaveBg, border: OC.leaveBd },
+    ...(myself ? [{ label: ar ? "«أنا:» يومك أنت — غبت أو تأخرت" : "“Me:” your own day — absent or late", color: OC.abs, border: OC.abs }] : []),
   ];
 
   const mkStat = (id, label, value, color) => {
@@ -414,9 +524,9 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
       weight: act && !rangeOn ? 700 : 500,
       select: () => {
         if (rangeOn) return;
-        if (id === "tasks" || id === "hse") setSheet(true);
+        if (id === "tasks" || id === "hse" || id === "flags") setSheet(true);
         else setFilter(act && id !== "all" ? "all" : id);
-        if (id !== "tasks" && id !== "hse") setSheet(true);
+        if (id !== "tasks" && id !== "hse" && id !== "flags") setSheet(true);
       },
     };
   };
@@ -430,6 +540,16 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
         mkStat("late", ar ? "متأخر" : "Late", src.late, OC.goldText),
         mkStat("abs", ar ? "غاب" : "Absent", src.abs, OC.abs),
         { ...mkStat("leave", ar ? "إجازة معتمدة" : "Approved leave", src.leave, OC.leave), sub: ar ? "خارج حساب الحضور — لا تُحاسب" : "Outside attendance — not charged" },
+      ],
+    },
+    {
+      title: ar ? "الدوام" : "Duty",
+      items: [
+        mkStat("flags", ar ? "عودة متأخرة من الراحة" : "Late return from break", src.lateReturn || 0, OC.goldText),
+        mkStat("flags", ar ? "انصراف مبكر" : "Early leave", src.early || 0, OC.goldText),
+        { ...mkStat("flags", ar ? "إضافي مسجّل" : "Overtime recorded", src.ot || 0, OC.mid), sub: src.otMinutes ? minutesPhrase(src.otMinutes, ar) : null },
+        mkStat("flags", ar ? "بصمات بانتظار القرار" : "Punches awaiting a decision", src.awaiting || 0, OC.abs),
+        mkStat("flags", ar ? "طلبات معلّقة" : "Pending requests", src.pending || 0, OC.goldText),
       ],
     },
     {
@@ -453,6 +573,8 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
     rec.proofVisit && { label: ar ? "زائر" : "Visit", count: rec.proofVisit, color: OC.goldText, bg: OC.goldBg, border: OC.goldBd },
     rec.hse && { label: ar ? "سلامة" : "HSE", count: rec.hse, color: OC.abs, bg: OC.absBg, border: OC.absBd },
     rec.leave && { label: ar ? "إجازة" : "Leave", count: rec.leave, color: OC.leave, bg: OC.leaveBg, border: OC.leaveBd },
+    (rec.lateReturn + rec.early) && { label: ar ? "مخالفة" : "Breach", count: rec.lateReturn + rec.early, color: OC.goldText, bg: OC.goldBg, border: OC.goldBd },
+    (rec.awaiting + rec.pending) && { label: ar ? "معلّق" : "Pending", count: rec.awaiting + rec.pending, color: OC.abs, bg: OC.absBg, border: OC.absBd },
   ].filter(Boolean) : []);
 
   const shell = { background: "var(--nv-card)", border: `1px solid ${OC.line}`, borderRadius: 14, boxShadow: "var(--nv-paper)" };
@@ -467,9 +589,9 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
     <div className="nv-ops-cal" dir={ar ? "rtl" : "ltr"} style={{ display: "flex", flexDirection: "column", gap: 16, color: OC.ink, fontSize: 13, fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}>
       <section className="nv-ops-cal-head" style={{ ...shell, padding: "18px 22px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, flexWrap: "wrap" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
-          <KickerLine kicker={kicker} />
-          <h1 style={{ margin: 0, fontFamily: NASKH, fontSize: 24, fontWeight: 600, lineHeight: 1.35 }}>{ar ? "التقويم التشغيلي" : "Operational calendar"}</h1>
-          <span style={{ fontSize: 12, color: OC.mid, lineHeight: 1.85 }}>
+          {framed ? null : <KickerLine kicker={kicker} />}
+          {framed ? null : <h1 style={{ margin: 0, fontFamily: NASKH, fontSize: 24, fontWeight: 600, lineHeight: 1.35 }}>{ar ? "التقويم التشغيلي" : "Operational calendar"}</h1>}
+          {framed ? null : <span style={{ fontSize: 12, color: OC.mid, lineHeight: 1.85 }}>
             {ar ? (
               <>
                 <Link to="/app/shifts" style={LINK}>جدول الدوام</Link>
@@ -493,36 +615,31 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                 .
               </>
             )}
-          </span>
+          </span>}
           {filedBanner ? (
             <span style={{ fontSize: 11, color: OC.leave, background: OC.leaveBg, border: `1px solid ${OC.leaveBd}`, padding: "8px 11px", lineHeight: 1.85 }}>
               {filedBanner}{" "}
               <Link to="/app/requests" style={{ color: OC.leave, fontWeight: 600 }}>{ar ? "طلباتي ←" : "My Requests →"}</Link>
             </span>
           ) : null}
-          <span style={{ fontSize: 13, color: OC.mid, lineHeight: 1.8 }}>
+          <span style={{ fontSize: framed ? 12 : 13, color: OC.mid, lineHeight: 1.8 }}>
             {ar ? "كل يوم يحمل توزيعه: حضر، تأخّر، غاب — واليوم الذي انكسرت فيه حلقة يُعلَّم بحدّ ذهبي." : "Each day carries its split: on time, late, absent — a broken ring is marked in gold."}
           </span>
         </div>
         <div className="nv-ops-cal-head-tools" style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", border: `1px solid ${OC.line}` }}>
-            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => goMonth(month === 0 ? year - 1 : year, month === 0 ? 11 : month - 1)} style={{ fontFamily: "inherit", padding: "10px 14px", border: "none", background: "var(--nv-card)", color: OC.mid, cursor: "pointer", fontSize: 14 }}>{ar ? "›" : "‹"}</button>
-            <div style={{ width: 220, borderInline: `1px solid ${OC.line}` }}>
-              <PlatformDateField
-                compact
-                ar={ar}
-                allowClear={false}
-                value={isoFromParts(year, month, selected > 0 ? selected : 1)}
-                onChange={(next) => {
-                  const parts = String(next || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-                  if (!parts) return;
-                  goMonth(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]));
-                }}
-              />
-            </div>
-            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => goMonth(month === 11 ? year + 1 : year, month === 11 ? 0 : month + 1)} style={{ fontFamily: "inherit", padding: "10px 14px", border: "none", background: "var(--nv-card)", color: OC.mid, cursor: "pointer", fontSize: 14 }}>{ar ? "‹" : "›"}</button>
-          </div>
-          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { goMonth(now.getFullYear(), now.getMonth(), now.getDate()); setQuery(""); setQuick(""); }} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "9px 15px", border: `1px solid ${OC.line}`, background: "var(--nv-card)", color: OC.ink, cursor: "pointer", whiteSpace: "nowrap" }}>{ar ? "اليوم" : "Today"}</button>
+          <DateNav
+            mode={selected > 0 ? "day" : "month"}
+            step="month"
+            ar={ar}
+            value={new Date(year, month, selected > 0 ? selected : 1)}
+            onPrev={() => goMonth(month === 0 ? year - 1 : year, month === 0 ? 11 : month - 1)}
+            onNext={() => goMonth(month === 11 ? year + 1 : year, month === 11 ? 0 : month + 1)}
+            onToday={() => { goMonth(now.getFullYear(), now.getMonth(), now.getDate()); setQuery(""); setQuick(""); }}
+            isCurrent={year === now.getFullYear() && month === now.getMonth() && selected === now.getDate()}
+            currentLabel={ar ? "اليوم" : "Today"}
+            max={new Date(now.getFullYear() + 1, now.getMonth(), now.getDate())}
+            onPick={(picked) => goMonth(picked.getFullYear(), picked.getMonth(), selected > 0 ? picked.getDate() : 0)}
+          />
           {!lane ? (
             <div style={{ display: "flex", gap: 3 }}>
               {[["team", ar ? "الفريق" : "Team"], ["me", ar ? "سجلّي" : "Mine"]].map(([id, label]) => (
@@ -533,35 +650,24 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
         </div>
       </section>
 
-      {mineLane && canManage && workStationName && (() => {
-        const mineScope = rosterMineScopeCopy({
-          stationName: workStationName,
-          headerOther: !!(headerScope && headerScope !== "all" && workStationId && String(headerScope) !== String(workStationId)),
-          ar,
-        });
-        return (
-          <div style={{
-            padding: "11px 18px",
-            background: mineScope.emphasize ? "var(--nv-warn-soft)" : "var(--nv-card)",
-            border: `1px solid ${mineScope.emphasize ? "var(--nv-warn-line)" : OC.line}`,
-            fontSize: 12,
-            color: mineScope.emphasize ? "#8a6516" : OC.mid,
-            lineHeight: 1.7,
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 6,
-            alignItems: "baseline",
-          }}>
-            <span>{mineScope.line}</span>
-            <Link to="/app/calendar?lane=manage" style={{ color: "inherit", fontWeight: 700 }}>
-              {mineScope.action}
-            </Link>
-          </div>
-        );
-      })()}
+      {myself ? (
+        <MyMonthLine
+          me={myself}
+          company={company}
+          data={data}
+          year={year}
+          month={month}
+          selectedDay={selected}
+          monthName={`${months[month]} ${year}`}
+          mine={mine}
+          ar={ar}
+        />
+      ) : null}
+
+      {/* No «ملفك يرى فرع … فقط» notice here — the employee file stays on its own branch without saying so. */}
 
       <section style={{ ...shell, padding: "12px 18px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 9, border: `1px solid ${OC.line}`, padding: "8px 12px", minWidth: "min(300px,100%)", flex: 1, maxWidth: 420 }}>
+        {framed ? null : <div style={{ display: "flex", alignItems: "center", gap: 9, border: `1px solid ${OC.line}`, padding: "8px 12px", minWidth: "min(300px,100%)", flex: 1, maxWidth: 420 }}>
           <span style={{ width: 15, height: 15, color: OC.muted, flex: "none" }}><SearchIcon /></span>
           <input
             value={query}
@@ -573,7 +679,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
           {(query || quick) ? (
             <button type="button" onClick={() => { setQuery(""); setQuick(""); }} style={{ fontFamily: "inherit", border: "none", background: "none", color: OC.muted, cursor: "pointer", fontSize: 14, padding: 0, flex: "none" }}>×</button>
           ) : null}
-        </div>
+        </div>}
         <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
           {[["", ar ? "الكل" : "All"], ["week", ar ? "آخر أسبوع" : "Last week"], ["abs", ar ? "أيام الغياب" : "Absent days"], ["late", ar ? "أيام التأخير" : "Late days"], ["broken", ar ? "انكسار السلسلة" : "Broken ring"]].map(([id, label]) => (
             <button key={id || "all"} type="button" onClick={() => { setQuick(id); setQuery(""); }} style={chip(quick === id && !query)}>{label}</button>
@@ -610,77 +716,143 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
 
       <div className="nv-ops-cal-board">
         <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+          {!loading && weekCells.length ? (
+            <button
+              type="button"
+              data-week-line
+              onClick={() => setRange({ from: weekFrom, to: weekTo })}
+              title={ar ? "اعرض الأسبوع في المقارنة" : "Show the week in the comparison"}
+              style={{ fontFamily: "inherit", textAlign: "start", border: `1px solid ${OC.line}`, background: rangeFrom === weekFrom && rangeTo === weekTo ? OC.greenBg : "var(--nv-card)", borderRadius: 12, padding: "10px 16px", cursor: "pointer", display: "flex", gap: 14, alignItems: "baseline", flexWrap: "wrap", color: OC.mid, fontSize: 12, lineHeight: 1.8 }}
+            >
+              <span style={{ fontWeight: 700, color: OC.ink }}>
+                {ar ? `أسبوع ${Number(weekFrom.slice(8))}–${Number(weekTo.slice(8))} ${months[month]}` : `Week ${Number(weekFrom.slice(8))}–${Number(weekTo.slice(8))} ${months[month]}`}
+              </span>
+              {[
+                [ar ? "حضر" : "On time", weekSum.on, OC.greenText],
+                [ar ? "تأخّر" : "Late", weekSum.late, OC.goldText],
+                [ar ? "غاب" : "Absent", weekSum.abs, OC.abs],
+                [ar ? "إجازة" : "Leave", weekSum.leave, OC.leave],
+                [ar ? "مخالفات" : "Breaches", weekSum.lateReturn + weekSum.early, OC.goldText],
+                [ar ? "إضافي" : "Overtime", weekSum.otMinutes ? minutesPhrase(weekSum.otMinutes, ar) : 0, OC.mid],
+                [ar ? "بانتظار قرار" : "Awaiting", weekSum.awaiting, OC.abs],
+                [ar ? "طلبات معلّقة" : "Pending", weekSum.pending, OC.goldText],
+              ].map(([label, value, color]) => (
+                <span key={label} style={{ display: "inline-flex", gap: 5, alignItems: "baseline", whiteSpace: "nowrap" }}>
+                  {label}
+                  <span dir={typeof value === "number" ? "ltr" : undefined} style={{ fontFamily: typeof value === "number" ? "'IBM Plex Mono', monospace" : "inherit", fontSize: 13, color: value ? color : OC.muted, fontWeight: value ? 600 : 400 }}>{value}</span>
+                </span>
+              ))}
+            </button>
+          ) : null}
           {loading ? (
             <section style={{ ...shell, minHeight: 220, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Loader2 style={{ width: 18, height: 18, color: OC.green, animation: "spin 1s linear infinite" }} />
             </section>
           ) : layout === "grid" ? (
-            <section style={{ ...shell, display: "flex", flexDirection: "column" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", background: OC.wash, borderBottom: `1px solid ${OC.line}` }}>
+            <section data-cal-grid style={{ ...shell, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 6, padding: "10px 10px 0" }}>
                 {weekdays.map((label, i) => (
-                  <span key={label} style={{ padding: "10px 0", textAlign: "center", fontSize: 12, fontWeight: 600, color: (i === 5 || i === 6) ? OC.muted : OC.mid }}>{label}</span>
+                  <span key={label} style={{ padding: "4px 0", textAlign: "center", fontSize: 11.5, fontWeight: 600, color: (i === 5 || i === 6) ? OC.muted : OC.mid }}>{label}</span>
                 ))}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 6, padding: 10 }}>
                 {cells.map((cell, index) => {
                   if (cell.blank) {
-                    return <div key={`b${index}`} style={{ minHeight: 104, background: OC.wash, borderInlineStart: `1px solid ${OC.soft}`, borderBottom: `1px solid ${OC.soft}` }} />;
+                    return <div key={`b${index}`} aria-hidden style={{ minHeight: 108 }} />;
                   }
                   const on = selected === cell.d;
                   const hit = !filtering || matchCell(cell);
                   const rec = cell.rec;
                   const items = cellItems(rec);
+                  const myMark = myself ? myCellMark(mine.byKey[cell.key], ar) : null;
+                  const counts = rec ? [
+                    ["on", ar ? "حضر" : "On", rec.on, OC.greenText, OC.greenBg],
+                    ["late", ar ? "تأخّر" : "Late", rec.late, OC.goldText, OC.goldBg],
+                    ["abs", ar ? "غاب" : "Abs", rec.abs, OC.abs, OC.absBg],
+                    ["leave", ar ? "إجازة" : "Leave", rec.leave, OC.leave, OC.leaveBg],
+                  ].filter((row) => row[2] > 0) : [];
+                  const surface = !hit
+                    ? "var(--nv-soft)"
+                    : cell.today
+                      ? OC.greenBg
+                      : (cell.weekend && !rec ? "var(--nv-soft)" : "var(--nv-card)");
                   return (
                     <button
                       key={cell.key}
                       type="button"
+                      data-cal-day={cell.key}
+                      className="nv-cal-tile"
                       onClick={() => pickDay(cell.d, !!rec)}
                       style={{
                         fontFamily: "inherit",
                         textAlign: "start",
                         position: "relative",
-                        minHeight: 104,
+                        minWidth: 0,
+                        minHeight: 108,
                         padding: "9px 10px",
-                        border: "none",
-                        borderInlineStart: `1px solid ${OC.soft}`,
-                        borderBottom: `1px solid ${OC.soft}`,
-                        background: !hit ? "var(--nv-soft)" : (rec?.leave ? OC.leaveBg : (cell.weekend ? OC.wash : (on ? OC.greenBg : "var(--nv-card)"))),
+                        borderRadius: 10,
+                        border: on ? "2px solid var(--nv-btn-fill, #0B3D27)" : `1px solid ${cell.today ? OC.greenBd : "var(--nv-line2)"}`,
+                        background: surface,
                         cursor: "pointer",
                         display: "flex",
                         flexDirection: "column",
                         gap: 7,
-                        outline: on ? `2px solid ${OC.green}` : (cell.today ? `1px dashed ${OC.green}` : "none"),
-                        outlineOffset: -2,
-                        opacity: hit ? 1 : 0.48,
+                        opacity: hit ? 1 : 0.5,
+                        boxSizing: "border-box",
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 7, width: "100%" }}>
-                        <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 15, fontWeight: cell.today ? 700 : 500, color: cell.weekend ? "var(--nv-box)" : (cell.future ? OC.muted : OC.ink) }}>{cell.d}</span>
-                        {cell.today ? <span style={{ fontSize: 10, fontWeight: 700, color: OC.greenText, background: OC.greenBg, border: `1px solid ${OC.greenBd}`, padding: "1px 6px" }}>{ar ? "اليوم" : "Today"}</span> : null}
-                        {rec?.broke ? <span title={ar ? BROKE[rec.broke]?.ar : BROKE[rec.broke]?.en} dir="ltr" style={{ marginInlineStart: "auto", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, fontWeight: 700, color: OC.goldText, background: OC.goldBg, border: `1px solid ${OC.goldBd}`, padding: "1px 5px" }}>{rec.broke}</span> : null}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, width: "100%" }}>
+                        <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 15, fontWeight: cell.today || on ? 700 : 500, color: cell.weekend && !rec ? OC.muted : (cell.future ? OC.mid : OC.ink) }}>{cell.d}</span>
+                        {cell.today ? <span className="nv-cal-today-chip" style={{ fontSize: 10, fontWeight: 700, color: "#fff", background: "var(--nv-btn-fill, #0B3D27)", borderRadius: 999, padding: "1px 8px" }}>{ar ? "اليوم" : "Today"}</span> : null}
+                        {rec?.broke ? <span title={ar ? BROKE[rec.broke]?.ar : BROKE[rec.broke]?.en} dir="ltr" style={{ marginInlineStart: "auto", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, fontWeight: 700, color: OC.goldText, background: OC.goldBg, border: `1px solid ${OC.goldBd}`, borderRadius: 999, padding: "0 6px" }}>{rec.broke}</span> : null}
                       </div>
-                      {rec ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
-                          <div style={{ display: "flex", height: 7, background: OC.soft, overflow: "hidden" }}>
-                            <div style={{ width: pct(rec.on, rec.head), background: OC.green }} />
-                            <div style={{ width: pct(rec.late, rec.head), background: OC.gold }} />
-                            <div style={{ width: pct(rec.abs, rec.head), background: OC.abs }} />
-                            <div style={{ width: pct(rec.leave, rec.head), background: OC.leave }} />
-                          </div>
-                          <div style={{ display: "flex", gap: 9, alignItems: "baseline" }}>
-                            <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: OC.greenText }}>{rec.on}</span>
-                            <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: rec.late ? OC.goldText : OC.muted }}>{rec.late}</span>
-                            <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: rec.abs ? OC.abs : OC.muted }}>{rec.abs}</span>
-                            {rec.leave ? <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: OC.leave, fontWeight: 700 }}>{rec.leave}</span> : null}
-                          </div>
+                      {cell.duty?.mine ? (
+                        <span data-cal-shift={cell.duty.kind} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: shiftTypeStyle(cell.duty.mine).fg, minWidth: 0 }}>
+                          <KindIcon kind={cell.duty.kind} size={13} />
+                          <span className="nv-cal-pill-label" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cell.duty.mine.label}</span>
+                        </span>
+                      ) : cell.duty?.counts ? (
+                        <span data-cal-shifts style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11, color: OC.mid }}>
+                          {["morning", "evening", "night"].filter((kind) => cell.duty.counts[kind]).map((kind) => (
+                            <span key={kind} title={ar ? `${{ morning: "صباحي", evening: "مسائي", night: "ليلي" }[kind]}: ${cell.duty.counts[kind]}` : kind} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                              <KindIcon kind={kind} size={12} style={{ color: kind === "night" ? "var(--nv-ink)" : kind === "evening" ? "var(--nv-warn-ink)" : "var(--nv-ok-ink)" }} />
+                              <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600 }}>{cell.duty.counts[kind]}</span>
+                            </span>
+                          ))}
+                        </span>
+                      ) : null}
+                      {rec && rec.head ? (
+                        <div style={{ display: "flex", height: 5, borderRadius: 999, background: OC.soft, overflow: "hidden", width: "100%" }}>
+                          <div style={{ width: pct(rec.on, rec.head), background: OC.green }} />
+                          <div style={{ width: pct(rec.late, rec.head), background: OC.gold }} />
+                          <div style={{ width: pct(rec.abs, rec.head), background: OC.abs }} />
+                          <div style={{ width: pct(rec.leave, rec.head), background: OC.leave }} />
                         </div>
+                      ) : null}
+                      {counts.length ? (
+                        <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          {counts.map(([id, label, n, color, bg]) => (
+                            <span key={id} data-cal-count={id} className="nv-cal-pill" style={{ display: "inline-flex", alignItems: "baseline", gap: 3, fontSize: 10.5, fontWeight: 600, color, background: bg, borderRadius: 999, padding: "1px 7px", whiteSpace: "nowrap" }}>
+                              <span className="nv-cal-pill-label">{label}</span><span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{n}</span>
+                            </span>
+                          ))}
+                        </span>
                       ) : (
-                        <span style={{ fontSize: 11, color: OC.muted }}>{cell.weekend ? (ar ? "عطلة" : "Off") : (cell.future ? (ar ? "مجدول" : "Scheduled") : "")}</span>
+                        <span className="nv-cal-quiet" style={{ fontSize: 11, color: OC.muted }}>
+                          {rec ? (cell.future ? (ar ? "مجدول" : "Scheduled") : (ar ? "لا حالة حضور" : "No attendance state")) : (cell.weekend ? (ar ? "عطلة" : "Off") : (cell.future ? (ar ? "مجدول" : "Scheduled") : ""))}
+                        </span>
                       )}
+                      {myMark ? (
+                        // My own day — its own small line under the branch counters, never mistaken for them.
+                        <span data-my-mark={myMark.kind} className="nv-cal-mine" title={myMark.text} style={{ display: "flex", alignItems: "center", gap: 4, width: "100%", fontSize: 10, fontWeight: 600, color: myMark.kind === "absent" ? OC.abs : OC.goldText, borderTop: `1px dashed ${OC.soft}`, paddingTop: 4, minWidth: 0 }}>
+                          <span aria-hidden style={{ width: 6, height: 6, borderRadius: 999, flex: "none", background: myMark.kind === "absent" ? OC.abs : OC.gold }} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{ar ? "أنا: " : "Me: "}{myMark.text}</span>
+                        </span>
+                      ) : null}
                       {items.length ? (
-                        <span style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: "auto" }}>
+                        <span className="nv-cal-items" style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: "auto" }}>
                           {items.map((item) => (
-                            <span key={item.label} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 600, color: item.color, background: item.bg, border: `1px solid ${item.border}`, padding: "1px 6px", whiteSpace: "nowrap" }}>
+                            <span key={item.label} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 600, color: item.color, background: item.bg, border: `1px solid ${item.border}`, borderRadius: 999, padding: "0 7px", whiteSpace: "nowrap" }}>
                               {item.label}<span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{item.count}</span>
                             </span>
                           ))}
@@ -690,10 +862,10 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                   );
                 })}
               </div>
-              <div style={{ padding: "12px 16px", display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center", borderTop: `1px solid ${OC.line}` }}>
+              <div data-cal-legend style={{ padding: "10px 14px 14px", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", borderTop: `1px solid ${OC.soft}` }}>
                 {legend.map((item) => (
-                  <span key={item.label} style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 11, color: OC.mid }}>
-                    <span style={{ width: 10, height: 10, background: item.color, border: `1px solid ${item.border}` }} />
+                  <span key={item.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: OC.mid, border: "1px solid var(--nv-pill-line, #D5DCD8)", background: "var(--nv-card)", borderRadius: 999, padding: "3px 10px 3px 8px" }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 999, background: item.color, border: `1px solid ${item.border}` }} />
                     {item.label}
                   </span>
                 ))}
@@ -744,10 +916,10 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
             </section>
           )}
 
-          <section style={{ ...shell, display: "flex", flexDirection: "column" }}>
-            <div style={{ padding: "16px 20px", borderBottom: `1px solid ${OC.soft}`, display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                <span style={{ fontSize: 16, fontWeight: 700 }}>{ar ? "مقارنة الموظفين" : "People comparison"}</span>
+          <section data-cmp style={{ ...shell, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ padding: "16px 20px 16px", borderBottom: `1px solid ${OC.soft}`, display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                <span style={{ fontSize: 16, fontWeight: 700 }}>{mineLane ? (ar ? "مقارنة الموظفين" : "People comparison") : (ar ? "مقارنة موظفي النطاق" : "People in scope")}</span>
                 <span style={{ fontSize: 12, color: OC.muted, lineHeight: 1.7 }}>
                   {view !== "team"
                     ? (ar ? "المقارنة متاحة في عرض «الفريق» فقط" : "Comparison is available in Team view")
@@ -755,92 +927,199 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                       scopeLine,
                       rangeOn
                         ? (rangeDays.length ? (ar ? `${rangeDays.length} يوم مسجّل` : `${rangeDays.length} days`) : (ar ? "لا يوم مسجّل بين التاريخين" : "No recorded day in range"))
-                        : (ar ? `${real.length} يوم مسجّل في ${months[month]}` : `${real.length} recorded days in ${months[month]}`),
-                      roster.length
-                        ? (ar
-                          ? `${recordedPeople} ظهرت لهم حالة — الباقي بلا وردية منشورة في هذا المدى`
-                          : `${recordedPeople} have a recorded state — the rest had no published shift in range`)
-                        : null,
+                        : (sel && !sel.blank ? (ar ? `يوم ${weekdays[sel.wd]} ${sel.d} ${months[month]}` : `${weekdays[sel.wd]} ${sel.d} ${months[month]}`) : (ar ? "اختر يوماً" : "Pick a day")),
                     ].filter(Boolean).join(" · ")}
                 </span>
               </div>
-              <div style={{ marginInlineStart: "auto", display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+
+              {/* One form panel: a label column and a control column, rows on hairlines. */}
+              <div data-cmp-form className="nv-cmp-form">
                 {view === "team" ? (
-                  <input
-                    value={cmpQuery}
-                    onChange={(e) => setCmpQuery(e.target.value)}
-                    placeholder={ar ? "ابحث في أسماء النطاق" : "Search names in scope"}
-                    style={{ fontFamily: "inherit", fontSize: 12, padding: "7px 10px", border: `1px solid ${OC.line}`, outline: "none", background: "var(--nv-card)", color: OC.ink, minWidth: "min(240px,100%)" }}
-                  />
+                  <div className="nv-cmp-row" data-cmp-mode>
+                    <span className="nv-cmp-label">{ar ? "المقارنة" : "Compare"}</span>
+                    <div className="nv-cmp-control">
+                      <Segmented
+                        value={cmpMode}
+                        onChange={setCmpMode}
+                        items={[
+                          { id: "all", label: ar ? "كل النطاق" : "Whole scope" },
+                          { id: "pick", label: ar ? `بين موظفين${cmpPicked.length ? ` · ${cmpPicked.length}` : ""}` : `Between people${cmpPicked.length ? ` · ${cmpPicked.length}` : ""}` },
+                        ]}
+                      />
+                    </div>
+                  </div>
                 ) : null}
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 11, color: OC.muted }}>{ar ? "المدى" : "Range"}</span>
-                  <div style={{ width: 168 }}>
-                    <PlatformDateField compact ar={ar} value={rangeFrom} onChange={(next) => setRange({ ...(range || {}), from: next })} />
+
+                {view === "team" ? (
+                  <div className="nv-cmp-row">
+                    <label htmlFor="nv-cmp-q" className="nv-cmp-label">
+                      {cmpMode === "pick" ? (ar ? "أضف موظفاً" : "Add a person") : (ar ? "الاسم" : "Name")}
+                    </label>
+                    <div className="nv-cmp-control" data-cmp-search style={{ position: "relative", display: "flex", flexDirection: "column", gap: 8 }}>
+                      <span style={{ position: "relative", display: "block", maxWidth: 460 }}>
+                        <span aria-hidden style={{ position: "absolute", insetInlineStart: 12, top: "50%", transform: "translateY(-50%)", width: 15, height: 15, color: OC.muted, display: "inline-flex" }}><SearchIcon /></span>
+                        <input
+                          id="nv-cmp-q"
+                          value={cmpQuery}
+                          onChange={(e) => setCmpQuery(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter" && pickSuggestions[0]) addPicked(pickSuggestions[0].id); }}
+                          placeholder={cmpMode === "pick" ? (ar ? "اكتب جزءاً من الاسم ثم اختر" : "Type part of a name, then pick") : (ar ? "ابحث في أسماء النطاق" : "Search names in scope")}
+                          autoComplete="off"
+                          style={{ "--nv-input-start": "36px", fontFamily: "inherit", fontSize: 13, height: 40, paddingInlineEnd: 12, border: `1px solid ${OC.line}`, borderRadius: 10, outline: "none", background: "var(--nv-card)", color: OC.ink, width: "100%", boxSizing: "border-box" }}
+                        />
+                        {cmpMode === "pick" && cmpQ ? (
+                          <div role="listbox" data-cmp-suggest style={{ position: "absolute", top: "100%", insetInline: 0, marginTop: 4, zIndex: 5, background: "var(--nv-card)", border: `1px solid ${OC.line}`, borderRadius: 10, boxShadow: "0 12px 28px rgba(12,20,16,.14)", padding: 4, display: "flex", flexDirection: "column", gap: 2, maxHeight: 260, overflowY: "auto" }}>
+                            {pickSuggestions.length ? pickSuggestions.map((row) => (
+                              <button
+                                key={row.id}
+                                type="button"
+                                role="option"
+                                data-cmp-person={row.id}
+                                onClick={() => addPicked(row.id)}
+                                style={{ fontFamily: "inherit", display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: "none", borderRadius: 8, background: "transparent", color: OC.ink, fontSize: 12.5, cursor: "pointer", textAlign: "start" }}
+                              >
+                                <NameLetter name={row.name} />
+                                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</span>
+                                <span style={{ fontSize: 11, color: OC.greenText, fontWeight: 600 }}>{ar ? "أضف" : "Add"}</span>
+                              </button>
+                            )) : (
+                              <span style={{ padding: "8px 10px", fontSize: 12, color: OC.muted }}>{ar ? "لا اسم يطابق في النطاق." : "No name matches in scope."}</span>
+                            )}
+                          </div>
+                        ) : null}
+                      </span>
+                      {cmpMode === "pick" ? (
+                        <div data-cmp-picked style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                          {pickedRows.length ? pickedRows.map((row) => (
+                            <span key={row.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 6px 0 4px", borderRadius: 8, border: `1px solid ${OC.greenBd}`, background: OC.greenBg, color: OC.greenText, fontSize: 12, fontWeight: 600 }}>
+                              <NameLetter name={row.name} />
+                              {row.name}
+                              <button type="button" onClick={() => dropPicked(row.id)} aria-label={ar ? `أزل ${row.name}` : `Remove ${row.name}`} style={{ fontFamily: "inherit", border: "none", background: "transparent", color: "inherit", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px" }}>×</button>
+                            </span>
+                          )) : (
+                            <span style={{ fontSize: 11.5, color: OC.muted }}>{ar ? "لم تختر أحداً بعد — اختر اثنين أو أكثر." : "Nobody picked yet — pick two or more."}</span>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
-                  <span style={{ fontSize: 11, color: OC.muted }}>→</span>
-                  <div style={{ width: 168 }}>
-                    <PlatformDateField compact ar={ar} value={rangeTo} min={rangeFrom} onChange={(next) => setRange({ ...(range || {}), to: next })} />
+                ) : null}
+
+                <div className="nv-cmp-row" data-cmp-range>
+                  <span className="nv-cmp-label">{ar ? "المدى" : "Range"}</span>
+                  <div className="nv-cmp-control" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <Segmented
+                      value={rangePreset}
+                      onChange={(id) => rangePresets.find((p) => p.id === id)?.run()}
+                      items={rangePresets.map((p) => ({ id: p.id, label: p.label }))}
+                    />
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 11.5, color: OC.muted }}>{ar ? "من" : "From"}</span>
+                      <span style={{ width: 150 }}><PlatformDateField compact ar={ar} value={rangeFrom} onChange={(next) => setRange({ ...(range || {}), from: next })} /></span>
+                      <span style={{ fontSize: 11.5, color: OC.muted }}>{ar ? "إلى" : "To"}</span>
+                      <span style={{ width: 150 }}><PlatformDateField compact ar={ar} value={rangeTo} min={rangeFrom} onChange={(next) => setRange({ ...(range || {}), to: next })} /></span>
+                    </span>
                   </div>
-                  {[
-                    { id: "day", label: ar ? "يوم واحد" : "One day", run: () => setRange(null), on: !rangeOn },
-                    { id: "w", label: ar ? "آخر 7 أيام" : "Last 7 days", run: () => setRange({ from: back7, to: todayIso }), on: rangeFrom === back7 && rangeTo === todayIso },
-                    { id: "m", label: ar ? "هذا الشهر" : "This month", run: () => setRange({ from: monthStart, to: monthEnd }), on: rangeFrom === monthStart && rangeTo === monthEnd },
-                  ].map((p) => (
-                    <button key={p.id} type="button" onClick={p.run} style={chip(p.on)}>{p.label}</button>
-                  ))}
                 </div>
-                <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-                  <span style={{ fontSize: 11, color: OC.muted }}>{ar ? "رتّب حسب" : "Sort by"}</span>
-                  {CMP_KEYS.map((key) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => setCmp(key)}
-                      style={{ ...chip(cmp === key), display: "inline-flex", alignItems: "center", gap: 6 }}
+
+                <div className="nv-cmp-row" data-cmp-sort>
+                  <label htmlFor="nv-cmp-sort" className="nv-cmp-label">{ar ? "اعرض أولاً من" : "Show first who"}</label>
+                  <div className="nv-cmp-control" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <select
+                      id="nv-cmp-sort"
+                      value={cmp}
+                      onChange={(e) => setCmp(e.target.value)}
+                      style={{ fontFamily: "inherit", fontSize: 13, height: 40, maxWidth: 460, padding: "0 12px", border: `1px solid ${OC.line}`, borderRadius: 10, background: "var(--nv-card)", color: OC.ink, cursor: "pointer" }}
                     >
-                      <span style={{ width: 8, height: 8, background: cmpLabels[key][1] }} />{cmpLabels[key][0]}
-                    </button>
-                  ))}
+                      {CMP_GROUPS.map((group) => (
+                        <optgroup key={group.id} label={group.label}>
+                          {group.keys.map((key) => (
+                            <option key={key} value={key}>{`${cmpLabels[key][0]} — ${cmpTotals[key]}`}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <span data-cmp-explain style={{ fontSize: 11.5, color: OC.mid, lineHeight: 1.7 }}>
+                      {ar ? `يظهر أولاً من ${cmpLabels[cmp][0]} أكثر — ${cmpLabels[cmp][3]}` : `Shown first: who ${cmpLabels[cmp][0].toLowerCase()} most — ${cmpLabels[cmp][3]}`}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
             {cmpSorted.length ? (
-              <div>
-                <div style={{ display: "grid", gridTemplateColumns: cmpGrid, gap: 8, padding: "10px 20px", fontSize: 11, color: OC.muted, background: OC.wash, borderBottom: `1px solid ${OC.soft}` }}>
-                  <span>{ar ? "الموظف" : "Name"}</span>
-                  <span>{ar ? "توزيع الأيام" : "Split"}</span>
-                  {CMP_KEYS.map((key) => <span key={key}>{cmpLabels[key][2]}</span>)}
+              <div data-cmp-scroll className="nv-cmp-scroll" style={{ overflowX: "auto", maxWidth: "100%" }}>
+                <div role="table" style={{ minWidth: 820 }}>
+                  <div role="row" style={{ display: "grid", gridTemplateColumns: cmpGrid, gap: 6, padding: "8px 20px 0", fontSize: 10.5, color: OC.muted }}>
+                    <span />
+                    <span />
+                    {CMP_GROUPS.map((group) => (
+                      <span key={group.id} style={{ gridColumn: `span ${group.keys.length}`, textAlign: "center", fontWeight: 700, borderBottom: `2px solid ${OC.soft}`, paddingBottom: 4 }}>{group.label}</span>
+                    ))}
+                  </div>
+                  <div role="row" style={{ display: "grid", gridTemplateColumns: cmpGrid, gap: 6, padding: "8px 20px", fontSize: 11, color: OC.muted, borderBottom: `1px solid ${OC.soft}` }}>
+                    <span role="columnheader">{ar ? "الموظف" : "Name"}</span>
+                    <span role="columnheader">{ar ? "توزيع الأيام" : "Split"}</span>
+                    {CMP_ORDER.map((key) => (
+                      <button
+                        key={key}
+                        type="button"
+                        role="columnheader"
+                        aria-sort={cmp === key ? "descending" : "none"}
+                        onClick={() => setCmp(key)}
+                        style={{ fontFamily: "inherit", fontSize: 11, border: "none", background: cmp === key ? "var(--nv-ok-soft)" : "transparent", color: cmp === key ? OC.greenText : OC.muted, fontWeight: cmp === key ? 700 : 500, borderRadius: 999, padding: "2px 0", cursor: "pointer", whiteSpace: "nowrap" }}
+                      >
+                        {cmpLabels[key][2]}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px 12px" }}>
+                    {cmpMode === "pick" && cmpRows.length < 2 ? (
+                      <span style={{ fontSize: 12, color: OC.muted, padding: "6px 8px" }}>{ar ? "ابحث بالاسم وأضف موظفين اثنين على الأقل." : "Pick at least two people above."}</span>
+                    ) : null}
+                    {cmpRows.map((row) => {
+                      const tot = Math.max(1, row.on + row.late + row.abs + row.leave);
+                      const self = isViewerOwnFile(row, currentUser);
+                      return (
+                        <div key={row.id} role="row" data-cmp-row={row.id} style={{ display: "grid", gridTemplateColumns: cmpGrid, gap: 6, padding: "9px 8px", alignItems: "center", borderRadius: 10, border: `1px solid ${self ? OC.greenBd : "var(--nv-line2)"}`, background: self ? OC.greenBg : "var(--nv-card)" }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                            <NameLetter name={row.name} mine={self} />
+                            <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{row.name}</span>
+                            {self ? <FileSelfBadge ar={ar} /> : null}
+                          </span>
+                          <div style={{ display: "flex", height: 6, borderRadius: 999, background: OC.soft, overflow: "hidden" }}>
+                            <div title={ar ? `حضر ${row.on}` : `On ${row.on}`} style={{ width: pct(row.on, tot), background: OC.green }} />
+                            <div title={ar ? `تأخّر ${row.late}` : `Late ${row.late}`} style={{ width: pct(row.late, tot), background: OC.gold }} />
+                            <div title={ar ? `غاب ${row.abs}` : `Absent ${row.abs}`} style={{ width: pct(row.abs, tot), background: OC.abs }} />
+                            <div title={ar ? `إجازة ${row.leave}` : `Leave ${row.leave}`} style={{ width: pct(row.leave, tot), background: OC.leave }} />
+                          </div>
+                          {CMP_ORDER.map((key) => {
+                            const value = Number(row[key]) || 0;
+                            return (
+                              <span key={key} role="cell" style={{ textAlign: "center", padding: "3px 0" }}>
+                                {value ? (
+                                  <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, fontWeight: 600, color: cmpColor(key, value) }}>
+                                    {key === "ot" ? minutesShort(value) : value}
+                                  </span>
+                                ) : (
+                                  <span aria-label="0" style={{ color: "var(--nv-line)", fontSize: 12 }}>—</span>
+                                )}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                {cmpSorted.map((row) => {
-                  const tot = Math.max(1, row.on + row.late + row.abs + row.leave);
-                  return (
-                    <div key={row.id} style={{ display: "grid", gridTemplateColumns: cmpGrid, gap: 8, padding: "11px 20px", alignItems: "center", borderBottom: "1px solid var(--nv-hover)" }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
-                        {row.name}{isViewerOwnFile(row, currentUser) ? <>{" "}<FileSelfBadge ar={ar} /></> : null}
-                      </span>
-                      <div style={{ display: "flex", height: 11, background: OC.soft, overflow: "hidden" }}>
-                        <div title={ar ? `حضر ${row.on}` : `On ${row.on}`} style={{ width: pct(row.on, tot), background: OC.green }} />
-                        <div title={ar ? `تأخّر ${row.late}` : `Late ${row.late}`} style={{ width: pct(row.late, tot), background: OC.gold }} />
-                        <div title={ar ? `غاب ${row.abs}` : `Absent ${row.abs}`} style={{ width: pct(row.abs, tot), background: OC.abs }} />
-                        <div title={ar ? `إجازة ${row.leave}` : `Leave ${row.leave}`} style={{ width: pct(row.leave, tot), background: "#9aa3b2" }} />
-                      </div>
-                      {CMP_KEYS.map((key) => (
-                        <span key={key} dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: cmpColor(key, row[key]), textAlign: "right" }}>{row[key]}</span>
-                      ))}
-                    </div>
-                  );
-                })}
               </div>
             ) : null}
-            <div style={{ padding: "13px 20px" }}>
+            <div style={{ padding: "12px 20px", borderTop: `1px solid ${OC.soft}` }}>
               <span style={{ fontSize: 12, color: OC.mid, lineHeight: 1.85 }}>
                 {view !== "team"
                   ? (ar ? "بدّل إلى «الفريق» أعلى الصفحة لمقارنة الموظفين." : "Switch to Team to compare people.")
                   : (top && topScore > 0
-                    ? (ar ? `الأعلى في «${cmpTitle}»: ${top.name} بـ${topScore}، و${zero} موظفاً بلا أي حالة من هذه الأصناف.` : `Highest ${cmpTitle}: ${top.name} at ${topScore}; ${zero} with none.`)
-                    : (ar ? `لا أحد سجّل «${cmpTitle}» في هذا النطاق.` : `Nobody recorded ${cmpTitle} in this range.`))}
+                    ? (ar ? `الأعلى في «${cmpTitle}»: ${top.name} بـ${cmp === "ot" ? minutesPhrase(topScore, true) : topScore}${zero ? `، و${zero} بلا شيء منه` : ""}.` : `Highest ${cmpTitle}: ${top.name} at ${topScore}; ${zero} with none.`)
+                    : (ar ? `لا أحد سجّل «${cmpTitle}» في هذا المدى.` : `Nobody recorded ${cmpTitle} in this range.`))}
               </span>
             </div>
           </section>
@@ -856,30 +1135,11 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                   {ar ? "اليوم لم يُغلق بعد — اعرضه في شاشة الحضور ←" : "Today is still open — view it on Attendance →"}
                 </Link>
               ) : null}
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr)", gap: 6, paddingTop: 4 }}>
-                <label style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  <span style={{ fontSize: 10, color: OC.muted }}>{ar ? "من" : "From"}</span>
-                  <PlatformDateField compact ar={ar} value={rangeFrom} onChange={(next) => setRange({ ...(range || {}), from: next })} />
-                </label>
-                <label style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  <span style={{ fontSize: 10, color: OC.muted }}>{ar ? "إلى" : "To"}</span>
-                  <PlatformDateField compact ar={ar} value={rangeTo} min={rangeFrom} onChange={(next) => setRange({ ...(range || {}), to: next })} />
-                </label>
-              </div>
-              <div style={{ display: "flex", gap: 5, flexWrap: "wrap", paddingTop: 3 }}>
-                {[
-                  { id: "day", label: ar ? "يوم واحد" : "One day", run: () => setRange(null), on: !rangeOn },
-                  { id: "w", label: ar ? "آخر 7 أيام" : "Last 7 days", run: () => setRange({ from: back7, to: todayIso }), on: rangeFrom === back7 && rangeTo === todayIso },
-                  { id: "m", label: ar ? "هذا الشهر" : "This month", run: () => setRange({ from: monthStart, to: monthEnd }), on: rangeFrom === monthStart && rangeTo === monthEnd },
-                ].map((p) => (
-                  <button key={p.id} type="button" onClick={p.run} style={chip(p.on)}>{p.label}</button>
-                ))}
-              </div>
-              <span style={{ fontSize: 10, color: OC.muted, lineHeight: 1.7 }}>
-                {rangeOn
-                  ? (rangeDays.length ? (ar ? `${rangeDays.length} يوم مسجّل بين التاريخين` : `${rangeDays.length} recorded days between the dates`) : (ar ? "لا سجل بين التاريخين — عطلة أو أيام لم تأتِ بعد" : "No record between the dates"))
-                  : (ar ? "حدّد تاريخين لاستخراج البيانات بينهما، أو اضغط يوماً في التقويم" : "Set two dates, or tap a day on the calendar")}
-              </span>
+              {rangeOn ? (
+                <button type="button" onClick={() => setRange(null)} style={{ alignSelf: "flex-start", fontFamily: "inherit", fontSize: 11, fontWeight: 600, color: OC.greenText, background: "transparent", border: "none", padding: 0, cursor: "pointer" }}>
+                  {ar ? "عودة إلى يوم واحد" : "Back to one day"}
+                </button>
+              ) : null}
             </div>
             {rangeOn && (
               <div style={{ borderBottom: `1px solid ${OC.soft}`, display: "flex", flexDirection: "column" }}>
@@ -938,6 +1198,8 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
               { label: ar ? "أيام فيها مهام" : "Days with tasks", value: String(taskDays), note: ar ? `${tasksTotal} مهمة في الشهر` : `${tasksTotal} tasks this month`, color: OC.ink },
               { label: ar ? "أيام إجازة معتمدة" : "Approved leave days", value: String(leaveDays), note: leaveNote, color: OC.leave },
               { label: ar ? "إجازة على وردية منشورة" : "Leave on a published shift", value: String(clashDays), note: clashDays ? (ar ? "تحتاج بديلاً في جدول الدوام — الجدول والملف يتناقضان في هذه الأيام" : "Needs a substitute on the duty roster — the roster and the file disagree") : (ar ? "لا تناقض بين الجدول والملف" : "No clash between the roster and the file"), color: clashDays ? OC.goldText : OC.greenText },
+              { label: ar ? "مخالفات الدوام" : "Duty breaches", value: String(monthSum.lateReturn + monthSum.early), note: ar ? `${monthSum.lateReturn} عودة متأخرة من الراحة · ${monthSum.early} انصراف مبكر${monthSum.otMinutes ? ` · إضافي ${minutesPhrase(monthSum.otMinutes, true)}` : ""}` : `${monthSum.lateReturn} late returns · ${monthSum.early} early leaves`, color: (monthSum.lateReturn + monthSum.early) ? OC.goldText : OC.greenText },
+              { label: ar ? "بانتظار قرار أو طلب" : "Awaiting a decision or request", value: String(monthSum.awaiting + monthSum.pending), note: ar ? `${monthSum.awaiting} بصمة بانتظار القرار · ${monthSum.pending} طلب معلّق` : `${monthSum.awaiting} punches awaiting · ${monthSum.pending} pending requests`, color: (monthSum.awaiting + monthSum.pending) ? OC.abs : OC.greenText },
               { label: ar ? "أيام فيها بلاغ سلامة" : "Days with HSE", value: String(hseDays), note: hseDays ? (ar ? "كل بلاغ يراه موظفو الفرع" : "Each report is visible to the branch") : (ar ? "لا بلاغات هذا الشهر" : "No reports this month"), color: hseDays ? OC.abs : OC.greenText },
             ]).map((item) => (
               <div key={item.label} style={{ padding: "12px 18px", borderBottom: "1px solid var(--nv-line2)", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "baseline" }}>
@@ -945,7 +1207,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                   <span style={{ fontSize: 12, fontWeight: 600 }}>{item.label}</span>
                   <span style={{ fontSize: 11, color: OC.muted, lineHeight: 1.7 }}>{item.note}</span>
                 </span>
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 17, color: item.color }}>{item.value}</span>
+                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 17, color: OC.ink }}>{item.value}</span>
               </div>
             ))}
             <div style={{ padding: "13px 18px" }}><span style={{ fontSize: 11, color: OC.mid, lineHeight: 1.85 }}>{monthInsight}</span></div>
@@ -1121,7 +1383,7 @@ function DayPanel({
                   {group.items.map((item) => (
                     <button key={item.label} type="button" onClick={item.select} style={{ fontFamily: "inherit", textAlign: "start", border: `1px solid ${item.border}`, background: item.bg, cursor: item.cursor, padding: "9px 11px", display: "flex", flexDirection: "column", gap: 3 }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, fontWeight: item.weight, color: OC.mid }}><span style={{ width: 8, height: 8, background: item.color }} />{item.label}</span>
-                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 20, color: item.color, textAlign: "right" }}>{item.value}</span>
+                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 20, color: OC.ink, textAlign: "right" }}>{item.value}</span>
                       {item.sub ? <span style={{ fontSize: 9, color: OC.muted, lineHeight: 1.6 }}>{item.sub}</span> : null}
                     </button>
                   ))}
@@ -1132,7 +1394,7 @@ function DayPanel({
                     <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: item.weight, color: OC.ink }}><span style={{ width: 9, height: 9, background: item.color }} />{item.label}</span>
                     {item.sub ? <span style={{ fontSize: 9, color: OC.muted, lineHeight: 1.6 }}>{item.sub}</span> : null}
                   </span>
-                  <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 15, color: item.color }}>{item.value}</span>
+                  <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 15, color: OC.ink }}>{item.value}</span>
                 </button>
               ))}
             </div>
@@ -1190,7 +1452,9 @@ function DayPanel({
                 </div>
                 {group.rows.map((row) => (
                   <div key={`${row.text}-${row.time}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 9, alignItems: "baseline", paddingInlineStart: 17 }}>
-                    <span style={{ fontSize: 11, color: OC.ink, lineHeight: 1.6, minWidth: 0 }}>{row.text}</span>
+                    {row.to
+                      ? <Link to={row.to} style={{ fontSize: 11, color: OC.ink, lineHeight: 1.6, minWidth: 0, textDecoration: "none" }}>{row.text}</Link>
+                      : <span style={{ fontSize: 11, color: OC.ink, lineHeight: 1.6, minWidth: 0 }}>{row.text}</span>}
                     <span style={{ fontSize: 10, fontWeight: 600, color: row.stColor, whiteSpace: "nowrap", ...(row.stBg ? { background: row.stBg, border: `1px solid ${row.stBorder || row.stColor}`, padding: "0 5px" } : null) }}>{row.state}</span>
                     <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: OC.muted, whiteSpace: "nowrap" }}>{row.time}</span>
                   </div>
@@ -1207,7 +1471,7 @@ function DayPanel({
                 <div key={tag} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
                   <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: OC.muted }}>{tag}</span>
                   <span style={{ fontSize: 12, color: OC.mid, minWidth: 0 }}>{ar ? labelAr : labelEn}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: bad ? OC.abs : OC.greenText }}>{bad ? "✕" : "✓"}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: bad ? OC.abs : OC.greenText }}>{bad ? <NvIcon name="cross" size={12} strokeWidth={2} inline={false} /> : <NvIcon name="check" size={12} strokeWidth={2} inline={false} />}</span>
                 </div>
               );
             })}

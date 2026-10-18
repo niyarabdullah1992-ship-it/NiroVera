@@ -1,9 +1,8 @@
 import React from "react";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
-import Nv7SectionHead, { nv7Tab } from "@/components/shared/Nv7SectionHead";
+import Nv7SectionHead, { nv7Count, nv7Tab } from "@/components/shared/Nv7SectionHead";
 import { MUTED, NAVY } from "@/lib/platformStyles";
 
-const MONO = "var(--font-mono, 'IBM Plex Mono', monospace)";
 
 /**
  * Shared /app workspace chrome — v7 deep-green header, tabs on the green.
@@ -45,11 +44,11 @@ export default function SuiteWorkspaceFrame({
                     type="button"
                     onClick={() => onTool?.(item.value)}
                     aria-current={on ? "page" : undefined}
-                    style={tabTone === "gold" && on ? { ...nv7Tab(true), background: "#C8A45A", color: "#3A2A08" } : nv7Tab(on)}
+                    style={tabTone === "gold" && on ? { ...nv7Tab(true), background: "#C8A45A", border: "1px solid #C8A45A", color: "#3A2A08" } : nv7Tab(on)}
                   >
                     {item.label}
                     {item.count > 0 ? (
-                      <span dir="ltr" style={{ fontFamily: MONO, fontSize: 10.5, background: on ? "#0B3D27" : "rgba(255,255,255,.24)", color: "#fff", padding: "1px 6px", borderRadius: 3 }}>
+                      <span dir="ltr" style={nv7Count(on)}>
                         {item.count}
                       </span>
                     ) : null}
@@ -57,7 +56,7 @@ export default function SuiteWorkspaceFrame({
                 );
               })}
               {viewNote ? (
-                <span style={{ marginInlineStart: "auto", fontSize: 11, color: "#C5DBCD", lineHeight: 1.7, maxWidth: 380, textAlign: "start" }}>
+                <span style={{ marginInlineStart: "auto", fontSize: 11, color: MUTED, lineHeight: 1.7, maxWidth: 380, textAlign: "start" }}>
                   {viewNote}
                 </span>
               ) : null}

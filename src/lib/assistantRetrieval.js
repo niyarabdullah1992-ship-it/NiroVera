@@ -1,7 +1,6 @@
 const SECTION_HINTS = {
   tasks: ["task", "target", "مهم", "هدف"], attendanceToday: ["attendance", "present", "absent", "حضور", "غياب"],
-  inventory: ["inventory", "stock", "item", "مخزون", "صنف"], inventoryMovements: ["movement", "transfer", "حركة", "تحويل"],
-  expenses: ["expense", "cost", "مصروف", "تكلفة"], payroll: ["payroll", "salary", "راتب", "رواتب"],
+  payroll: ["payroll", "salary", "راتب", "رواتب"],
   safety: ["safety", "incident", "risk", "سلامة", "حادث", "خطر"], dailyReports: ["report", "تقرير"],
   complaints: ["complaint", "شكوى", "بلاغ"], schedules: ["schedule", "shift", "جدول", "وردية"],
   files: ["file", "document", "ملف", "مستند"], employees: ["employee", "staff", "موظف"], stations: ["station", "فرع"],
@@ -16,7 +15,7 @@ export function selectAssistantContext(context, question) {
     const wordScore = query.split(/\s+/).filter((word) => word.length > 2 && valueText.includes(word)).length;
     return { key, score: hintScore + wordScore };
   }).sort((a, b) => b.score - a.score);
-  const planning = /priority|plan|summary|recommend|أولو|خطة|ملخص|توص/i.test(query) ? ["tasks", "safety", "inventory", "expenses", "attendanceToday"] : [];
+  const planning = /priority|plan|summary|recommend|أولو|خطة|ملخص|توص/i.test(query) ? ["tasks", "safety", "attendanceToday"] : [];
   const keys = new Set(["company", "today", "stations", "employees", ...planning, ...scored.filter((item) => item.score > 0).slice(0, 6).map((item) => item.key)]);
   return Object.fromEntries([...keys].filter((key) => context[key] !== undefined).map((key) => [key, context[key]]));
 }

@@ -118,6 +118,7 @@ export function buildEscalationSteps(report, chain) {
     labelAr: tier.labelAr,
     labelEn: tier.labelEn,
     hasHandler: (tier.handlerIds || []).length > 0 || idx === 0,
+    vacant: !!tier.vacant,
     state: idx < lvl ? "done" : idx === lvl ? "current" : "pending",
   }));
 }
@@ -332,6 +333,49 @@ export function checkReturnNoteGate(note) {
       error: "RETURN_NOTE_REQUIRED",
       reason: "الإعادة تحتاج ملاحظة مكتوبة يصلها صاحب الصوت.",
       reasonEn: "A return needs a written note the author will see.",
+    };
+  }
+  return { ok: true };
+}
+
+/** Adopting closes the voice — it needs a written ruling the author (or the published number) carries. */
+export function checkAdoptNoteGate(note) {
+  if (String(note || "").trim().length < 5) {
+    return {
+      ok: false,
+      error: "ADOPT_RULING_REQUIRED",
+      reason: "الاعتماد يُغلق الصوت — اكتب القرار وما سيُنفَّذ.",
+      reasonEn: "Adopting closes the voice — write the ruling and what will be done.",
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * Nobody reviews their own voice: the first level whose handler is not the author.
+ * Default chain: the station-manager tier is the station's manager; a custom chain names its handlers.
+ */
+export function firstReviewLevel(chain = [], authorId, stationManagerId) {
+  const me = String(authorId || "");
+  if (!me) return 0;
+  for (let i = 0; i < chain.length; i += 1) {
+    const tier = chain[i] || {};
+    const handlers = (tier.handlerIds || []).map(String);
+    const isMe = handlers.includes(me) || (tier.id === "station_manager" && String(stationManagerId || "") === me);
+    if (!isMe) return i;
+  }
+  return Math.max(0, chain.length - 1);
+}
+
+/** The reviewer may not rule on a voice they raised (named or anonymous). */
+export function checkSelfReviewGate(item, userId) {
+  const me = String(userId || "");
+  if (me && (String(item?.authorId || "") === me || String(item?.rateActorId || "") === me)) {
+    return {
+      ok: false,
+      error: "SELF_REVIEW",
+      reason: "لا تُراجع صوتاً رفعته أنت — صعّده للمستوى التالي.",
+      reasonEn: "You cannot rule on a voice you raised — escalate it to the next level.",
     };
   }
   return { ok: true };

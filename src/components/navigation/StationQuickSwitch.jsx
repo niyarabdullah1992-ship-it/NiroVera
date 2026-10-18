@@ -7,6 +7,8 @@ import { useManagerScopeModel } from "@/components/navigation/ManagerScopeChips"
 import { isCompanyRootStation, isManagerUnit, stationParentId } from "@/lib/stationTree";
 import { buildBranchNotices } from "@/lib/managerScopeChips";
 import { listLocalTodayAttendance } from "@/lib/localAttendanceFallback";
+import NvIcon from "@/components/shared/NvIcon";
+import { SearchWrap } from "@/components/shared/NvIcon";
 
 function fold(value) {
   return String(value || "")
@@ -248,7 +250,6 @@ export default function StationQuickSwitch({ open, onClose, anchorRef }) {
           width: box.width,
           background: "var(--nv-card)",
           border: "1px solid var(--nv-line)",
-          borderTop: "3px solid var(--nv-ok-fill)",
           borderRadius: 10,
           boxShadow: "0 18px 44px rgba(12,20,16,.18)",
           display: "flex",
@@ -258,27 +259,31 @@ export default function StationQuickSwitch({ open, onClose, anchorRef }) {
         }}
       >
         <div style={{ padding: 10, borderBottom: "1px solid var(--nv-line)", display: "flex", flexDirection: "column", gap: 8 }}>
-          <input
-            autoFocus
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={ar ? "⌕ ابحث باسم الفرع أو المدينة أو الرمز" : "⌕ Search by branch, city, or code"}
-            aria-label={ar ? "بحث في الفروع" : "Search stations"}
-            style={{
-              height: 40,
-              minHeight: 40,
-              padding: "0 10px",
-              borderRadius: 8,
-              border: "1px solid var(--nv-line)",
-              fontSize: 12.5,
-              outline: "none",
-              color: "var(--nv-ink)",
-              width: "100%",
-              boxSizing: "border-box",
-              fontFamily: "inherit",
-              background: "var(--nv-card)",
-            }}
-          />
+          <SearchWrap>
+            <input
+              autoFocus
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={ar ? "ابحث باسم الفرع أو المدينة أو الرمز" : "Search by branch, city, or code"}
+              aria-label={ar ? "بحث في الفروع" : "Search stations"}
+              style={{
+                height: 40,
+                minHeight: 40,
+                padding: "0 10px",
+                paddingInlineStart: 30,
+                "--nv-input-start": "30px",
+                borderRadius: 8,
+                border: "1px solid var(--nv-line)",
+                fontSize: 12.5,
+                outline: "none",
+                color: "var(--nv-ink)",
+                width: "100%",
+                boxSizing: "border-box",
+                fontFamily: "inherit",
+                background: "var(--nv-card)",
+              }}
+            />
+          </SearchWrap>
           {regions.length > 0 ? (
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
               <button type="button" onClick={() => setRegion("")} style={chip(region === "")}>
@@ -385,7 +390,7 @@ export default function StationQuickSwitch({ open, onClose, anchorRef }) {
                       {badge.decision > 0 ? (
                         <span title={ar ? "ينتظر قرارك" : "Awaiting you"} dir="ltr" style={pill("var(--nv-warn-soft)", "#8A5A12", "1px solid #EAD6A8")}>{badge.decision}</span>
                       ) : null}
-                      {on ? <span style={{ fontWeight: 700, color: "var(--nv-ok-ink)" }}>✓</span> : null}
+                      {on ? <NvIcon name="check" tone="ok" size={14} strokeWidth={2} /> : null}
                     </span>
                   </button>
                 );

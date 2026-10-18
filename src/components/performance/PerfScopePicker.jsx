@@ -1,6 +1,7 @@
 import React from "react";
 import { countAr, teamLabel, textOf } from "@/lib/perfRange";
 import { PERF_BODY, PERF_GREEN, PERF_INK, PERF_LINE, PERF_MUTED, PERF_NAVY, PERF_SOFT, PERF_SURFACE, PERF_WHITE, perfBtn } from "@/components/performance/PerformanceSectionFrame";
+import NvIcon from "@/components/shared/NvIcon";
 
 const mono = { fontFamily: "'IBM Plex Mono', monospace" };
 
@@ -147,7 +148,7 @@ export default function PerfScopePicker({
                 <div key={branch.id} style={{ display: "flex", flexDirection: "column" }}>
                   <div style={{ background: PERF_SURFACE, borderBottom: `1px solid ${PERF_SOFT}`, display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto auto", gap: 9, alignItems: "center", paddingInlineEnd: 9 }}>
                     <button type="button" onClick={() => onToggleBranch(branch.id)} title={ar ? "اختر الفرع كوحدة للمقارنة" : "Compare the branch as a unit"} style={{ fontFamily: "inherit", padding: "7px 11px 7px 0", marginInlineStart: 11, border: "none", background: "none", cursor: "pointer", display: "inline-flex", alignItems: "center" }}>
-                      <span style={{ width: 13, height: 13, border: `1px solid ${bOn ? PERF_NAVY : "var(--nv-box)"}`, background: bOn ? PERF_NAVY : PERF_WHITE, color: "var(--nv-btn-ink)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9 }}>{bOn ? "✓" : ""}</span>
+                      <span style={{ width: 13, height: 13, border: `1px solid ${bOn ? PERF_NAVY : "var(--nv-box)"}`, background: bOn ? PERF_NAVY : PERF_WHITE, color: "var(--nv-btn-ink)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9 }}>{bOn ? <NvIcon name="check" size={10} strokeWidth={2.5} inline={false} /> : ""}</span>
                     </button>
                     <button type="button" onClick={() => { if (!q) onToggleOpen(branch.id); }} style={{ fontFamily: "inherit", textAlign: "start", padding: "7px 0", border: "none", background: "none", color: PERF_INK, cursor: "pointer", display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
                       <span style={{ fontSize: 9, color: PERF_MUTED, width: 9, flex: "none" }}>{open ? "▾" : "▸"}</span>
@@ -184,7 +185,7 @@ export default function PerfScopePicker({
                           alignItems: "center",
                         }}
                       >
-                        <span style={{ width: 13, height: 13, border: `1px solid ${on ? PERF_NAVY : "var(--nv-box)"}`, background: on ? PERF_NAVY : PERF_WHITE, color: "var(--nv-btn-ink)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9 }}>{on ? "✓" : ""}</span>
+                        <span style={{ width: 13, height: 13, border: `1px solid ${on ? PERF_NAVY : "var(--nv-box)"}`, background: on ? PERF_NAVY : PERF_WHITE, color: "var(--nv-btn-ink)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9 }}>{on ? <NvIcon name="check" size={10} strokeWidth={2.5} inline={false} /> : ""}</span>
                         <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
                           <span style={{ fontSize: 11, fontWeight: on ? 700 : 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{person.name}</span>
                           <span style={{ fontSize: 10, color: PERF_MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{person.job} · {teamLabel(person.team, ar)}</span>

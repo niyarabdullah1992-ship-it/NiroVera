@@ -1,5 +1,5 @@
 import React from "react";
-import Nv7SectionHead, { nv7Tab } from "@/components/shared/Nv7SectionHead";
+import Nv7SectionHead, { nv7Count, nv7Tab } from "@/components/shared/Nv7SectionHead";
 
 const NASKH = "'Noto Naskh Arabic', 'Amiri', serif";
 const MONO = "'IBM Plex Mono', monospace";
@@ -55,7 +55,7 @@ function KickerLine({ kicker }) {
   const rest = parts.slice(1).join(" · ");
   return (
     <span style={{ fontSize: 11, letterSpacing: ".14em", color: PERF_MUTED, display: "flex", gap: 7, alignItems: "center" }}>
-      {index ? <span dir="ltr" style={{ fontFamily: MONO }}>{index}</span> : null}
+      {index ? <span dir={/[\u0600-\u06FF]/.test(index) ? undefined : "ltr"} style={{ fontFamily: /[\u0600-\u06FF]/.test(index) ? "inherit" : MONO}}>{index}</span> : null}
       {rest ? <span>·</span> : null}
       <span>{rest || kicker}</span>
     </span>
@@ -102,7 +102,7 @@ export default function PerformanceSectionFrame({
                 <button key={item.value} type="button" onClick={() => onTool?.(item.value)} style={nv7Tab(on)}>
                   {item.label}
                   {item.count > 0 ? (
-                    <span dir="ltr" style={{ fontFamily: MONO, fontSize: 10.5, background: on ? "#0B3D27" : "rgba(255,255,255,.24)", color: "#fff", padding: "1px 6px", borderRadius: 3 }}>
+                    <span dir="ltr" style={nv7Count(on)}>
                       {item.count}
                     </span>
                   ) : null}

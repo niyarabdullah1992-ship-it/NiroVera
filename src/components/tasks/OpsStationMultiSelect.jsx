@@ -12,9 +12,10 @@ import {
   field,
 } from "@/lib/platformStyles";
 
-const NAVY = "var(--nv-navy)";
-const NAVY_SOFT = "color-mix(in srgb, var(--nv-navy) 10%, #fff)";
-const NAVY_LINE = "color-mix(in srgb, var(--nv-navy) 28%, var(--nv-line, #DFE3EA))";
+/* Platform identity: the one green accent, soft green for what is picked, ink for names. */
+const NAVY = "var(--nv-ok-ink, #2F6B45)";
+const NAVY_SOFT = "var(--nv-ok-soft, #E8F2EC)";
+const NAVY_LINE = "color-mix(in srgb, var(--nv-ok-ink, #2F6B45) 22%, var(--nv-line, #DFE3EA))";
 const MONO = "var(--font-mono, 'IBM Plex Mono', monospace)";
 const ROW_H = 40;
 
@@ -46,17 +47,20 @@ function rowStyle(on) {
 }
 
 const chip = {
-  display: "inline-flex",
+  display: "flex",
   alignItems: "center",
   gap: 4,
-  height: 24,
-  padding: "0 6px 0 8px",
+  minWidth: 0,
+  height: 32,
+  paddingInlineStart: 12,
+  paddingInlineEnd: 4,
   borderRadius: PILL_RADIUS,
   border: `1px solid ${NAVY_LINE}`,
   background: NAVY_SOFT,
-  color: NAVY,
-  fontSize: 11,
+  color: "var(--nv-ink)",
+  fontSize: 12.5,
   fontWeight: 600,
+  whiteSpace: "nowrap",
 };
 
 /** Branch picker — closed by default, opens into a searchable checklist with chips for the picks. */
@@ -110,18 +114,22 @@ export default function OpsStationMultiSelect({ stations = [], value = [], onCha
       >
         <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: selectedNames.length ? INK : MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "start" }}>
           {selectedNames.length
-            ? selectedNames.join(ar ? "، " : ", ")
+            ? (ar
+              ? (selectedNames.length === 1 ? "فرع واحد محدد" : selectedNames.length === 2 ? "فرعان محددان" : `${selectedNames.length} ${selectedNames.length <= 10 ? "فروع محددة" : "فرعاً محدداً"}`)
+              : `${selectedNames.length} selected`)
             : (ar ? "اختر الفرع" : "Select a branch")}
         </span>
         <ChevronDown style={{ width: 14, height: 14, color: MUTED, flexShrink: 0, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
       </button>
 
       {!open && selected.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,120px),1fr))", gap: 6, width: "100%" }}>
           {selected.slice(0, 6).map((s) => (
             <span key={s.id} style={chip}>
-              {s.name}
-              <X style={{ width: 12, height: 12, cursor: "pointer" }} onClick={() => toggle(s.id)} />
+              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
+              <button type="button" onClick={() => toggle(s.id)} aria-label={ar ? `إزالة ${s.name}` : `Remove ${s.name}`} style={{ width: 22, height: 22, display: "grid", placeItems: "center", margin: 0, padding: 0, border: "none", borderRadius: "50%", background: "transparent", color: MUTED, cursor: "pointer" }}>
+                <X style={{ width: 12, height: 12 }} />
+              </button>
             </span>
           ))}
           {selected.length > 6 && (

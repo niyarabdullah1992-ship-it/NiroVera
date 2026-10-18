@@ -18,6 +18,7 @@ import { checkRaiseOtAssignmentGate } from "@/lib/overtimeAssignment";
 import { toast } from "@/components/ui/use-toast";
 import EmployeeIdentityRow from "@/components/employees/EmployeeIdentityRow";
 import { ChromeBox } from "@/components/shared/IdentityCard";
+import { KpiAction } from "@/components/shared/StatusFlag";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import { ACCENT, MUTED, NAVY, OK, WARN, BAD, emptyState, field, statCard, CARD, SURFACE } from "@/lib/platformStyles";
 import PlatformDateField from "@/components/shared/PlatformDateField";
@@ -76,6 +77,8 @@ export default function OtherRequestsBoard({
           request.reason,
           stationName(request.employee?.stationId),
         ].filter(Boolean).join(" · "),
+        person: request.employee?.name || "",
+        branch: stationName(request.employee?.stationId),
         badge: st.label,
       };
     });
@@ -188,10 +191,11 @@ export default function OtherRequestsBoard({
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }} dir={ar ? "rtl" : "ltr"}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(166px,1fr))", gap: "12px" }}>
         <div style={statCard}>
-          <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 24, fontWeight: 600, lineHeight: 1, textAlign: "right", color: pending.length ? "var(--nv-warn-ink)" : NAVY }}>
+          <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 24, fontWeight: 600, lineHeight: 1, textAlign: "right", color: "var(--nv-ink)" }}>
             {pending.length}
           </div>
           <div style={{ fontSize: 11, color: MUTED, marginTop: 7 }}>{ar ? "بانتظار القرار" : "awaiting a decision"}</div>
+          {pending.length ? <KpiAction ar={ar} style={{ marginTop: 6 }} onClick={() => document.querySelector("[data-other-pending]")?.scrollIntoView({ behavior: "smooth", block: "start" })} /> : null}
         </div>
         <div style={statCard}>
           <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 24, fontWeight: 600, lineHeight: 1, textAlign: "right", color: NAVY }}>
@@ -382,7 +386,7 @@ export default function OtherRequestsBoard({
               : t("noOtherRequests")}
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div data-other-pending="1" style={{ overflowX: "auto" }}>
             <div style={{ minWidth: 860 }}>
               <div style={headCell}>
                 <div>{ar ? "الموظف" : "EMPLOYEE"}</div>

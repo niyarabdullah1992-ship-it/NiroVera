@@ -85,7 +85,8 @@ for (const profile of [muslimFemale, emptyReligionFemale, muslimMale, emptyRelig
 }
 
 for (const profile of [muslimFemale, emptyReligionFemale, nonMuslimFemale]) {
-  for (const key of FEMALE_ONLY) assert.ok(has(profile, key), `female must see ${key}`);
+  // Iddah's length follows the religion (Art. 160) — with none on file it waits until HR sets it.
+  for (const key of FEMALE_ONLY) assert.ok(has(profile, key) || (key === "iddah" && profile === emptyReligionFemale), `female must see ${key}`);
   for (const key of MALE_ONLY) assert.ok(!has(profile, key), `female must not see ${key}`);
 }
 
@@ -94,8 +95,12 @@ for (const profile of [muslimMale, emptyReligionMale, nonMuslimMale]) {
   for (const key of FEMALE_ONLY) assert.ok(!has(profile, key), `male must not see ${key}`);
 }
 
-for (const profile of [muslimFemale, emptyReligionFemale, muslimMale, emptyReligionMale]) {
-  assert.ok(has(profile, "hajj"), "Muslim / empty religion sees Hajj (Art. 114 — فريضة الحج)");
+for (const profile of [muslimFemale, muslimMale]) {
+  assert.ok(has(profile, "hajj"), "a Muslim on file sees Hajj (Art. 114)");
+}
+for (const profile of [emptyReligionFemale, emptyReligionMale]) {
+  assert.ok(!has(profile, "hajj"), "no religion on file: Hajj waits until it is recorded");
+  assert.ok(!has(profile, "iddah"), "no religion on file: iddah waits until it is recorded");
 }
 for (const profile of [nonMuslimFemale, nonMuslimMale]) {
   assert.ok(!has(profile, "hajj"), "recorded non-Muslim does not see Hajj");
@@ -127,7 +132,7 @@ const iddahEmptyReligion = checkApproveLeaveGate(
   { type: "iddah", startDate: "2026-01-01", endDate: "2026-05-10", days: 130, files: deathFile, status: "pending", eventDate: "2026-01-01", noOtherEmployerAck: true },
   { profile: emptyReligionFemale, requests: [] },
 );
-assert.equal(iddahEmptyReligion.ok, true, "empty religion uses Muslim 130-day iddah");
+assert.equal(iddahEmptyReligion.error, "LEAVE_RELIGION_REQUIRED", "no religion on file: the iddah length is not guessed (Art. 160)");
 
 const iddahNonMuslimOk = checkApproveLeaveGate(
   { type: "iddah", startDate: "2026-01-01", endDate: "2026-01-15", days: 15, files: deathFile, status: "pending", eventDate: "2026-01-01", noOtherEmployerAck: true },
@@ -177,20 +182,20 @@ assert.equal(checkApproveLeaveGate(
 ).error, "LEAVE_GENDER");
 
 const hajjOk = checkApproveLeaveGate(
-  { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
+  { type: "hajj", startDate: "2026-05-22", endDate: "2026-05-31", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
   { profile: muslimMale, requests: [] },
 );
 assert.equal(hajjOk.ok, true);
 assert.equal(checkApproveLeaveGate(
-  { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
+  { type: "hajj", startDate: "2026-05-22", endDate: "2026-05-31", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
   { profile: emptyReligionFemale, requests: [] },
-).ok, true, "empty religion may take Hajj");
+).error, "LEAVE_RELIGION_REQUIRED", "no religion on file: Hajj waits until HR records it");
 assert.equal(checkApproveLeaveGate(
-  { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
+  { type: "hajj", startDate: "2026-05-22", endDate: "2026-05-31", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
   { profile: nonMuslimMale, requests: [] },
 ).error, "LEAVE_RELIGION");
 assert.equal(checkApproveLeaveGate(
-  { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
+  { type: "hajj", startDate: "2026-05-22", endDate: "2026-05-31", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
   { profile: nonMuslimFemale, requests: [] },
 ).error, "LEAVE_RELIGION");
 
@@ -409,15 +414,15 @@ assert.ok(catalogEnt.some((ent) => String(ent).includes("23 سبتمبر")), cat
 assert.ok(catalogEnt.some((ent) => String(ent).includes("22 فبراير")), catalogEnt.join(" | "));
 assert.ok(!catalogNames.includes("أعياد وعطل رسمية"));
 
+function catalogConds0() {
+  return catalog.flatMap((group) => group.rows.map((row) => row.cond));
+}
 const kinds = leaveKindsFor(muslimMale, true, []);
-const nationalKind = kinds.find((row) => row.key === "eid");
-assert.equal(nationalKind?.ar, "اليوم الوطني · يوم التأسيس · العيد");
-assert.match(nationalKind?.cap || "", /الوطني 1/);
-assert.match(nationalKind?.cap || "", /التأسيس 1/);
-assert.match(nationalKind?.cap || "", /مقفلان في الجدول/);
-assert.match(nationalKind?.cap || "", /بطلب/);
+// Art. 112: no official-holiday kind in the request picker — the holidays apply from the calendar.
+assert.ok(!kinds.some((row) => row.key === "eid"), "official holidays are not a طلباتي leave kind");
+assert.ok(catalogConds0().every((c) => !/بطلب/.test(String(c)) || !/عيد/.test(String(c))), "no Eid «by request» left in the catalog");
 
-const catalogConds = catalog.flatMap((group) => group.rows.map((row) => row.cond));
+const catalogConds = catalogConds0();
 assert.ok(catalogConds.some((c) => /إجازة اليوم الوطني/.test(String(c)) && /بلا طلب/.test(String(c))), catalogConds.join(" | "));
 assert.ok(catalogConds.some((c) => /إجازة يوم التأسيس/.test(String(c)) && /بلا طلب/.test(String(c))), catalogConds.join(" | "));
 

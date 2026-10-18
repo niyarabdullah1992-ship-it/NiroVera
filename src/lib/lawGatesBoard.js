@@ -12,6 +12,8 @@ import { hoursPolicyOf } from "./laborHoursPolicy.js";
 import { ruleValue } from "./laborRules.js";
 import { statusFromWeekCheck } from "./lawGateStatus.js";
 import { NIGHT_WORK_RIGHTS } from "./nightWorkRights.js";
+import { eidOverlapRegsNote, juvenileNightRegsNote, overtimeRegsNote, preventedWageModelNote, regsDecisionLine } from "./implementingRegsNotes.js";
+import { preventedDaysInMonth } from "./modelRequests.js";
 
 function checkById(gates, id) {
   return (gates?.checks || []).find((row) => row?.id === id) || null;
@@ -28,6 +30,24 @@ function firstNamesFromNote(note, ar) {
   return chunk;
 }
 
+const STATUS_RANK = { blocked: 0, alert: 1, waiting: 1, coming: 2, settled: 3, void: 4 };
+
+/** Worst open check among several gates that share one article row; null when all are met or absent. */
+function worstOpenCheck(...checks) {
+  const open = checks.filter((check) => check && !check.ok);
+  if (!open.length) return null;
+  return open.sort((a, b) => (STATUS_RANK[statusFromWeekCheck(a)] ?? 9) - (STATUS_RANK[statusFromWeekCheck(b)] ?? 9))[0];
+}
+
+/** A check that ran but found nobody it applies to reads «لا ينطبق», never «استقرّ». */
+function notApplicable(check) {
+  return !check || check.applicable === false;
+}
+
+function voidPill(ar, label) {
+  return { status: "void", who: "", detail: "", pillLabel: label || (ar ? "لا ينطبق هذا الأسبوع" : "Not this week") };
+}
+
 function pillFromCheck(check, ar, { waitingWord = "waiting" } = {}) {
   if (!check) return { status: "void", who: "", detail: "" };
   if (check.ok) return { status: "settled", who: "", detail: "" };
@@ -36,13 +56,24 @@ function pillFromCheck(check, ar, { waitingWord = "waiting" } = {}) {
   return { status: waitingWord === "alert" ? "alert" : "waiting", who, detail: "" };
 }
 
-/** Heat / Decision 3337 panel model. */
+/** «أحمد (الأحد، الاثنين)، سالم (الثلاثاء)» — per-person days from the week gate. */
+function sunWhoLine(rows, ar) {
+  const DAYS_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+  const DAYS_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  return (rows || []).map((row) => {
+    const labels = (row.days || []).map((key) => (ar ? DAYS_AR : DAYS_EN)[new Date(`${key}T12:00:00`).getDay()]);
+    return labels.length ? `${row.name} (${labels.join(ar ? "، " : ", ")})` : row.name;
+  }).join(ar ? "، " : ", ");
+}
+
+/** Heat / Decision 3337 panel model — per person, per day (exposed / shaded on the roster cell). */
 export function buildHeatBanGatePanel({ gates, onDate, ar = true } = {}) {
   const win = heatBanWindow(onDate);
   const heat = checkById(gates, "heat_ban");
   const place = checkById(gates, "heat_place");
   const heatDue = heat && !heat.ok;
   const placeDue = place && !place.ok;
+  const counts = gates?.sunCounts || { field: 0, office: 0, unset: 0 };
 
   return {
     id: "3337",
@@ -53,24 +84,33 @@ export function buildHeatBanGatePanel({ gates, onDate, ar = true } = {}) {
       zodiacAr: "25 الجوزاء → نهاية 24 السنبلة · القرار 3337",
       zodiacEn: "25 Gemini → end of 24 Virgo · Decision 3337",
       window: `${win.startLabel}–${win.endLabel}`,
-      noteAr: "الموسم ثابت في المنصة لا يملكه المدير. الفرع يختار فقط تصنيف مواقعه.",
-      noteEn: "The season is fixed in the product. The station only classifies its sites.",
+      noteAr: "الموسم ثابت في المنصة لا يملكه المدير. التحديد مكشوف/مظلّل من خلية كل موظف في الجدول.",
+      noteEn: "The season is fixed in the product. Field / office is marked on each person's roster cell.",
     },
     rows: [
       {
         id: "exposed",
         article: "3337",
         decision: "3337",
-        status: heatDue ? "waiting" : (placeDue ? "alert" : "void"),
-        pillLabel: heatDue
-          ? (ar ? "داخل الحظر" : "Inside the ban")
-          : (placeDue
-            ? (ar ? "يحتاج تصنيفاً" : "Needs classification")
-            : (ar ? "بلا أثر" : "No effect")),
+        status: heatDue ? "violation" : "void",
+        pillLabel: heatDue ? (ar ? "مخالفة" : "Violation") : (ar ? "بلا أثر" : "No effect"),
         title: ar ? "مكشوف" : "Exposed",
+        who: heatDue ? sunWhoLine(gates?.sunField, ar) : "",
         summary: ar
           ? `العمل تحت أشعة الشمس مباشرة أو في ساحة غير مغطّاة — يُمنع من ${win.startLabel} إلى ${win.endLabel} خلال الموسم. لا يُجبر العامل على العمل في النافذة.`
           : `Work under direct sun or in an uncovered yard — banned ${win.startLabel}–${win.endLabel} in season. A worker may not be compelled to work in the window.`,
+      },
+      {
+        id: "unmarked",
+        article: "3337",
+        decision: "3337",
+        status: placeDue ? "alert" : "void",
+        pillLabel: placeDue ? (ar ? "يحتاج تحديداً" : "Needs a mark") : (ar ? "بلا أثر" : "No effect"),
+        title: ar ? "يحتاج تحديد مكشوف/مظلّل" : "Needs a exposed / shaded mark",
+        who: placeDue ? sunWhoLine(gates?.sunUnset, ar) : "",
+        summary: ar
+          ? `خلايا داخل الموسم تلمس النافذة بلا تحديد${counts.unset ? ` (${counts.unset})` : ""} — حدِّدها من خلية الموظف في الجدول.`
+          : `In-season cells touching the window with no mark${counts.unset ? ` (${counts.unset})` : ""} — mark them on the person's roster cell.`,
       },
       {
         id: "shaded",
@@ -78,10 +118,10 @@ export function buildHeatBanGatePanel({ gates, onDate, ar = true } = {}) {
         decision: "3337",
         status: "void",
         pillLabel: ar ? "بلا أثر" : "No effect",
-        title: ar ? "مظلّل / داخلي" : "Shaded / indoor",
+        title: ar ? "مظلّل / داخلي" : "Office / indoor",
         summary: ar
-          ? "العمل داخل مبنى أو تحت مظلة تحجب الشمس — خارج نطاق القرار. وسم الميدان مكشوفاً أو داخلياً قبل الفحص."
-          : "Indoor work or under a sun-blocking shade — outside the decision's scope. Mark the shift open-air or indoor before the check.",
+          ? "العمل داخل مبنى أو تحت مظلة تحجب الشمس — خارج نطاق القرار."
+          : "Indoor work or under a sun-blocking shade — outside the decision's scope.",
       },
     ],
     quoteTitle: heatBanDecisionLabel(ar),
@@ -100,7 +140,6 @@ export function buildNightGatePanel({ gates, onDate, ar = true } = {}) {
   const compensate = checkById(gates, "night_compensate");
   const performer = checkById(gates, "night_performer_comp");
   const medical = checkById(gates, "night_medical");
-  const facilities = checkById(gates, "night_facilities");
   const payEq = checkById(gates, "night_pay_equality");
   const consider = checkById(gates, "night_consideration");
   const workerHours = ruleValue("hours.night.workerHours", onDate) || 3;
@@ -112,6 +151,8 @@ export function buildNightGatePanel({ gates, onDate, ar = true } = {}) {
   const nights = Array.isArray(gates?.nightsThisWeek) ? gates.nightsThisWeek.length : 0;
   const performers = Array.isArray(gates?.performersThisWeek) ? gates.performersThisWeek : [];
   const sample = performers[0]?.name || "";
+  /* The five employer obligations — one rule row each, derived in shiftWeek (nightObligationRows). */
+  const obligationRows = Array.isArray(gates?.nightObligations) ? gates.nightObligations : [];
 
   const restPill = pillFromCheck(rest, ar);
   const pregPill = pillFromCheck(preg, ar);
@@ -119,7 +160,6 @@ export function buildNightGatePanel({ gates, onDate, ar = true } = {}) {
   const compensatePill = pillFromCheck(compensate, ar);
   const performerPill = pillFromCheck(performer, ar);
   const medicalPill = pillFromCheck(medical, ar);
-  const facilitiesPill = pillFromCheck(facilities, ar);
   const payPill = pillFromCheck(payEq, ar);
 
   const pillByGate = {
@@ -216,20 +256,7 @@ export function buildNightGatePanel({ gates, onDate, ar = true } = {}) {
           : `${workerHours}+ hours between ${start}:00 and ${end}:00 = night worker · any minute performs night work`,
       },
       ...rightRows,
-      {
-        id: "night_facilities",
-        article: "18632",
-        decision: "18632",
-        status: facilities ? facilitiesPill.status : "void",
-        who: facilitiesPill.who,
-        pillLabel: !facilities
-          ? (ar ? "بلا أثر" : "No effect")
-          : undefined,
-        summary: ar
-          ? "التزامات المنشأة لليل: إسعافات أولية · نقل طارئ · وصول لطعام — أعلام إعدادات لا وحدة عيادة"
-          : "Night workplace duties: first aid · emergency transfer · food access — settings flags, not a clinic module",
-        checkId: "night_facilities",
-      },
+      ...obligationRows,
       {
         id: "night_pay_equality",
         article: "18632",
@@ -257,12 +284,22 @@ export function buildNightGatePanel({ gates, onDate, ar = true } = {}) {
   };
 }
 
-/** Fifteen Labour Law checks — corrected article summaries from M/51 PDF. */
+/** Labour Law article rows — corrected article summaries from M/51 PDF; void when nobody this week is in scope. */
 export function buildLabourLawGatePanel({ gates, company, onDate, ar = true } = {}) {
   const policy = hoursPolicyOf(company);
   const byId = (id) => checkById(gates, id);
 
   const hours48 = byId("hours_48");
+  const ramadan = byId("ramadan");
+  const ramadanWeek = byId("ramadan_week_36");
+  const weekly24 = byId("weekly_rest_24h");
+  const weeklyFriday = byId("weekly_rest_friday");
+  const juvenileDocs = byId("juvenile_docs");
+  const overtime = byId("overtime_107");
+  const postnatal = byId("maternity_postnatal");
+  const nursing = byId("nursing_hour");
+  const juvenileGap = byId("juvenile_night_gap");
+  const juvenileHazard = byId("juvenile_hazard");
   const rest5 = byId("rest_5h");
   const workplace = byId("workplace");
   const weekly = byId("weekly_rest");
@@ -279,10 +316,12 @@ export function buildLabourLawGatePanel({ gates, company, onDate, ar = true } = 
       summary: ar
         ? "8 ساعات يومياً أو 48 أسبوعياً · رمضان 6 / 36 — السقف حكمي: الزائد لا يُحفظ في الجدول"
         : "8h/day or 48h/week · Ramadan 6/36 — the cap is mandatory; excess is not kept on the roster",
-      ...pillFromCheck(hours48, ar),
-      status: hours48 ? statusFromWeekCheck(hours48) : "settled",
-      who: pillFromCheck(hours48, ar).who,
-      checkId: "hours_48",
+      ...(() => {
+        const open = worstOpenCheck(hours48, ramadan, ramadanWeek);
+        if (open) return { ...pillFromCheck(open, ar), status: statusFromWeekCheck(open) };
+        return { ...pillFromCheck(hours48, ar), status: hours48 ? statusFromWeekCheck(hours48) : "settled" };
+      })(),
+      checkId: worstOpenCheck(hours48, ramadan, ramadanWeek)?.id || "hours_48",
     },
     {
       article: "99",
@@ -341,12 +380,14 @@ export function buildLabourLawGatePanel({ gates, company, onDate, ar = true } = 
     {
       article: "104",
       summary: ar
-        ? "الجمعة راحة أسبوعية · 24 ساعة متصلة · لا تُعوَّض نقداً"
-        : "Friday weekly rest · 24 consecutive hours · not cash-compensated",
-      ...pillFromCheck(weekly, ar),
-      status: weekly ? statusFromWeekCheck(weekly) : "settled",
-      who: pillFromCheck(weekly, ar).who,
-      checkId: "weekly_rest",
+        ? "يوم راحة أسبوعي · 24 ساعة متصلة · لا تُعوَّض نقداً · استبدال الجمعة بعد إبلاغ مكتب العمل مع تمكين أداء الواجبات الدينية"
+        : "Weekly rest day · 24 consecutive hours · not cash-compensated · replacing Friday after notifying the labour office, with religious duties enabled",
+      ...(() => {
+        const open = worstOpenCheck(weekly, weekly24, weeklyFriday);
+        if (open) return { ...pillFromCheck(open, ar), status: statusFromWeekCheck(open) };
+        return { ...pillFromCheck(weekly, ar), status: weekly ? statusFromWeekCheck(weekly) : "settled" };
+      })(),
+      checkId: worstOpenCheck(weekly, weekly24, weeklyFriday)?.id || "weekly_rest",
     },
     {
       article: "105",
@@ -374,8 +415,13 @@ export function buildLabourLawGatePanel({ gates, company, onDate, ar = true } = 
       summary: ar
         ? "ساعات إضافية بأجر الساعة + 50% · ويجوز إجازة تعويضية بموافقة العامل (من 2025)"
         : "Overtime at hourly wage + 50% · compensatory leave with consent (from 2025)",
-      status: "void",
-      pillLabel: ar ? "يُقرَّر في قسم الإضافي" : "Decided on the OT board",
+      ...(() => {
+        if (overtime && !overtime.ok) return { ...pillFromCheck(overtime, ar), pillLabel: ar ? "إضافي مسمّى" : "Named overtime" };
+        return voidPill(ar, overtime ? undefined : (ar ? "يُقرَّر في قسم الإضافي" : "Decided on the OT board"));
+      })(),
+      checkId: "overtime_107",
+      // Regs Arts. 22 / 22 bis — the 720h cap and compensatory leave, enforced on the OT board.
+      regs: overtimeRegsNote(ar, onDate),
     },
     {
       article: "108",
@@ -406,22 +452,7 @@ export function buildLabourLawGatePanel({ gates, company, onDate, ar = true } = 
         return { status: "settled", who: "" };
       })(),
       checkId: holiday?.id,
-    },
-    {
-      article: "113",
-      summary: ar
-        ? "إجازة زواج أو وفاة الزوج/الأصول/الفروع خمسة أيام · وفاة الأخ/الأخت ثلاثة · ولادة مولود ثلاثة خلال سبعة أيام من الواقعة"
-        : "Marriage or death of spouse/ascendants/descendants: five days · sibling death: three · childbirth: three within seven days of the event",
-      status: "void",
-      pillLabel: ar ? "بلا أثر" : "No effect",
-    },
-    {
-      article: "115",
-      summary: ar
-        ? "إجازة امتحان بأيامه الفعلية · إشعار 15 يوماً · الوثائق المؤيدة"
-        : "Exam leave for actual exam days · 15 days' notice · supporting documents",
-      status: "void",
-      pillLabel: ar ? "بلا أثر" : "No effect",
+      regs: eidOverlapRegsNote(ar),
     },
     {
       article: "149",
@@ -434,18 +465,37 @@ export function buildLabourLawGatePanel({ gates, company, onDate, ar = true } = 
     {
       article: "151",
       summary: ar
-        ? "إجازة الوضع 12 أسبوعاً — منها ستة وجوبية بعد الوضع"
-        : "Maternity leave 12 weeks — six mandatory after birth",
-      status: "void",
-      pillLabel: ar ? "بلا أثر" : "No effect",
+        ? "إجازة الوضع 12 أسبوعاً — منها ستة وجوبية بعد الوضع: لا دوام فيها"
+        : "Maternity leave 12 weeks — six mandatory after birth: no duty in them",
+      ...(() => {
+        if (postnatal && !postnatal.ok) return pillFromCheck(postnatal, ar, { waitingWord: "alert" });
+        if (notApplicable(postnatal)) return voidPill(ar);
+        return { status: "settled", who: "" };
+      })(),
+      checkId: "maternity_postnatal",
+    },
+    {
+      article: "154",
+      summary: ar
+        ? "فترة إرضاع لا تزيد على ساعة يومياً فوق راحات العمال — من ساعات العمل الفعلية وبلا تخفيض أجر"
+        : "Nursing time of up to one hour a day on top of general rests — actual working time, no wage cut",
+      ...(() => {
+        if (notApplicable(nursing)) return voidPill(ar);
+        return { status: "settled", who: firstNamesFromNote(nursing.note, ar) };
+      })(),
+      checkId: "nursing_hour",
     },
     {
       article: "161",
       summary: ar
         ? "يحظر تشغيل الأحداث في الأعمال الخطرة أو الصناعات الضارة — بقرار من الوزير"
         : "Juveniles may not work in hazardous or harmful jobs — by Minister decision",
-      status: "void",
-      pillLabel: ar ? "بلا أثر" : "No effect",
+      ...(() => {
+        if (juvenileHazard && !juvenileHazard.ok) return pillFromCheck(juvenileHazard, ar, { waitingWord: "alert" });
+        if (notApplicable(juvenileHazard)) return voidPill(ar);
+        return { status: "settled", who: "" };
+      })(),
+      checkId: "juvenile_hazard",
     },
     {
       article: "162",
@@ -455,7 +505,10 @@ export function buildLabourLawGatePanel({ gates, company, onDate, ar = true } = 
       ...(() => {
         const src = juvenileAge && !juvenileAge.ok ? juvenileAge : (juvenile && !juvenile.ok && /162|UNDER_AGE|دون/.test(`${juvenile.error || ""}${juvenile.note || ""}`) ? juvenile : null);
         if (src && !src.ok) return pillFromCheck(src, ar);
-        // A passing juvenile check means the age floor was examined this week.
+        // The age floor is only examined when a birth date is on file.
+        if (juvenileAge && juvenileAge.applicable === false) {
+          return voidPill(ar, ar ? "يحتاج تاريخ الميلاد" : "Needs a birth date");
+        }
         if (juvenileAge || juvenile) return { status: "settled", who: "" };
         return { status: "void", who: "", pillLabel: ar ? "بلا أثر" : "No effect" };
       })(),
@@ -471,10 +524,14 @@ export function buildLabourLawGatePanel({ gates, company, onDate, ar = true } = 
         if (juvenile && !juvenile.ok && /163|NIGHT/.test(`${juvenile.error || ""}${juvenile.note || ""}`)) {
           return pillFromCheck(juvenile, ar);
         }
+        if (juvenileGap && !juvenileGap.ok) return pillFromCheck(juvenileGap, ar, { waitingWord: "alert" });
+        if (juvenileNight?.applicable === false) return voidPill(ar);
         if (juvenileNight || juvenile) return { status: "settled", who: "" };
         return { status: "void", who: "", pillLabel: ar ? "بلا أثر" : "No effect" };
       })(),
-      checkId: juvenileNight?.id || "juvenile_night",
+      checkId: juvenileNight && !juvenileNight.ok ? juvenileNight.id : (juvenileGap && !juvenileGap.ok ? juvenileGap.id : (juvenileNight?.id || "juvenile_night")),
+      // Regs Art. 34 — the exceptions; the roster does not grant them, so they read as information.
+      regs: juvenileNightRegsNote(ar),
     },
     {
       article: "164",
@@ -486,12 +543,45 @@ export function buildLabourLawGatePanel({ gates, company, onDate, ar = true } = 
         if (juvenile && !juvenile.ok && /164|DAY_CAP|STRETCH|PRESENCE|REST_BAN|NO_106/.test(`${juvenile.error || ""}${juvenile.note || ""}`)) {
           return pillFromCheck(juvenile, ar);
         }
+        if (juvenileHours?.applicable === false) return voidPill(ar);
         if (juvenileHours || juvenile) return { status: "settled", who: "" };
         return { status: "void", who: "", pillLabel: ar ? "بلا أثر" : "No effect" };
       })(),
       checkId: juvenileHours?.id || "juvenile_hours",
     },
+    {
+      article: "165",
+      summary: ar
+        ? "قبل تشغيل الحدث: الهوية أو شهادة الميلاد، وشهادة لياقة صحية مصدّقة، وموافقة ولي الأمر في ملفه · والمادة 166: إبلاغ مكتب العمل خلال الأسبوع الأول"
+        : "Before employing a juvenile: ID or birth certificate, a certified fitness certificate, and guardian consent on file · Art. 166: notify the labour office in the first week",
+      ...(() => {
+        if (!juvenileDocs || notApplicable(juvenileDocs)) return voidPill(ar);
+        if (!juvenileDocs.ok) {
+          const who = String(juvenileDocs.note || "").split(" — ")[0].split(" · ").map((part) => part.split(":")[0].trim()).filter(Boolean).join(ar ? "، " : ", ");
+          return { ...pillFromCheck(juvenileDocs, ar), who, status: statusFromWeekCheck(juvenileDocs) };
+        }
+        return { status: "settled", who: "" };
+      })(),
+      checkId: "juvenile_docs",
+    },
   ];
+
+  // Model Art. 46 — a day the establishment kept a present, ready worker from working stays paid. Read
+  // from the manager's «منعته المنشأة» records in the month of the week shown; never absence on payroll.
+  const month = String(onDate || "").slice(0, 7);
+  const prevented = month
+    ? (company?.employees || []).reduce((sum, employee) => sum + preventedDaysInMonth(employee, month).size, 0)
+    : 0;
+  rows.push({
+    article: ar ? "النموذج الموحد م46" : "Model Art. 46",
+    summary: ar
+      ? `منعته المنشأة وهو حاضر مستعد — يُستحق أجره ولا يُحتسب غياباً · ${preventedWageModelNote(ar)}`
+      : `Kept from work by the company while ready — paid, not absence · ${preventedWageModelNote(ar)}`,
+    ...(prevented
+      ? { status: "settled", who: "", pillLabel: ar ? `${prevented} يوماً هذا الشهر` : `${prevented} day(s) this month` }
+      : { status: "void", who: "", pillLabel: ar ? "للعلم" : "For reference" }),
+    checkId: "",
+  });
 
   const count = rows.length;
   return {
@@ -500,6 +590,7 @@ export function buildLabourLawGatePanel({ gates, company, onDate, ar = true } = 
     footer: ar
       ? "نظام العمل الصادر بالمرسوم الملكي م/51. كل صف يُفحص على الأسبوع المعروض ويكتب أثره في سجل الموظف. ما يخص الليل أو حظر الشمس يبقى في لوحه."
       : "Labour Law issued by Royal Decree M/51. Each row is checked on the week shown and recorded on the employee file. Night and sun-ban duties stay on their own panels.",
+    regsSource: regsDecisionLine(ar),
     rows,
   };
 }

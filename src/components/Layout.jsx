@@ -2,10 +2,11 @@ import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
-import { updateCompany, getCompanyData, getCompanyToken } from "@/lib/store";
+import { openDueEmployerDutyNotices } from "@/lib/employerDutyNotices";
+import { updateCompany, getCompanyData, getCompanyToken, openDueHeatBanNotices, openDueDisciplineDeadlineNotices, openDueNecessityNotices, openDueCompLeaveNotices, openDueReligionNotices, openDueGrievanceNotices, settleDueResignations } from "@/lib/store";
 import { base44 } from "@/api/base44Client";
 import { toast } from "@/components/ui/use-toast";
-import { allowedNavFor } from "@/lib/navVisibility";
+import { allowedNavFor, hrSectionAccessFor } from "@/lib/navVisibility";
 import { collectSuiteBadges, suiteAppBadge, suiteAppGlow } from "@/lib/suiteBadges";
 import { listLocalTodayAttendance } from "@/lib/localAttendanceFallback";
 import { hydrateEmployeesLeave } from "@/lib/leaveDerivations";
@@ -36,6 +37,7 @@ import PageErrorBoundary from "@/components/PageErrorBoundary";
 import { canSeeMinistryAlerts, deriveMinistryAlerts } from "@/lib/ministryAlertDerivations";
 import { THEME_CHANGE_EVENT, applyPlatformTheme, applyStoredPlatformTheme, persistPlatformTheme } from "@/lib/platformTheme";
 import PlatformBoot from "@/components/shared/PlatformBoot";
+import useDutyTicker from "@/hooks/useDutyTicker";
 
 export default function Layout({ children }) {
   const { t, lang, dir } = useI18n();
@@ -48,12 +50,32 @@ export default function Layout({ children }) {
   const [ministryDismissTick, setMinistryDismissTick] = useState(0);
   const [notifPrefTick, setNotifPrefTick] = useState(0);
   const stationScope = useStationScope();
+  // The one app-level duty ticker: break start / end, the 5h rule, 3337 — on every page (dutyTicker.js).
+  const { clock: dutyClock } = useDutyTicker({ company, currentUser, ar: lang === "ar", navigate });
 
   useEffect(() => {
     const refresh = () => setNotifPrefTick((n) => n + 1);
     window.addEventListener(NOTIFICATION_PREFS_EVENT, refresh);
     return () => window.removeEventListener(NOTIFICATION_PREFS_EVENT, refresh);
   }, []);
+
+  // 3337 — check every minute; notices fire once when the 12:00 ban window opens on a season day.
+  useEffect(() => {
+    if (!company?.id) return undefined;
+    const tick = () => {
+      try { openDueHeatBanNotices(company.id); } catch { /* notices are best-effort */ }
+      try { openDueDisciplineDeadlineNotices(company.id); } catch { /* notices are best-effort */ }
+      try { openDueNecessityNotices(company.id); } catch { /* notices are best-effort */ }
+      try { openDueCompLeaveNotices(company.id); } catch { /* notices are best-effort */ }
+      try { settleDueResignations(company.id); } catch { /* best-effort; runs again next tick */ }
+      try { openDueReligionNotices(company.id); } catch { /* notices are best-effort */ }
+      try { openDueGrievanceNotices(company.id); } catch { /* notices are best-effort */ }
+      try { openDueEmployerDutyNotices(company.id); } catch { /* notices are best-effort */ }
+    };
+    tick();
+    const timer = window.setInterval(tick, 60000);
+    return () => window.clearInterval(timer);
+  }, [company?.id]);
 
   useEffect(() => {
     applyStoredPlatformTheme(company?.id);
@@ -216,9 +238,10 @@ export default function Layout({ children }) {
   const activeCategory = activeNavItem?.category || "daily";
   const sectionPages = location.pathname.startsWith("/app/settings") || !activeNavItem
     ? []
-    : orderedNavItems.filter((item) => item.category === activeCategory && item.to !== "/app/settings");
+    // التصعيد is part of المهام (side list, filter, each order's chain) — not a page of its own.
+    : orderedNavItems.filter((item) => item.category === activeCategory && item.to !== "/app/settings" && !String(item.to || "").startsWith("/app/escalation"));
   const railGroups = buildSuiteRailGroups(orderedNavItems, lang, currentUser.role);
-  const railClusters = buildSuiteRailClusters(railGroups, lang, { user: currentUser, data });
+  const railClusters = buildSuiteRailClusters(railGroups, lang, { user: currentUser, data, hrAccess: hrSectionAccessFor(currentUser, data, company) });
   const activeRailKey = activeSuiteRailKey(railClusters, activeCategory, location.pathname, location.search);
   const canOpenSettings = allowedNav.has("/app/settings");
 
@@ -235,23 +258,55 @@ export default function Layout({ children }) {
   } catch {
     dismissedMinistry = new Set();
   }
-  const ministryNotifs = canSeeMinistryAlerts(currentUser, data)
-    ? deriveMinistryAlerts(data || {}).alerts
-      .filter((row) => !dismissedMinistry.has(row.id))
-      .map((row) => ({
-        id: `ministry_${row.id}`,
-        userId: currentUser.id,
-        text: lang === "ar" ? row.textAr : row.textEn,
-        read: false,
-        createdAt: new Date().toISOString(),
-        to: row.to,
-      }))
+  // Derived ministry alerts carry no stored row, so «read» and «first seen» live per viewer: the bell
+  // clears after «تعليم كمقروء» and the time stays the moment it was first seen, not «الآن» forever.
+  const ministrySeenKey = `powercare_ministry_seen_${company.id}_${currentUser.id}`;
+  let ministrySeen = {};
+  try {
+    ministrySeen = JSON.parse(localStorage.getItem(ministrySeenKey) || "{}") || {};
+  } catch {
+    ministrySeen = {};
+  }
+  const ministryRows = canSeeMinistryAlerts(currentUser, data)
+    ? deriveMinistryAlerts(data || {}).alerts.filter((row) => !dismissedMinistry.has(row.id))
     : [];
+  let ministrySeenChanged = false;
+  for (const row of ministryRows) {
+    if (!ministrySeen[row.id]) {
+      ministrySeen[row.id] = { at: new Date().toISOString(), read: false };
+      ministrySeenChanged = true;
+    }
+  }
+  if (ministrySeenChanged) {
+    try { localStorage.setItem(ministrySeenKey, JSON.stringify(ministrySeen)); } catch { /* quota */ }
+  }
+  const ministryNotifs = ministryRows.map((row) => ({
+    id: `ministry_${row.id}`,
+    userId: currentUser.id,
+    text: lang === "ar" ? row.textAr : row.textEn,
+    read: !!ministrySeen[row.id]?.read,
+    createdAt: ministrySeen[row.id]?.at || new Date().toISOString(),
+    to: row.to,
+  }));
+  const markMinistryRead = (ids) => {
+    let changed = false;
+    for (const id of ids) {
+      const mid = String(id).startsWith("ministry_") ? String(id).slice("ministry_".length) : "";
+      if (!mid) continue;
+      ministrySeen[mid] = { ...(ministrySeen[mid] || { at: new Date().toISOString() }), read: true };
+      changed = true;
+    }
+    if (changed) {
+      try { localStorage.setItem(ministrySeenKey, JSON.stringify(ministrySeen)); } catch { /* quota */ }
+      setMinistryDismissTick((n) => n + 1);
+    }
+  };
   void ministryDismissTick;
   void notifPrefTick;
   const myNotifs = [...ministryNotifs, ...myStoredNotifs];
 
   const markAllRead = () => {
+    markMinistryRead(ministryNotifs.map((row) => row.id));
     updateCompany(company.id, (d) => {
       d.notifications.forEach((n) => {
         if (n.userId === currentUser.id) n.read = true;
@@ -290,12 +345,16 @@ export default function Layout({ children }) {
 
   // Clicking a notification marks it read and jumps to the page it refers to.
   const openNotification = (n) => {
+    // A grouped row («×3») carries every id it stands for — all of them become read.
+    const ids = (n.ids && n.ids.length ? n.ids : [n.id]).map(String);
+    markMinistryRead(ids);
     updateCompany(company.id, (d) => {
-      const target = d.notifications.find((x) => x.id === n.id);
-      if (target) target.read = true;
+      for (const target of d.notifications) {
+        if (ids.includes(String(target.id))) target.read = true;
+      }
     });
     setNotifOpen(false);
-    if (n.stationId) setStationScope(n.stationId);
+    if (n.stationId) setStationScope(n.stationId, { manual: false });
     navigate(n.to || routeForNotification(n.text));
   };
 
@@ -313,8 +372,8 @@ export default function Layout({ children }) {
         : `${(data.employees || []).length} employees · ${(data.stations || []).length} stations`,
     },
     "/app/org": {
-      title: lang === "ar" ? "الهيكل التنظيمي" : "Org Structure",
-      sub: lang === "ar" ? "منه تُشتق الصلاحيات وسلسلة التصعيد" : "Permissions and the escalation chain derive from it",
+      title: lang === "ar" ? "الهيكل" : "Structure",
+      sub: lang === "ar" ? "الشركة كلها: كل الفروع وكل الموظفين — للاطلاع" : "The whole company: every branch and person — read only",
     },
     "/app/settings": {
       title: lang === "ar" ? "إعدادات الشركة" : "Company Settings",
@@ -353,7 +412,7 @@ export default function Layout({ children }) {
       sub: lang === "ar" ? "ترفع طلبك هنا — القرار مسمّى والأثر يصل للدوام والتقويم" : "You raise the request here — the decision is named, and the effect reaches the rota and calendar",
     },
     "/app/requests/manage": {
-      title: lang === "ar" ? "إدارة" : "Manage",
+      title: lang === "ar" ? "إدارة الطلبات" : "Manage requests",
       sub: lang === "ar" ? "تستقبل وتقرر — القرار يُسجَّل باسمك" : "You receive and decide — the ruling is recorded in your name",
     },
     "/app/requests/archive": {
@@ -402,20 +461,8 @@ export default function Layout({ children }) {
       sub: lang === "ar" ? "جهد وإثبات · مراجعة بسبب · تصعيد عند احتراق المهلة" : "Effort and proof · review with reason · escalate when the quota burns",
     },
     "/app/escalation": {
-      title: lang === "ar" ? "نظام التصعيد" : "Escalation",
+      title: lang === "ar" ? "المهام والعمليات" : "Operations",
       sub: lang === "ar" ? "صندوق المراجعة · سلسلة لكل فرع حتى القمة" : "Review inbox · per-station chain to the top",
-    },
-    "/app/inventory": {
-      title: lang === "ar" ? "المخزون" : "Inventory",
-      sub: lang === "ar" ? "لا مركزي: كل فرع يشتري رصيده · يرى غيره ويطلب · صرف للعمل بمرجع" : "Decentralised: each station buys its stock · sees others and requests · issue to work with a ref",
-    },
-    "/app/assets": {
-      title: lang === "ar" ? "الأصول / العهد" : "Assets / Custody",
-      sub: lang === "ar" ? "سجل أصل · حائز واحد · نقل بين الفروع بطلب وموافقة · تسليم بتوقيع الطرفين" : "Asset register · one holder · inter-station transfer by request · dual-sign handover",
-    },
-    "/app/expenses": {
-      title: lang === "ar" ? "المصروفات" : "Expenses",
-      sub: lang === "ar" ? "الوعاء التشغيلي وحده — اعتماد متدرّج بالمبلغ · الإيصال بوابة · لا مخزون ولا أصل" : "Operating vessel only — amount-derived approval · receipt gates · not stock, not an asset",
     },
     "/app/safety": {
       title: lang === "ar" ? "السلامة HSE" : "Safety HSE",
@@ -517,6 +564,7 @@ export default function Layout({ children }) {
               onSearch={() => setSearchOpen(true)}
               hideLang={location.pathname.startsWith("/app/signing")}
               sectionPages={sectionPages}
+              punchQueueBadge={suiteBadges.punchQueue}
               activeNavItem={activeNavItem}
               pathname={location.pathname}
               notifOpen={notifOpen}
@@ -527,6 +575,7 @@ export default function Layout({ children }) {
               onDismissNotif={dismissNotification}
               onMarkAllNotifs={markAllRead}
               violationCount={violationCount}
+              dutyClock={dutyClock}
             />
 
             <PageErrorBoundary resetKey={location.pathname}>{children}</PageErrorBoundary>

@@ -60,22 +60,17 @@
     "complaintQueue",
     "attendanceLedger",
     "orgStructure",
-    "expenseBudget",
-    "stockBoard",
     "signingChain",
     "companySettings"
   ],
   "statusOf": {
     "WorkProof": "unused",
-    "InventoryUnit": "unused",
     "operationsTasks": "legacy-read-fallback",
     "attendanceLedger": "legacy-read-fallback",
     "orgStructure": "legacy-read-fallback",
     "companySettings": "legacy-read-fallback",
     "signingChain": "retired",
     "smartArchive": "legacy-read-fallback",
-    "expenseBudget": "legacy-read-fallback",
-    "stockBoard": "retired",
     "complaintQueue": "legacy-read-fallback",
     "reportAnalytics": "retired",
     "dailyReports": "legacy-read-fallback",
@@ -102,8 +97,6 @@
       "employeeCompliance",
       "signingChain",
       "smartArchive",
-      "expenseBudget",
-      "stockBoard",
       "complaintQueue",
       "reportAnalytics",
       "dailyReports",
@@ -134,7 +127,7 @@
       "money": {
         "titleEn": "Money",
         "titleAr": "المال",
-        "intent": "Payroll, expenses, assets, inventory. Figures from derivations only."
+        "intent": "Payroll and WPS. Figures from derivations only."
       },
       "proof": {
         "titleEn": "Proof cycle",
@@ -167,6 +160,8 @@
       "otherRequests": "leave",
       "leaveRoster": "leave",
       "disciplinaryCases": "trust",
+      "abuseCases": "trust",
+      "workRegulation": "trust",
       "stationChat": "trust",
       "stationChatGroups": "trust",
       "arbitrationOutcomes": "trust",
@@ -213,6 +208,12 @@
         "neverDenorm": "Permissions are on smartPositions / templates, not copied onto the seat as figures.",
         "bugLooks": "Orphan employeeId = empty seat that still blocks a hire."
       },
+      "orgDesign": {
+        "purpose": "Org design layer: span/vacancy thresholds, delegation-of-authority rows, dated org change requests and their signed decisions.",
+        "relates": "doa.approverSeatId → orgSeats; doa.unitId → Station; changes.ops → orgSeats / Station",
+        "neverDenorm": "Span, health, headcount and approval paths are derived in orgDesign.js — never stored.",
+        "bugLooks": "A published decision edited or removed = the as-of chart lies; a voice kind in doa = complaints routed to a manager."
+      },
       "orgTree": {
         "purpose": "Serialized org graph (nodes + edges) for the people tree.",
         "relates": "node.refId → Employee or Station",
@@ -224,12 +225,6 @@
         "relates": "applied onto smartPositions.employeeId → Employee",
         "neverDenorm": "Do not copy a template onto every employee as frozen figures.",
         "bugLooks": "Row has no companyId — isolation is the company localStorage key, not the row."
-      },
-      "stationBudgets": {
-        "purpose": "Station expense vessel. Canonical blob + store array.",
-        "relates": "stationId → Station",
-        "neverDenorm": "Remaining SAR is derived — do not persist it as the source.",
-        "bugLooks": "Writes to expenseBudget while the board reads stationBudgets = empty vessel."
       },
       "laborRules": {
         "purpose": "Read-only labour_rules catalog (Labour Law + 18632 + 3337). Never a company-editable table.",
@@ -338,24 +333,6 @@
         "relates": "line employee ids → Employee",
         "neverDenorm": "Do not persist ministry/WPS figures as editable columns.",
         "bugLooks": "Hard-coded net pay on the screen while the run blob differs."
-      },
-      "expenseClaims": {
-        "purpose": "Expense claim with receipt and approval chain.",
-        "relates": "requesterId → Employee; stationId → Station",
-        "neverDenorm": "Do not store remaining budget on the claim — derive from station vessel.",
-        "bugLooks": "Missing companyId = claim paid from another tenant. amount vs afterTaxAmount drift."
-      },
-      "assets": {
-        "purpose": "Physical asset with QR and current custodian.",
-        "relates": "holderId → Employee; stationId / purchasedByStationId → Station",
-        "neverDenorm": "Book cost stays on the buying station after transfer.",
-        "bugLooks": "Empty holderId = asset with no custodian (unit custodian must hold available assets)."
-      },
-      "inventoryItems": {
-        "purpose": "Stock SKU. Live quantity is locationBalances + currentLocationId.",
-        "relates": "companyId; InventoryUnit.itemId → this id",
-        "neverDenorm": "Do not also treat stockBoard as source quantity.",
-        "bugLooks": "quantity vs locationBalances disagree = phantom stock."
       },
       "anonymousReports": {
         "purpose": "Anonymous voice inbox. Append-only; archive with reason.",
@@ -544,6 +521,19 @@
           "identity": ["id", "companyId"],
           "personRef": "employeeId",
           "visibility": "senior"
+        },
+        {
+          "key": "orgDesign",
+          "kind": "blob",
+          "blobCategory": "orgDesign",
+          "storeKey": "orgDesign",
+          "owner": "org",
+          "ownerFile": "base44/functions/org/entry.ts",
+          "derivation": "base44/shared/orgDesignDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": null,
+          "visibility": "senior",
+          "notes": "Object-map blob {settings, doa, changes}. Written through companyDirectory syncBlob → mergeOrgDesignWrite (published decisions immutable)."
         },
         {
           "key": "orgTree",
@@ -856,7 +846,7 @@
           "blobCategory": "workProofs",
           "storeKey": "workProofs",
           "owner": "workproof",
-          "ownerFile": "base44/functions/workproof/entry.ts",
+          "ownerFile": "base44/functions/workProof/entry.ts",
           "derivation": "base44/shared/workProofDerivations.ts",
           "identity": ["id", "companyId", "ref"],
           "personRef": "raiserId",
@@ -869,7 +859,7 @@
           "entity": "WorkProof",
           "entityFile": "base44/entities/WorkProof.jsonc",
           "owner": "workproof",
-          "ownerFile": "base44/functions/workproof/entry.ts",
+          "ownerFile": "base44/functions/workProof/entry.ts",
           "derivation": "base44/shared/workProofDerivations.ts",
           "identity": ["id", "companyId", "proofNumber"],
           "personRef": "performedById",
@@ -962,6 +952,32 @@
           "personRef": "employeeId",
           "visibility": "senior",
           "notes": "Synced via store BLOB_CATEGORIES."
+        },
+        {
+          "key": "trainingPlan",
+          "kind": "blob",
+          "blobCategory": "trainingPlan",
+          "storeKey": "trainingPlan",
+          "owner": "companyDirectory",
+          "ownerFile": "src/components/safety/TrainingMedicalPanel.jsx",
+          "derivation": "src/lib/employerDuties.js",
+          "identity": ["id", "companyId"],
+          "personRef": null,
+          "visibility": "shared",
+          "notes": "Annual training plan by role (Implementing Regs Art. 15(4); Law Arts. 42–43). Synced via store BLOB_CATEGORIES; written by senior HR or manage_employees."
+        },
+        {
+          "key": "employerDuties",
+          "kind": "blob",
+          "blobCategory": "employerDuties",
+          "storeKey": "employerDuties",
+          "owner": "companyDirectory",
+          "ownerFile": "src/lib/employerDutiesStore.js",
+          "derivation": "src/lib/syncLaw.js",
+          "identity": ["employeeId", "companyId"],
+          "personRef": "employeeId",
+          "visibility": "self",
+          "notes": "One row per employee: trainings (Law Arts. 42–48), periodic medical exams (Art. 143), documents held by the employer (Regs Art. 6). Projected from employees[] at push (like leaveRoster) and laid back onto employees on hydration. syncBlob merges via syncLaw.mergeEmployerDutyRoster — HR in scope only; records never dropped."
         },
         {
           "key": "competencyCerts",
@@ -1071,7 +1087,7 @@
       "id": "money",
       "titleAr": "المال",
       "titleEn": "Money",
-      "intent": "Payroll, expenses, assets, inventory. Figures from derivations only.",
+      "intent": "Payroll and WPS. Figures from derivations only.",
       "collections": [
         {
           "key": "payrollRuns",
@@ -1096,174 +1112,6 @@
           "identity": ["id", "companyId"],
           "personRef": "userId",
           "visibility": "self"
-        },
-        {
-          "key": "expenseClaims",
-          "kind": "entity",
-          "entity": "ExpenseClaim",
-          "entityFile": "base44/entities/ExpenseClaim.jsonc",
-          "storeKey": "expenseClaims",
-          "owner": "expenses",
-          "ownerFile": "base44/functions/expenses/entry.ts",
-          "derivation": "base44/shared/expenseDerivations.ts",
-          "identity": ["id", "companyId", "requesterId"],
-          "personRef": "requesterId"
-        },
-        {
-          "key": "stationBudgets",
-          "kind": "blob",
-          "blobCategory": "stationBudgets",
-          "storeKey": "stationBudgets",
-          "owner": "budget",
-          "ownerFile": "base44/functions/budget/entry.ts",
-          "derivation": "base44/shared/expenseDerivations.ts",
-          "identity": ["id", "stationId", "companyId"],
-          "personRef": null,
-          "visibility": "senior",
-          "notes": "Station expense vessel. Writes are this blob only; expenseBudget is read-once fallback."
-        },
-        {
-          "key": "expenseBudget",
-          "kind": "blob",
-          "blobCategory": "expenseBudget",
-          "owner": "budget",
-          "ownerFile": "base44/functions/budget/entry.ts",
-          "derivation": "base44/shared/expenseDerivations.ts",
-          "identity": ["companyId"],
-          "personRef": null,
-          "splitOf": "stationBudgets",
-          "defect": "split-budget"
-        },
-        {
-          "key": "assets",
-          "kind": "entity",
-          "entity": "Asset",
-          "entityFile": "base44/entities/Asset.jsonc",
-          "storeKey": "assets",
-          "owner": "assets",
-          "ownerFile": "base44/functions/assets/entry.ts",
-          "identity": ["id", "companyId", "assetCode"],
-          "personRef": "holderId"
-        },
-        {
-          "key": "assetCustody",
-          "kind": "entity",
-          "entity": "AssetCustody",
-          "entityFile": "base44/entities/AssetCustody.jsonc",
-          "storeKey": "assetCustody",
-          "owner": "assets",
-          "ownerFile": "base44/functions/assets/entry.ts",
-          "identity": ["id", "companyId", "assetId"],
-          "personRef": "toId"
-        },
-        {
-          "key": "assetMaintenance",
-          "kind": "entity",
-          "entity": "AssetMaintenance",
-          "entityFile": "base44/entities/AssetMaintenance.jsonc",
-          "storeKey": "assetMaintenance",
-          "owner": "assets",
-          "ownerFile": "base44/functions/assets/entry.ts",
-          "identity": ["id", "companyId", "assetId"],
-          "personRef": null
-        },
-        {
-          "key": "assetTransfers",
-          "kind": "blob",
-          "blobCategory": "assetTransfers",
-          "storeKey": "assetTransfers",
-          "owner": "assets",
-          "ownerFile": "base44/functions/assets/entry.ts",
-          "identity": ["id", "companyId"],
-          "personRef": null,
-          "visibility": "senior"
-        },
-        {
-          "key": "inventoryItems",
-          "kind": "entity",
-          "entity": "InventoryItem",
-          "entityFile": "base44/entities/InventoryItem.jsonc",
-          "storeKey": "inventoryItems",
-          "owner": "inventory",
-          "ownerFile": "base44/functions/inventory/entry.ts",
-          "derivation": "base44/shared/inventoryDerivations.ts",
-          "identity": ["id", "companyId", "itemCode"],
-          "personRef": null,
-          "isolationKey": "companyId",
-          "defect": "inventory-forced-local",
-          "notes": "Canonical SKU. Sole qty home: locationBalances (+ derived quantity). inventoryApi still force-locals for preview; cloud inventory no longer dual-writes InventoryUnit."
-        },
-        {
-          "key": "InventoryUnit",
-          "kind": "entity",
-          "entity": "InventoryUnit",
-          "entityFile": "base44/entities/InventoryUnit.jsonc",
-          "owner": "inventory",
-          "ownerFile": "base44/functions/inventory/entry.ts",
-          "derivation": "base44/shared/inventoryDerivations.ts",
-          "identity": ["id", "companyId", "itemId"],
-          "personRef": null,
-          "isolationKey": "companyId",
-          "splitOf": "inventoryItems",
-          "notes": "Retired do-not-write. One-shot hydrate into InventoryItem.locationBalances on list/getItem. Never create/update units again."
-        },
-        {
-          "key": "materialRequests",
-          "kind": "entity",
-          "entity": "MaterialRequest",
-          "entityFile": "base44/entities/MaterialRequest.jsonc",
-          "storeKey": "materialRequests",
-          "owner": "inventory",
-          "ownerFile": "base44/functions/inventory/entry.ts",
-          "derivation": "base44/shared/inventoryDerivations.ts",
-          "identity": ["id", "companyId", "requesterId"],
-          "personRef": "requesterId"
-        },
-        {
-          "key": "stockMovements",
-          "kind": "entity",
-          "entity": "StockMovement",
-          "entityFile": "base44/entities/StockMovement.jsonc",
-          "storeKey": "stockMovements",
-          "owner": "inventory",
-          "ownerFile": "base44/functions/inventory/entry.ts",
-          "derivation": "base44/shared/inventoryDerivations.ts",
-          "identity": ["id", "companyId", "itemId"],
-          "personRef": "performedBy"
-        },
-        {
-          "key": "stockBoard",
-          "kind": "blob",
-          "blobCategory": "stockBoard",
-          "owner": "stock",
-          "ownerFile": "base44/functions/stock/entry.ts",
-          "derivation": "base44/shared/inventoryDerivations.ts",
-          "identity": ["companyId"],
-          "personRef": null,
-          "splitOf": "inventoryItems",
-          "defect": "split-stock"
-        },
-        {
-          "key": "ProcurementRequest",
-          "kind": "entity",
-          "entity": "ProcurementRequest",
-          "entityFile": "base44/entities/ProcurementRequest.jsonc",
-          "owner": "inventory",
-          "ownerFile": "base44/functions/inventory/entry.ts",
-          "derivation": "base44/shared/inventoryDerivations.ts",
-          "identity": ["id", "companyId", "requestNumber"],
-          "personRef": null
-        },
-        {
-          "key": "PurchaseOrder",
-          "kind": "entity",
-          "entity": "PurchaseOrder",
-          "entityFile": "base44/entities/PurchaseOrder.jsonc",
-          "owner": "inventory",
-          "ownerFile": "base44/functions/inventory/entry.ts",
-          "derivation": "base44/shared/inventoryDerivations.ts",
-          "identity": ["id", "companyId", "orderNumber"],
-          "personRef": null
         }
       ]
     },
@@ -1369,7 +1217,34 @@
           "derivation": "base44/shared/disciplineDerivations.ts",
           "identity": ["id", "companyId"],
           "personRef": "employeeId",
-          "visibility": "senior"
+          "visibility": "senior",
+          "notes": "Written only by compliance/disciplineSave (gates of Arts. 66–72 run on the server row; each stage may set only its own fields — syncLaw.planDisciplineStageWrite). Hydrated via BLOB_CATEGORIES but never pushed by the generic sync (canonicalStore NOT_PUSHED_AS_IS); syncBlob refuses it with DISCIPLINE_VIA_ACTION."
+        },
+        {
+          "key": "abuseCases",
+          "kind": "blob",
+          "blobCategory": "abuseCases",
+          "storeKey": "abuseCases",
+          "owner": "complaints",
+          "ownerFile": "src/lib/abuseStore.js",
+          "derivation": "src/lib/abuseComplaint.js",
+          "identity": ["id", "companyId"],
+          "personRef": "reporterId",
+          "visibility": "abuse",
+          "notes": "Workplace-abuse complaints (model work regulation Arts. 54–56). Confidential: readable by the filer, the members named on that case's committee, and senior HR. Below senior, syncBlob merges via syncLaw.mergeAbuseCasesWrite (filer adds own case; committee members write investigation fields of their case)."
+        },
+        {
+          "key": "workRegulation",
+          "kind": "blob",
+          "blobCategory": "workRegulation",
+          "storeKey": "workRegulation",
+          "owner": "hcm",
+          "ownerFile": "src/pages/Discipline.jsx",
+          "derivation": "src/lib/workRegulation.js",
+          "identity": ["companyId"],
+          "personRef": null,
+          "visibility": "shared",
+          "notes": "The establishment's approved work regulation (Law Arts. 12–13; Annex 1 model). Object, not array. Synced via BLOB_CATEGORIES; syncBlob merges via syncLaw.mergeWorkRegulationWrite (senior saves/announces versions, old versions kept in versions[], each worker adds only their own server-stamped acknowledgement). Non-senior readers see only their own ack. compliance/disciplineSave reads the stored copy; the page copy only while none is stored."
         },
         {
           "key": "laborRules",
@@ -1619,7 +1494,7 @@
       "keys": ["workProofs", "WorkProof"],
       "canonical": "workProofs",
       "legacy": ["WorkProof"],
-      "evidence": ["base44/functions/workproof/entry.ts:22", "src/pages/WorkProof.jsx:75", "base44/entities/WorkProof.jsonc"],
+      "evidence": ["base44/functions/workProof/entry.ts:22", "src/pages/WorkProof.jsx:75", "base44/entities/WorkProof.jsonc"],
       "summary": "Live data is the workProofs blob (ref, sealId). WorkProof entity still requires proofNumber/workTitle — a second shape, not the runtime store. No entities.WorkProof reader in functions or src/. Do-not-write the entity."
     },
     {
@@ -1639,24 +1514,6 @@
       "legacy": ["orgStructure"],
       "evidence": ["src/lib/store.js:768", "base44/functions/org/entry.ts:26"],
       "summary": "Writes go to orgTree (node array) plus companyMeta.orgBoard extras. orgStructure is read-once fallback."
-    },
-    {
-      "id": "split-budget",
-      "severity": "risky",
-      "keys": ["stationBudgets", "expenseBudget"],
-      "canonical": "stationBudgets",
-      "legacy": ["expenseBudget"],
-      "evidence": ["src/lib/store.js:480", "base44/functions/budget/entry.ts:15"],
-      "summary": "Writes go to stationBudgets. expenseBudget is read-once fallback. Claims persist on ExpenseClaim."
-    },
-    {
-      "id": "split-stock",
-      "severity": "risky",
-      "keys": ["inventoryItems", "stockBoard"],
-      "canonical": "inventoryItems",
-      "legacy": ["stockBoard"],
-      "evidence": ["src/lib/store.js:480", "base44/functions/stock/entry.ts:15"],
-      "summary": "stockBoard writes are stopped. Live preview quantity is inventoryItems via inventoryApi. stock function is do-not-invoke-from-frontend."
     },
     {
       "id": "split-signing",
@@ -1687,27 +1544,10 @@
     {
       "id": "orphan-function-silos",
       "severity": "risky",
-      "keys": ["attendanceLedger", "smartArchive", "stockBoard", "signingChain", "reportAnalytics", "dailyReports", "stationChat", "InventoryUnit"],
+      "keys": ["attendanceLedger", "smartArchive", "signingChain", "reportAnalytics", "dailyReports", "stationChat"],
       "canonical": null,
-      "evidence": ["src/pages/WorkProof.jsx:75", "src/lib/inventoryApi.js:55"],
-      "summary": "Frontend never invokes attendance, files, stock, signing, reports, dailyReport, chat, or inventory. Folders kept; new writes to parallel keys are stopped. A leftover call must use the owner of the canonical bag."
-    },
-    {
-      "id": "inventory-forced-local",
-      "severity": "risky",
-      "keys": ["inventoryItems"],
-      "canonical": "inventoryItems",
-      "evidence": ["src/lib/inventoryApi.js:55", "src/pages/Inventory.jsx:5"],
-      "summary": "inventoryApi.js calls forceLocalInventory on every request. The inventory function (ProcurementRequest, PurchaseOrder, InventoryUnit) is dark from the UI. Preview store is the live path."
-    },
-    {
-      "id": "inventory-qty-dual",
-      "severity": "fixed",
-      "keys": ["inventoryItems", "InventoryUnit"],
-      "canonical": "inventoryItems",
-      "legacy": ["InventoryUnit"],
-      "evidence": ["src/lib/facts/money.js", "base44/functions/inventory/entry.ts", "base44/entities/InventoryItem.jsonc"],
-      "summary": "Sole qty home is InventoryItem.locationBalances. Cloud inventory stopped dual-writing InventoryUnit; one-shot hydrate lifts leftover units into locationBalances."
+      "evidence": ["src/pages/WorkProof.jsx:75"],
+      "summary": "Frontend never invokes attendance, files, signing, reports, dailyReport, or chat. Folders kept; new writes to parallel keys are stopped. A leftover call must use the owner of the canonical bag."
     },
     {
       "id": "arbitration-preview-gap",
@@ -1730,8 +1570,8 @@
       "severity": "fixed-visible",
       "keys": ["workProofs"],
       "canonical": "workProofs",
-      "evidence": ["src/pages/WorkProof.jsx:75", "base44/functions/workproof/entry.ts", "base44/functions/workProof/entry.ts"],
-      "summary": "Frontend invokes workproof. A workProof folder listing also exists; on Windows they are the same path. Canonical invoke name: workproof."
+      "evidence": ["src/pages/WorkProof.jsx:75", "base44/functions/workProof/entry.ts"],
+      "summary": "Frontend invokes workproof; the function folder on disk is workProof (case-insensitive on Windows, so both resolve there; on Linux only workProof exists). Canonical invoke name: workproof; file paths use workProof."
     },
     {
       "id": "workproof-signToken",

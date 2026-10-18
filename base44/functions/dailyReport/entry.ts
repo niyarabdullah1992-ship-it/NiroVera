@@ -14,7 +14,7 @@ import {
   riyadhDateKey,
 } from "../../shared/dailyReportDerivations.ts";
 import { deriveProofStage } from "../../shared/workProofDerivations.ts";
-import { isOnApprovedLeave } from "../../shared/leaveDerivations.ts";
+import { isOfficialHolidayDay, isOnApprovedLeave } from "../../shared/leaveDerivations.ts";
 
 /**
  * do-not-invoke-from-frontend — store + Operations own the live daily/ops bags.
@@ -213,7 +213,8 @@ Deno.serve(async (req) => {
         }).length;
         const stationEmps = emps.filter((e: any) => e.stationId === stationId);
         const unexcusedAbsences = stationEmps.filter((e: any) =>
-          e.attendanceStatus === "absent" && !isOnApprovedLeave(e.leaveRequests || [], dateKey),
+          // Art. 112: an official holiday (calendar, no request) is paid leave — never an unexcused absence.
+          e.attendanceStatus === "absent" && !isOnApprovedLeave(e.leaveRequests || [], dateKey) && !isOfficialHolidayDay(dateKey),
         ).length;
 
         const facts = deriveStationFacts({ tasksClosed, openHazards, unexcusedAbsences, proofsApproved });

@@ -9,6 +9,7 @@ import {
 } from "@/lib/careersContent";
 import { BORDER, INK, MUTED, SURFACE } from "@/lib/publicChrome";
 import AttachFileButton from "@/components/shared/AttachFileButton";
+import NvIcon from "@/components/shared/NvIcon";
 
 async function hiringPublic(payload) {
   const res = await base44.functions.invoke("hiring", payload);
@@ -417,7 +418,7 @@ export default function CareersIntake({
               <div style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: "14px", padding: "18px 20px" }}>
                 {sentRef ? (
                   <div style={{ textAlign: "center", padding: "8px 0" }}>
-                    <div style={{ width: "46px", height: "46px", borderRadius: "50%", background: "#ECFDF3", border: "1px solid #BBF7D0", color: "#15803D", display: "flex", alignItems: "center", justifyContent: "center", marginInline: "auto", fontSize: "20px" }}>✓</div>
+                    <div style={{ width: "46px", height: "46px", borderRadius: "50%", background: "#ECFDF3", border: "1px solid #BBF7D0", color: "#15803D", display: "flex", alignItems: "center", justifyContent: "center", marginInline: "auto", fontSize: "20px" }}><NvIcon name="check" size={22} strokeWidth={2} inline={false} /></div>
                     <div style={{ fontSize: "15px", fontWeight: 600, marginTop: "12px" }}>{T("وصل طلبك", "Your application is in")}</div>
                     <div style={{ fontSize: "12px", color: "#5A6B85", marginTop: "6px", lineHeight: 1.75, textWrap: "pretty" }}>
                       {T(

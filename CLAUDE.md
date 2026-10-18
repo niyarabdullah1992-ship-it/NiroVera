@@ -35,6 +35,7 @@ Apply these as product UX rules — calm, clear, connected:
 - Reuse existing pages under `src/pages/` and libs under `src/lib/` before inventing parallel modules.  
 - Preserve RTL Arabic-first behavior and role/plan visibility (`navVisibility`, auth gates).  
 - Never commit secrets from `.env.local`.
+- Company data is one blob per `companyId`, written only through `updateCompany`. It is read in three named passes: `src/lib/data/companyMigrations.js` (one-time, versioned by `schemaVersion`, append-only), `src/lib/data/companyInvariants.js` (rules kept true on every read), `src/lib/preview/previewUpkeep.js` (demo seeds, preview only). A legacy-shape fix is a migration; a rule new records must also satisfy is an invariant; nothing demo-only goes anywhere else.
 
 ### Design — live platform only
 

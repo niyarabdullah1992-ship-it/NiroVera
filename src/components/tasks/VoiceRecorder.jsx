@@ -5,7 +5,7 @@ import { mediaErrorText, openStandalone } from "@/lib/mediaAccess";
 import { useVoiceRecording } from "@/hooks/useVoiceRecording";
 import { Mic, Square, Loader2 } from "lucide-react";
 
-export default function VoiceRecorder({ files, setFiles, disabled, onRecorded, compact = false, circle = false, label }) {
+export default function VoiceRecorder({ files, setFiles, disabled, onRecorded, compact = false, circle = false, tile = false, label, hint }) {
   const { t } = useI18n();
   const rec = useVoiceRecording();
   const [uploading, setUploading] = useState(false);
@@ -46,6 +46,53 @@ export default function VoiceRecorder({ files, setFiles, disabled, onRecorded, c
   const idleLabel = label || t("recordVoice");
   const ariaLabel = uploading ? t("uploading") : rec.recording ? t("stopRecording") : idleLabel;
 
+  if (tile) {
+    const ar = document.documentElement.dir === "rtl";
+    const live = rec.recording;
+    return (
+      <button
+        type="button"
+        data-voice-tile="1"
+        data-recording={live ? "true" : "false"}
+        onClick={live ? stop : start}
+        disabled={disabled || uploading}
+        aria-label={ariaLabel}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "14px 16px",
+          borderRadius: 12,
+          border: live ? "1.5px solid var(--nv-bad-fill, #B42318)" : "1.5px dashed #0F5535",
+          background: live ? "var(--nv-bad-soft, #FDECEC)" : "var(--nv-ok-soft, #E6F2EA)",
+          cursor: disabled || uploading ? "default" : "pointer",
+          fontFamily: "inherit",
+          textAlign: "start",
+          opacity: disabled ? 0.55 : 1,
+        }}
+      >
+        <span
+          aria-hidden
+          className={live ? "nv-rec-pulse" : undefined}
+          style={{ width: 44, height: 44, borderRadius: 999, flexShrink: 0, display: "grid", placeItems: "center", background: live ? "var(--nv-bad-fill, #B42318)" : "#0B3D27", color: "#fff" }}
+        >
+          {uploading ? <Loader2 size={18} className="animate-spin" /> : live ? <Square size={15} fill="currentColor" /> : <Mic size={19} />}
+        </span>
+        <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+          <strong style={{ fontSize: 13.5, color: live ? "var(--nv-bad-ink, #9B1C1C)" : "#0B3D27" }}>
+            {uploading
+              ? (ar ? "جارٍ حفظ المقطع…" : "Saving the clip…")
+              : live
+                ? <>{ar ? "يسجّل الآن — اضغط للإيقاف" : "Recording — tap to stop"} <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{duration}</span></>
+                : idleLabel}
+          </strong>
+          {hint && !live && !uploading ? <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{hint}</span> : null}
+        </span>
+      </button>
+    );
+  }
+
   if (circle) {
     return (
       <button
@@ -83,7 +130,7 @@ export default function VoiceRecorder({ files, setFiles, disabled, onRecorded, c
       type="button"
       onClick={rec.recording ? stop : start}
       disabled={disabled || uploading}
-      className={`inline-flex items-center justify-center gap-1.5 ${compact ? "h-10 w-10 rounded-full px-0" : "px-2.5 py-1.5 rounded-md"} text-xs font-body border transition-colors disabled:opacity-50 ${rec.recording ? "border-red-400 bg-red-50 text-red-700" : "border-border hover:bg-muted"}`}
+      className={`inline-flex items-center justify-center gap-1.5 ${compact ? "h-8 w-8 rounded-lg px-0 text-[var(--nv-ink2)] bg-transparent" : "px-2.5 py-1.5 rounded-md"} text-xs font-body border transition-colors disabled:opacity-50 ${rec.recording ? "border-red-400 bg-red-50 text-red-700" : compact ? "border-transparent hover:bg-muted" : "border-border hover:bg-muted"}`}
       aria-label={ariaLabel}
     >
       {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : rec.recording ? <Square className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}

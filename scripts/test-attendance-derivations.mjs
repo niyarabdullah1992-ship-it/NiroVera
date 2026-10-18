@@ -155,9 +155,11 @@ assert.equal(noShiftLate.error, "NOT_SCHEDULED");
 assert.equal(noShiftLate.lateMinutes, 0);
 assert.equal(noShiftLate.status, null);
 
+// Lateness is past the start beyond the grace — the reading deriveActualDuty and the reports use.
 const fromRota = lateMinutesFromScheduledStart(7 * 60 + 20, "07:00", 15);
-assert.equal(fromRota.lateMinutes, 20);
+assert.equal(fromRota.lateMinutes, 5);
 assert.equal(fromRota.status, "late");
+assert.deepEqual(lateMinutesFromScheduledStart(7 * 60 + 10, "07:00", 15), { lateMinutes: 0, status: "present" }, "inside the grace is on time");
 
 const notLateVsCompanyClock = lateMinutesFromScheduledStart(8 * 60 + 5, "09:00", 15);
 assert.equal(notLateVsCompanyClock.lateMinutes, 0);
@@ -238,7 +240,9 @@ const attHere = dirname(fileURLToPath(import.meta.url));
 const dailyDashSrc = readFileSync(join(attHere, "../src/components/attendance/AttendanceDailyDashboard.jsx"), "utf8");
 const leaveQueueSrc = readFileSync(join(attHere, "../src/components/attendance/AttendanceLeaveRequests.jsx"), "utf8");
 assert.doesNotMatch(dailyDashSrc, /approveLeave|setLeaveRequestStatus|setOtherRequestStatus/);
-assert.match(dailyDashSrc, /الرد في طلباتي|requestReplyCopy/);
+// Leave/study replies now route from the management side column («طلبات بانتظار ردّك» → /app/requests/manage).
+const manageSideSrc = readFileSync(join(attHere, "../src/components/schedules/ManageDutySide.jsx"), "utf8");
+assert.match(dailyDashSrc + manageSideSrc, /الرد في طلباتي|requestReplyCopy|\/app\/requests\/manage/);
 assert.doesNotMatch(leaveQueueSrc, /setLeaveRequestStatus|approveLeave|rejectLeave/);
 assert.match(leaveQueueSrc, /الرد في طلباتي|requestReplyCopy/);
 console.log("attendance leave reply stays in طلباتي: PASS");

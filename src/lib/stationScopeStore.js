@@ -6,6 +6,8 @@
 const KEY = "powercare_station_scope";
 const RECENT_KEY = "powercare_station_scope_recent";
 const RECENT_LIMIT = 6;
+/** Set only when the person picks a branch by hand — kept until they sign out or a new sign-in; a restored or automatic scope is not a choice. */
+const MANUAL_KEY = "powercare_station_scope_manual";
 const listeners = new Set();
 
 function readRaw() {
@@ -47,8 +49,23 @@ function pushRecent(id) {
   }
 }
 
-export function setStationScope(id) {
+/** True when the header branch was picked by hand since this sign-in (not set by a notification). */
+export function isStationScopeManual() {
+  try {
+    return localStorage.getItem(MANUAL_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setStationScope(id, { manual = true } = {}) {
   const next = normalizeStationScope(id);
+  try {
+    if (manual && next !== "all") localStorage.setItem(MANUAL_KEY, "1");
+    else localStorage.removeItem(MANUAL_KEY);
+  } catch {
+    /* ignore private mode */
+  }
   try {
     localStorage.setItem(KEY, next);
   } catch {
@@ -77,7 +94,7 @@ export function clearStationScope() {
   } catch {
     /* ignore */
   }
-  return setStationScope("all");
+  return setStationScope("all", { manual: false });
 }
 
 export function subscribeStationScope(fn) {

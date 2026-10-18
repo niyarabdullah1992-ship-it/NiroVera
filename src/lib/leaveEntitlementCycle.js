@@ -18,6 +18,10 @@ export const LEAVE_APPROVAL_BLESSING = {
     ar: "تهانينا — اعتُمدت أيام الرصيد التقديرية. بارك الله لك فيها.",
     en: "Congratulations — your granted leave days are approved. May they serve you well.",
   },
+  work_injury: {
+    ar: "شفاك الله وعافاك. سُجّلت إجازة إصابة العمل — العلاج والتعويض وفق نظام التأمينات (الأخطار المهنية).",
+    en: "May you recover well. Your work-injury leave is recorded — treatment and compensation follow GOSI occupational hazards.",
+  },
   sick: {
     ar: "شفاك الله وعافاك. اعتُمدت إجازتك المرضية — ارتَحْ واستعدّ.",
     en: "May you recover well. Your sick leave is approved — rest and return when ready.",
@@ -78,6 +82,10 @@ export const LEAVE_APPROVAL_BLESSING = {
     ar: "يسّر الله أمرك. اعتُمدت إجازتك الاضطرارية. بارك الله وقتك.",
     en: "May the matter be eased. Your emergency leave is approved.",
   },
+  dialysis: { ar: "شفاك الله وعافاك — اعتُمد يوم غسيلك الكلوي بأجر كامل (النموذج الموحد م42).", en: "Get well soon — your dialysis day is approved on full pay (Model regulation Art. 42)." },
+  therapy: { ar: "شفاك الله وعافاك — اعتُمد يوم جلستك العلاجية بأجر كامل (اللائحة، الملحق 2).", en: "Get well soon — your therapy day is approved on full pay (Regs Annex 2)." },
+  job_search: { ar: "وفّقك الله — سُجّل يوم بحثك عن عمل بأجره (المادة 78). بارك الله في سعيك.", en: "Good luck — your paid job-search day is recorded (Art. 78)." },
+  comp: { ar: "تهانينا — اعتُمدت إجازتك التعويضية عن ساعاتك الإضافية. بارك الله لك فيها.", en: "Congratulations — your compensatory leave for overtime is approved." },
   unpaid: {
     ar: "تهانينا بالاعتماد. اعتُمدت إجازتك بدون راتب. بارك الله وقتك — الحق ثابت في تاريخه.",
     en: "Your unpaid leave is approved. The dates are now a fixed right — use the time well.",
@@ -190,19 +198,20 @@ export function leaveDateSpanText(startDate, endDate, lang = "ar") {
   return a || b || "";
 }
 
-export function leaveDecisionNoticeText({ status, type, startDate, endDate, recordedBy, daysUntilStart } = {}, lang = "ar") {
+export function leaveDecisionNoticeText({ status, type, startDate, endDate, recordedBy, daysUntilStart, reason = "", afterLine = "" } = {}, lang = "ar") {
   const ar = lang === "ar";
   const label = type ? leaveTypeLabel(type, ar, undefined, startDate) : "";
   const span = leaveDateSpanText(startDate, endDate, lang);
+  const why = String(reason || "").trim();
   if (status === "rejected") {
     return ar
-      ? `رُفض طلب إجازتك${label ? ` (${label})` : ""}.`
-      : `Your leave request${label ? ` (${label})` : ""} was rejected.`;
+      ? `رُفض طلب إجازتك${label ? ` (${label})` : ""}${why ? ` — السبب: ${why}` : ""}.${afterLine ? ` ${afterLine}` : ""}`
+      : `Your leave request${label ? ` (${label})` : ""} was rejected${why ? ` — reason: ${why}` : ""}.${afterLine ? ` ${afterLine}` : ""}`;
   }
   if (status === "revise") {
     return ar
-      ? `إجازتك تحتاج تعديلاً${label ? ` (${label})` : ""}.`
-      : `Your leave needs a change${label ? ` (${label})` : ""}.`;
+      ? `إجازتك تحتاج تعديلاً${label ? ` (${label})` : ""}${why ? ` — ${why}` : ""}.`
+      : `Your leave needs a change${label ? ` (${label})` : ""}${why ? ` — ${why}` : ""}.`;
   }
   if (status === "withdrawn") {
     return ar

@@ -1,14 +1,15 @@
 import React, { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { derivePayrollMonthAttendance } from "@/lib/payrollMonthAttendance";
-import { overtimePay, holidayPay, eidPay } from "@/lib/payrollDerivations";
-import { MUTED, NAVY, OK, WARN, BAD, tableShell, SURFACE, INK } from "@/lib/platformStyles";
-import KpiStrip from "@/components/shared/KpiStrip";
-import { ChromeBox } from "@/components/shared/IdentityCard";
+import { overtimePay, holidayPay, lineUnpaidLeaveCut } from "@/lib/payrollDerivations";
+import { MUTED, NAVY, OK, WARN, BAD, tableShell, SURFACE } from "@/lib/platformStyles";
+import FigureRow from "@/components/shared/FigureRow";
+import RightHint from "@/components/shared/RightHint";
+import { payHintFor } from "@/lib/rightHints.pay";
 
 const head = {
   display: "grid",
-  gridTemplateColumns: "minmax(140px,1.2fr) 66px 60px 60px 60px 56px 60px 66px minmax(140px,auto)",
+  gridTemplateColumns: "minmax(140px,1.2fr) 66px 60px 60px 76px 60px 66px minmax(150px,auto)",
   gap: 10,
   padding: "10px 16px",
   background: SURFACE,
@@ -20,7 +21,7 @@ const head = {
 
 const row = {
   display: "grid",
-  gridTemplateColumns: "minmax(140px,1.2fr) 66px 60px 60px 60px 56px 60px 66px minmax(140px,auto)",
+  gridTemplateColumns: "minmax(140px,1.2fr) 66px 60px 60px 76px 60px 66px minmax(150px,auto)",
   gap: 10,
   padding: "12px 16px",
   borderBottom: "1px solid var(--nv-line)",
@@ -42,12 +43,16 @@ export default function PayrollAttendanceBoard({
   const lines = useMemo(() => items.map((item) => {
     const employee = employeeForItem?.(item);
     const att = derivePayrollMonthAttendance(item.employeeId, month, data);
-    const otPay = overtimePay(item.base, att.otHours);
-    const hol = holidayPay(item.base, att.holidayHours);
-    const eid = eidPay(item.base, att.eidHours);
+    // Art. 107: the overtime hour is the actual hourly wage (base + allowances) + 50% of the basic
+    // hourly. Art. 107(3): holiday and Eid hours are overtime at the same formula — no ×2.
+    const otPay = overtimePay(item.base, att.otHours, item.allowances);
+    const holidayHours = Number(item.holidayOvertimeHours) || 0;
+    const hol = holidayPay(item.base, holidayHours, item.allowances);
     const day = Math.round((Number(item.base) || 0) / 30);
-    const cut = (att.absent + att.unpaidLeave) * day;
-    return { item, employee, att, otPay, hol, eid, cut };
+    const cut = att.absent * day;
+    // Art. 116: unpaid leave is wage not due — it lowers the gross, it is not a deduction line.
+    const notDue = lineUnpaidLeaveCut(item);
+    return { item, employee, att, otPay, hol, holidayHours, cut, notDue };
   }), [items, month, data, employeeForItem]);
 
   const tot = lines.reduce((acc, line) => ({
@@ -60,45 +65,28 @@ export default function PayrollAttendanceBoard({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <ChromeBox style={{ padding: 14 }}>
-        <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
-          {ar
-            ? "يُقرأ من التقويم التشغيلي وجدول الدوام ولا يُحرَّر هنا. الإضافي المعتمد يغذّي المسير — تصحيح الغياب من الحضور ثم يُعاد القراءة."
-            : "Read from the operational calendar and rota — not edited here. Approved overtime feeds the run. Correct absence on Attendance, then re-read."}
-          {" "}
-          <Link to="/app/attendance" style={{ fontWeight: 600, color: INK }}>
-            {ar ? "التقويم التشغيلي" : "Operational calendar"}
-          </Link>
-        </p>
-      </ChromeBox>
-
-      <div style={{
-        padding: "10px 13px",
-        border: `1px solid ${sourced ? "var(--nv-line)" : "var(--nv-line)"}`,
-        background: sourced ? "#f2faf6" : "var(--nv-bad-soft)",
-        fontSize: 12,
-        color: sourced ? "var(--nv-ok-ink)" : "var(--nv-bad-ink)",
-        lineHeight: 1.7,
-      }}>
-        <strong>{sourced ? (ar ? "مقروء من الحضور" : "Read from attendance") : (ar ? "لا حضور مقروء لهذه الدورة" : "No attendance read for this cycle")}</strong>
-        {" · "}
+      <p style={{ margin: 0, fontSize: 12, color: sourced ? MUTED : "var(--nv-bad-ink)", lineHeight: 1.75 }}>
         {sourced
-          ? (ar ? "الإضافي والغياب والإجازة بلا أجر تُشتقّ منه." : "Overtime, absence, and unpaid leave are derived from it.")
-          : (ar ? "راجع التقويم التشغيلي — لا اعتماد يغيّر رقمًا غير مقروء." : "Open the operational calendar — approval cannot invent unread figures.")}
-      </div>
+          ? (ar ? "مقروء من التقويم التشغيلي ولا يُحرَّر هنا — الإضافي والغياب والإجازة بلا أجر تُشتقّ منه." : "Read from the operational calendar, not edited here — overtime, absence and unpaid leave derive from it.")
+          : (ar ? "لا حضور مقروء لهذه الدورة — لا اعتماد يغيّر رقماً غير مقروء." : "No attendance read for this cycle — approval cannot invent unread figures.")}
+        {" "}
+        <Link to="/app/attendance" style={{ fontWeight: 600, color: "var(--nv-ok-ink)", textDecoration: "none" }}>
+          {ar ? "التقويم التشغيلي ‹" : "Operational calendar ›"}
+        </Link>
+      </p>
 
-      <KpiStrip stats={[
-        { label: ar ? "أيام حضور" : "Present days", value: tot.p, tone: "ok" },
-        { label: ar ? "ساعات إضافية" : "Overtime hours", value: tot.o },
-        { label: ar ? "أيام غياب" : "Absent days", value: tot.a, tone: tot.a ? "danger" : "ok" },
-        { label: ar ? "إجازة بلا أجر" : "Unpaid leave", value: tot.u, tone: tot.u ? "warn" : "ok" },
+      <FigureRow ar={ar} figures={[
+        { key: "present", label: ar ? "أيام حضور" : "Present days", value: tot.p },
+        { key: "ot", label: ar ? "ساعات إضافية" : "Overtime hours", value: tot.o },
+        { key: "absent", label: ar ? "أيام غياب" : "Absent days", value: tot.a, tone: tot.a ? "danger" : null, flag: tot.a ? (ar ? "يُخصم من الأجر" : "Deducted from pay") : "" },
+        { key: "unpaid", label: ar ? "إجازة بلا أجر" : "Unpaid leave", value: tot.u, tone: tot.u ? "warn" : null },
       ]} />
 
       <div style={tableShell}>
         <div style={head}>
           {(ar
-            ? ["الموظف", "الوردية", "حضر", "إضافي", "عطلة", "عيد", "غياب", "بلا أجر", "أثره في المسير"]
-            : ["Employee", "Shift", "Present", "OT", "Rest", "Eid", "Absent", "Unpaid", "Run effect"]
+            ? ["الموظف", "الوردية", "حضر", "إضافي", "عطل وأعياد", "غياب", "بلا أجر", "أثره في المسير"]
+            : ["Employee", "Shift", "Present", "OT", "Holidays/Eid", "Absent", "Unpaid", "Run effect"]
           ).map((label) => <span key={label}>{label}</span>)}
         </div>
         {lines.length === 0 ? (
@@ -107,15 +95,25 @@ export default function PayrollAttendanceBoard({
           </p>
         ) : lines.map((line) => {
           const effect = [
-            (line.otPay + line.hol + line.eid) ? `+${money(line.otPay + line.hol + line.eid)}` : "",
+            (line.otPay + line.hol) ? `+${money(line.otPay + line.hol)}` : "",
             line.cut ? `− ${money(line.cut)}` : "",
+            line.notDue ? (ar ? `غير مستحق ${money(line.notDue)}` : `not due ${money(line.notDue)}`) : "",
           ].filter(Boolean).join(" · ") || (ar ? "لا أثر" : "No effect");
+          // «التزامك» — unpaid leave is wage not due (116); overtime is the 107 formula.
+          const hintCtx = { view: "manager", ar, name: line.employee?.name || line.item.employeeName || "", employeeId: line.item.employeeId };
+          const hint = line.notDue
+            ? payHintFor("unpaidLeave", { ...hintCtx, days: line.att.unpaidLeave || line.item.unpaidLeaveDays, amount: line.notDue })
+            : (line.att.otHours || line.holidayHours)
+              ? payHintFor("overtime", { ...hintCtx, hours: (Number(line.att.otHours) || 0) + (Number(line.holidayHours) || 0), amount: line.otPay + line.hol, base: line.item.base, allowances: line.item.allowances })
+              : null;
           return (
-            <button
+            <div
               key={line.item.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => onOpenDeductions?.(line.item)}
-              style={{ ...row, width: "100%", background: "transparent", borderInline: "none", borderTop: "none", textAlign: "start", cursor: "pointer", fontFamily: "inherit", color: NAVY }}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenDeductions?.(line.item); } }}
+              style={{ ...row, width: "100%", background: "transparent", textAlign: "start", cursor: "pointer", fontFamily: "inherit", color: NAVY }}
             >
               <span>
                 <span style={{ display: "block", fontWeight: 600 }}>{line.employee?.name || line.item.employeeName}</span>
@@ -123,18 +121,24 @@ export default function PayrollAttendanceBoard({
               </span>
               <span dir="ltr">{line.att.shift}</span>
               <span dir="ltr">{line.att.present}</span>
-              <span dir="ltr" style={{ color: line.att.otHours ? "var(--nv-ok-ink)" : MUTED }}>{line.att.otHours}</span>
-              <span dir="ltr">{line.att.holidayHours || 0}</span>
-              <span dir="ltr">{line.att.eidHours || 0}</span>
-              <span dir="ltr" style={{ color: line.att.absent ? "var(--nv-bad-ink)" : MUTED }}>{line.att.absent}</span>
-              <span dir="ltr" style={{ color: line.att.unpaidLeave ? "#8a6516" : MUTED }}>{line.att.unpaidLeave}</span>
-              <span style={{
-                ...(line.att.attGap ? BAD : (line.att.absent || line.att.unpaidLeave ? WARN : OK)),
-                fontSize: 10,
-              }}>
-                {line.att.attGap ? (ar ? "أيام غير مفسَّرة" : "Unexplained days") : effect}
+              <span dir="ltr" style={{ color: line.att.otHours ? NAVY : MUTED }}>{line.att.otHours}</span>
+              <span dir="ltr">{line.holidayHours}</span>
+              <span dir="ltr" style={{ color: line.att.absent ? NAVY : MUTED }}>{line.att.absent}</span>
+              <span dir="ltr" style={{ color: line.att.unpaidLeave ? NAVY : MUTED }}>{line.att.unpaidLeave}</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{
+                  ...(line.att.attGap ? BAD : (line.att.absent || line.att.unpaidLeave ? WARN : OK)),
+                  fontSize: 10,
+                }}>
+                  {line.att.attGap ? (ar ? "أيام غير مفسَّرة" : "Unexplained days") : effect}
+                </span>
+                {hint ? (
+                  <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                    <RightHint ar={ar} hint={hint} />
+                  </span>
+                ) : null}
               </span>
-            </button>
+            </div>
           );
         })}
       </div>

@@ -4,50 +4,17 @@ import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import PerfMineBoard from "@/components/performance/PerfMineBoard";
 import PerfScoreBoard from "@/components/performance/PerfScoreBoard";
-import PerformanceSectionFrame, { PERF_BODY, PERF_LINE, PERF_MUTED, PERF_WHITE } from "@/components/performance/PerformanceSectionFrame";
+import PerformanceSectionFrame from "@/components/performance/PerformanceSectionFrame";
 import usePerformanceTargets from "@/hooks/usePerformanceTargets";
 import { syncPointsFromCloud } from "@/lib/store";
 import { pageKicker } from "@/lib/moduleMeta";
 import { hcmCall } from "@/lib/hcmApi";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { formatDayMonthYear } from "@/lib/dateFormat";
-import { countAr, isoDay, monthsInRange, rangePresets } from "@/lib/perfRange";
+import { countAr, DEFAULT_RANGE_PRESET, isoDay, monthsInRange, rangePresets } from "@/lib/perfRange";
 import { canManagePerformance } from "@/lib/suiteRailFrame";
 import { useRailSide } from "@/lib/railSide";
-
-const LAWS = [
-  {
-    cite: "المادة 80",
-    ar: "الدرجة وحدها لا تكون سبباً للفصل بلا مكافأة نهاية الخدمة.",
-    en: "A score alone is never grounds for dismissal without the end-of-service award.",
-  },
-  {
-    cite: "المادة 61",
-    ar: "المعاملة واحدة، والأوزان نفسها لمن في الوظيفة نفسها.",
-    en: "Equal treatment: the same weights for the same job.",
-  },
-  {
-    cite: "قاعدة المنصة",
-    ar: "لا درجة بلا إثبات معتمد. كل نقطة ترجع إلى مهمة أو إثباتها أو سجل سلامة.",
-    en: "No score without approved proof. Every point traces to a task, its proof, or a safety record.",
-  },
-];
-
-function LawPanel({ ar }) {
-  return (
-    <details data-perf-card style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderTop: "3px solid #C8A45A", borderRadius: 14, padding: "12px 16px" }}>
-      <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? "مرجع الوزارة" : "Ministry reference"}</summary>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
-        {LAWS.map((row) => (
-          <div key={row.cite} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 10, alignItems: "start" }}>
-            <span className="nv-perf-chip" style={{ fontSize: 11, fontWeight: 700, color: PERF_BODY, background: "var(--nv-soft)", border: `1px solid ${PERF_LINE}`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>{row.cite}</span>
-            <span style={{ fontSize: 12, color: PERF_MUTED, lineHeight: 1.75 }}>{ar ? row.ar : row.en}</span>
-          </div>
-        ))}
-      </div>
-    </details>
-  );
-}
+import MinistrySectionPanel from "@/components/schedules/MinistrySectionPanel";
 
 /** Performance is a derived judgment of approved proof between two dates. */
 export default function Performance() {
@@ -67,7 +34,7 @@ export default function Performance() {
   const ar = lang === "ar";
   const today = isoDay();
   const presets = useMemo(() => rangePresets(today), [today]);
-  const current = presets.find((row) => row.id === "q") || presets[0];
+  const current = presets.find((row) => row.id === DEFAULT_RANGE_PRESET) || presets[0];
   const [tab, setTab] = useState("people");
   const [from, setFrom] = useState(current.from);
   const [to, setTo] = useState(current.to);
@@ -164,7 +131,18 @@ export default function Performance() {
           goalItems={goalItems}
         />
       )}
-      {face === "self" ? null : <LawPanel ar={ar} />}
+      {face === "self" ? null : (
+        <MinistrySectionPanel
+          sectionKey="performance"
+          lane="manage"
+          ar={ar}
+          today={today}
+          inputs={{
+            people: (data?.employees || []).filter((e) => e && e.id !== currentUser?.id && matchesStationScope(e.stationId, headerScope)),
+            perf: data?.hcmPerformance || {},
+          }}
+        />
+      )}
     </PerformanceSectionFrame>
   );
 }

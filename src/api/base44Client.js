@@ -29,8 +29,6 @@ const SESSION_SECURED_FUNCTIONS = new Set([
   'hcm',
   'payroll',
   'signing',
-  'stock',
-  'budget',
   'offboarding',
   'complaints',
   'files',
@@ -40,10 +38,7 @@ const SESSION_SECURED_FUNCTIONS = new Set([
   'chat',
   'multiSign',
   'calendarSync',
-  'inventory',
-  'expenses',
   'clientProof',
-  'assets',
 ]);
 const LOCAL_PREVIEW_COMPANY_ID = "local-preview-nirovera";
 

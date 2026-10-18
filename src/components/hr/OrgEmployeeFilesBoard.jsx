@@ -8,6 +8,10 @@ import { readEmployeeNo } from "@/lib/employeeNumber";
 import { profileCompletionStats } from "@/lib/employeeProfileFields";
 import { addHRMessage } from "@/lib/store";
 import { isCompanyRootStation, isHrUnit } from "@/lib/stationTree";
+import { kpiActionStyle, meterStyles } from "@/lib/statusFlag";
+import { chip, chipButton, mono } from "@/components/schedules/scheduleChrome";
+import { btnGhost, btnPrimary, btnQuiet } from "@/components/hr/orgdesign/orgDesignUi";
+import NvIcon from "@/components/shared/NvIcon";
 
 const DASH = "—";
 const SEARCH_AR = "يبحث في كل الفروع بالاسم أو الوظيفة أو الرقم الوظيفي أو اسم الفرع";
@@ -81,7 +85,7 @@ function highlight(text, query) {
 function Marked({ parts }) {
   return parts.map((part, index) => (
     part.mark
-      ? <mark key={index} style={{ background: "#FBF3E1", color: "#8A5A12", borderRadius: 3, padding: "0 2px" }}>{part.t}</mark>
+      ? <mark key={index} style={{ background: "var(--nv-warn-soft)", color: "var(--nv-ink)", borderRadius: 4, padding: "0 2px" }}>{part.t}</mark>
       : <span key={index}>{part.t}</span>
   ));
 }
@@ -107,21 +111,22 @@ function CheckBox({ on, onClick, label }) {
         cursor: "pointer",
         padding: 0,
         fontFamily: "inherit",
-        background: on ? "#0B3D27" : "var(--nv-card, #fff)",
-        color: on ? "#fff" : "transparent",
-        border: on ? "1px solid #0B3D27" : "1.5px solid #C5CEC9",
+        background: on ? "var(--nv-navy)" : "var(--nv-card)",
+        color: on ? "var(--nv-btn-ink, #fff)" : "transparent",
+        border: on ? "1px solid var(--nv-navy)" : "1.5px solid var(--nv-mute-fill, var(--nv-line))",
       }}
     >
-      {on ? "✓" : ""}
+      {on ? <NvIcon name="check" size={12} strokeWidth={2.25} /> : ""}
     </button>
   );
 }
 
+/** Status chip — colour only for an alert (expiring documents / compliance); acting and vacant are facts. */
 const STATUS = {
-  ok: { ar: "على رأس العمل", en: "On the job", color: "#2F6B43", bg: "#E6F2EA" },
-  warn: { ar: "تنبيه", en: "Alert", color: "#9B2335", bg: "#FBEBED" },
-  act: { ar: "مكلَّف", en: "Acting", color: "#8A5A12", bg: "#FBF3E1" },
-  vac: { ar: "شاغرة", en: "Vacant", color: "#8A5A12", bg: "#FBF3E1" },
+  ok: null,
+  warn: { ar: "تنبيه", en: "Alert", tone: "warn" },
+  act: { ar: "مكلَّف", en: "Acting", tone: "mute" },
+  vac: { ar: "شاغرة", en: "Vacant", tone: "mute", dashed: true },
 };
 
 const FILTERS = [
@@ -317,174 +322,131 @@ export default function OrgEmployeeFilesBoard({
     });
   };
 
-  const seg = (on) => ({
-    display: "inline-flex",
-    alignItems: "center",
-    height: 30,
-    padding: "0 12px",
-    borderRadius: 8,
-    border: 0,
-    cursor: "pointer",
-    fontFamily: "inherit",
-    fontSize: 12,
-    whiteSpace: "nowrap",
-    fontWeight: on ? 700 : 500,
-    background: on ? "var(--nv-card, #fff)" : "transparent",
-    color: on ? "var(--nv-files-on, #0B3D27)" : "var(--nv-ink2, #3A4048)",
-    boxShadow: on ? "0 1px 3px rgba(12,20,16,.12)" : "none",
-  });
-
-  const ghostBtn = {
-    display: "inline-flex",
-    alignItems: "center",
-    height: 30,
-    padding: "0 12px",
-    borderRadius: 8,
-    border: "1px solid var(--nv-line, #D5DCD8)",
-    background: "var(--nv-card, #fff)",
-    color: "var(--nv-ink, #111418)",
-    fontSize: 12,
-    cursor: "pointer",
-    fontFamily: "inherit",
-    whiteSpace: "nowrap",
-  };
+  const seg = (on) => chipButton(on, { height: 28 });
+  const label = { fontSize: 11.5, fontWeight: 600, color: "var(--nv-muted)", marginInlineEnd: 4 };
+  const hair = "1px solid var(--nv-line2, var(--nv-line))";
 
   return (
-    <div data-org-files="1" style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 12, background: "var(--nv-org-canvas, var(--nv-page, #F7F9F8))", display: "flex", flexDirection: "column", gap: 12 }}>
-      <section style={{ flex: "none", background: "var(--nv-card, #fff)", border: "1px solid var(--nv-line, #E4E9E6)", borderRadius: 14, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+    <div data-org-files="1" style={{ flex: 1, minHeight: 0, overflow: "auto", background: "var(--nv-card)", display: "flex", flexDirection: "column" }}>
+      <section style={{ flex: "none", padding: "12px 18px", borderBottom: hair, display: "flex", flexDirection: "column", gap: 10 }}>
         <input
-          className="nv-org-files-search"
+          className="nv-od-input nv-org-files-search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={ar ? SEARCH_AR : "Search every branch by name, job, employee number, or branch"}
           aria-label={ar ? SEARCH_AR : "Search employee files"}
-          style={{ width: "100%", border: 0, outline: "none", background: "transparent", fontSize: 12.5, color: "var(--nv-ink, #111418)", fontFamily: "inherit", padding: "2px 0", textAlign: "start" }}
+          style={{ width: "100%", maxWidth: 520 }}
         />
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 10, borderTop: "1px solid var(--nv-line2, #EEF1EF)" }}>
-          <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--nv-ink2, #3A4048)" }}>{ar ? "الفرع" : "Branch"}</span>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8 }}>
-            {tiles.map((tile) => {
-              const on = branchId === tile.id;
-              return (
-                <button
-                  key={tile.id || "all"}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => setBranchId(tile.id)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    height: 40,
-                    padding: "0 12px",
-                    borderRadius: 10,
-                    cursor: "pointer",
-                    boxSizing: "border-box",
-                    minWidth: 0,
-                    fontFamily: "inherit",
-                    fontWeight: on ? 700 : 500,
-                    background: on ? "#0B3D27" : "var(--nv-card, #fff)",
-                    color: on ? "#fff" : "var(--nv-ink, #111418)",
-                    border: `1px solid ${on ? "#0B3D27" : "var(--nv-line, #E4E9E6)"}`,
-                  }}
-                >
-                  <span style={{ fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tile.name}</span>
-                  <span style={{ flex: "none", minWidth: 24, height: 22, padding: "0 7px", borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center", font: "600 11px 'IBM Plex Mono', monospace", background: on ? "rgba(255,255,255,.18)" : "#E6F2EA", color: on ? "#fff" : "#2F6B43" }}>{tile.count}</span>
-                </button>
-              );
-            })}
-          </div>
+        <div role="group" aria-label={ar ? "الفرع" : "Branch"} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={label}>{ar ? "الفرع" : "Branch"}</span>
+          {tiles.map((tile) => {
+            const on = branchId === tile.id;
+            return (
+              <button key={tile.id || "all"} type="button" aria-pressed={on} onClick={() => setBranchId(tile.id)} style={chipButton(on, { maxWidth: 220 })}>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{tile.name}</span>
+                <span dir="ltr" style={{ ...mono, fontSize: 10.5, opacity: 0.8 }}>{tile.count}</span>
+              </button>
+            );
+          })}
         </div>
-        <div style={{ display: "flex", gap: "10px 16px", flexWrap: "wrap", alignItems: "flex-end", paddingTop: 10, borderTop: "1px solid var(--nv-line2, #EEF1EF)" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--nv-ink2, #3A4048)" }}>{ar ? "الحالة" : "Status"}</span>
-            <div style={{ display: "inline-flex", gap: 2, padding: 3, borderRadius: 10, background: "var(--nv-soft, #F2F5F3)", border: "1px solid var(--nv-line, #E4E9E6)", flexWrap: "wrap" }}>
-              {FILTERS.map(([id, labelAr, labelEn]) => (
-                <button key={id || "all"} type="button" aria-pressed={status === id} onClick={() => setStatus(id)} style={seg(status === id)}>
-                  {ar ? labelAr : labelEn}
-                </button>
-              ))}
-            </div>
+        <div style={{ display: "flex", gap: "8px 18px", flexWrap: "wrap", alignItems: "center" }}>
+          <div role="group" aria-label={ar ? "الحالة" : "Status"} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={label}>{ar ? "الحالة" : "Status"}</span>
+            {FILTERS.map(([id, labelAr, labelEn]) => (
+              <button key={id || "all"} type="button" aria-pressed={status === id} onClick={() => setStatus(id)} style={seg(status === id)}>
+                {ar ? labelAr : labelEn}
+              </button>
+            ))}
           </div>
-          <span style={{ flex: 1 }} />
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--nv-ink2, #3A4048)" }}>{ar ? "الترتيب" : "Sort"}</span>
-            <div style={{ display: "inline-flex", gap: 2, padding: 3, borderRadius: 10, background: "var(--nv-soft, #F2F5F3)", border: "1px solid var(--nv-line, #E4E9E6)", flexWrap: "wrap" }}>
-              {SORTS.map(([id, labelAr, labelEn]) => (
-                <button key={id} type="button" aria-pressed={sort === id} onClick={() => setSort(id)} style={seg(sort === id)}>
-                  {ar ? labelAr : labelEn}
-                </button>
-              ))}
-            </div>
+          <div role="group" aria-label={ar ? "الترتيب" : "Sort"} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginInlineStart: "auto" }}>
+            <span style={label}>{ar ? "الترتيب" : "Sort"}</span>
+            {SORTS.map(([id, labelAr, labelEn]) => (
+              <button key={id} type="button" aria-pressed={sort === id} onClick={() => setSort(id)} style={seg(sort === id)}>
+                {ar ? labelAr : labelEn}
+              </button>
+            ))}
           </div>
         </div>
       </section>
 
-      <section style={{ flex: "none", background: "var(--nv-card, #fff)", border: "1px solid var(--nv-line, #E4E9E6)", borderRadius: 14, overflow: "hidden" }}>
-        <header style={{ padding: "10px 16px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <section style={{ flex: "none" }}>
+        <header style={{ padding: "10px 18px", borderBottom: hair, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <CheckBox
             on={allOn}
             label={ar ? "تحديد الكل" : "Select all"}
             onClick={() => setSelected(allOn ? new Set() : new Set(selectable.map((row) => row.key)))}
           />
-          <strong style={{ fontSize: 14, color: "var(--nv-ink, #111418)" }}>{ar ? "ملفات الموظفين" : "Employee files"}</strong>
-          <span style={{ fontSize: 11.5, color: "var(--nv-ink3, #555C66)" }}>{countLabel}</span>
+          <strong style={{ fontSize: 13, color: "var(--nv-ink)" }}>{ar ? "ملفات الموظفين" : "Employee files"}</strong>
+          <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{countLabel}</span>
           <span style={{ flex: 1 }} />
           {canWrite ? (
-            <button
-              type="button"
-              onClick={() => onHire?.({})}
-              style={{ display: "inline-flex", alignItems: "center", height: 34, padding: "0 14px", borderRadius: 9, background: "#0B3D27", color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: 0, fontFamily: "inherit", whiteSpace: "nowrap" }}
-            >
+            <button type="button" onClick={() => onHire?.({})} style={btnPrimary()}>
               {ar ? "+ ملف موظف جديد" : "+ New employee file"}
             </button>
           ) : null}
         </header>
         {selected.size ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 16px", background: "var(--nv-hover, #F6FAF7)", borderBottom: "1px solid var(--nv-line2, #EEF1EF)" }}>
-            <strong style={{ fontSize: 12.5, color: "#0B3D27" }}>{ar ? `${selected.size} محدد` : `${selected.size} selected`}</strong>
-            <button type="button" onClick={askSelected} style={{ ...ghostBtn, border: "1px solid #EDC5CB", background: "#FBEBED", color: "#9B2335", fontWeight: 600 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 18px", background: "var(--nv-soft)", borderBottom: hair }}>
+            <strong style={{ fontSize: 12.5, color: "var(--nv-ink)" }}>{ar ? `${selected.size} محدد` : `${selected.size} selected`}</strong>
+            <button type="button" onClick={askSelected} style={btnGhost({ height: 28 })}>
               {ar ? "طلب استكمال للمحدَّد" : "Request completion"}
             </button>
-            <button type="button" onClick={() => setSelected(new Set())} style={{ ...ghostBtn, border: 0, background: "transparent", color: "var(--nv-ink3, #555C66)" }}>
+            <button type="button" onClick={() => setSelected(new Set())} style={btnQuiet()}>
               {ar ? "إلغاء التحديد" : "Clear"}
             </button>
           </div>
         ) : null}
         {rows.length ? rows.map((row) => {
-          const st = STATUS[row.tone] || STATUS.ok;
-          const bar = row.pct == null ? "transparent" : row.pct === 100 ? "#3C7D50" : row.pct >= 80 ? "#C8A45A" : "#9B2335";
+          const st = STATUS[row.tone] || null;
+          const meter = meterStyles(row.pct || 0);
           const gaps = row.missing.map((field) => (ar ? field.ar : field.en)).filter(Boolean).join(" · ");
           return (
-            <div key={row.key} data-org-file-row="1" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.35fr) minmax(0,1.05fr) max-content max-content minmax(96px,120px)", gap: "8px 12px", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid var(--nv-files-hair, #F2F5F3)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <div key={row.key} data-org-file-row="1" style={{ display: "flex", flexWrap: "wrap", gap: "8px 14px", alignItems: "center", padding: "10px 18px", borderBottom: hair }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: "1 1 240px" }}>
                 {row.vacant ? <span style={{ width: 18, flex: "none" }} /> : (
                   <CheckBox on={selected.has(row.key)} label={row.name} onClick={() => toggle(row.key)} />
                 )}
-                <span style={{ width: 34, height: 34, borderRadius: "50%", flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, ...(row.vacant ? { border: "1.5px dashed #D9C08A", color: "#B7791F", background: "transparent" } : { background: "#E6F2EA", color: "#0B3D27" }) }}>
+                <span style={{ width: 32, height: 32, borderRadius: "50%", flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11.5, fontWeight: 600, ...(row.vacant ? { border: "1.5px dashed var(--nv-mute-fill, var(--nv-line))", color: "var(--nv-muted)", background: "transparent" } : { border: "1px solid var(--nv-line)", background: "var(--nv-soft)", color: "var(--nv-ink2)" }) }}>
                   {row.vacant ? "＋" : initialsOf(row.name)}
                 </span>
-                <span style={{ display: "flex", flexDirection: "column", minWidth: 0, lineHeight: 1.4 }}>
-                  <strong title={row.name} style={{ fontSize: 13, color: "var(--nv-ink, #111418)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <span style={{ display: "flex", flexDirection: "column", minWidth: 0, lineHeight: 1.45 }}>
+                  <strong title={row.name} style={{ fontSize: 13, color: "var(--nv-ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     <Marked parts={highlight(row.name, query)} />
                   </strong>
-                  <span style={{ fontSize: 11, color: "var(--nv-ink3, #555C66)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <span style={{ fontSize: 11.5, color: "var(--nv-ink2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     <Marked parts={highlight(row.title, query)} />
                     {" · "}
-                    <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", unicodeBidi: "isolate" }}>{row.no}</span>
+                    <span dir="ltr" style={{ ...mono, unicodeBidi: "isolate", color: "var(--nv-muted)" }}>{row.no}</span>
                   </span>
                 </span>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", minWidth: 0, lineHeight: 1.4 }}>
-                <span title={row.branch} style={{ fontSize: 12.5, fontWeight: 600, color: "var(--nv-ink, #111418)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <div style={{ display: "flex", flexDirection: "column", minWidth: 0, lineHeight: 1.45, flex: "1 1 180px" }}>
+                <span title={row.branch} style={{ fontSize: 12.5, fontWeight: 600, color: "var(--nv-ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   <Marked parts={highlight(row.branch, query)} />
                 </span>
-                <span style={{ fontSize: 10.5, color: "var(--nv-ink3, #555C66)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={row.line}>{row.line}</span>
+                <span style={{ fontSize: 11, color: "var(--nv-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={row.line}>{row.line}</span>
               </div>
-              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 96, width: 120 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 10.5, color: "var(--nv-muted)" }}>
+                  <span>{ar ? "اكتمال الملف" : "Completeness"}</span>
+                  <span dir="ltr" style={{ ...mono, color: "var(--nv-ink)" }}>{row.pct == null ? DASH : `${row.pct}%`}</span>
+                </div>
+                {row.pct == null ? null : <span style={meter.track}><span style={meter.fill} /></span>}
+              </div>
+              <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginInlineStart: "auto" }}>
+                {st ? <span style={chip(st.tone, st.dashed ? { borderStyle: "dashed" } : {})}>{ar ? st.ar : st.en}</span> : null}
+                {canWrite && !row.vacant && !row.done ? (
+                  <button type="button" title={gaps || DASH} onClick={() => askCompletion(row)} style={btnQuiet()}>
+                    {ar ? "طلب استكمال" : "Request completion"}
+                  </button>
+                ) : null}
                 {canWrite && !row.vacant ? (
-                  <button type="button" onClick={() => onManage?.(row.employee)} style={{ ...ghostBtn, background: "#0B3D27", color: "#fff", borderColor: "#0B3D27", fontWeight: 700 }}>
+                  <button type="button" onClick={() => setTransferId(row.key)} style={btnQuiet()}>
+                    {ar ? "نقل" : "Transfer"}
+                  </button>
+                ) : null}
+                {canWrite && !row.vacant ? (
+                  <button type="button" onClick={() => onManage?.(row.employee)} style={btnGhost({ height: 28, padding: "0 11px" })}>
                     {ar ? "إدارة الملف" : "Manage file"}
                   </button>
                 ) : null}
@@ -497,35 +459,15 @@ export default function OrgEmployeeFilesBoard({
                     }
                     navigate(`/app/employees/${encodeURIComponent(row.employee.id)}`);
                   }}
-                  style={ghostBtn}
+                  style={{ ...kpiActionStyle, marginTop: 0, background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit" }}
                 >
-                  {ar ? "فتح الملف" : "Open file"}
+                  {row.vacant ? (ar ? "وظّف عليه ‹" : "Hire ›") : (ar ? "افتح الملف ‹" : "Open file ›")}
                 </button>
-                {canWrite && !row.vacant ? (
-                  <button type="button" onClick={() => setTransferId(row.key)} style={{ ...ghostBtn, padding: "0 10px" }}>
-                    {ar ? "نقل" : "Transfer"}
-                  </button>
-                ) : null}
-                {canWrite && !row.vacant && !row.done ? (
-                  <button type="button" title={gaps || DASH} onClick={() => askCompletion(row)} style={{ ...ghostBtn, padding: "0 10px", border: "1px solid #EDC5CB", background: "#FBEBED", color: "#9B2335", fontWeight: 600 }}>
-                    {ar ? "طلب استكمال" : "Request completion"}
-                  </button>
-                ) : null}
-              </div>
-              <span style={{ justifySelf: "start", fontSize: 11, fontWeight: 700, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap", color: st.color, background: st.bg }}>{ar ? st.ar : st.en}</span>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 10.5, color: "var(--nv-ink3, #555C66)" }}>
-                  <span>{ar ? "اكتمال الملف" : "File completeness"}</span>
-                  <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{row.pct == null ? DASH : `${row.pct}%`}</span>
-                </div>
-                <div style={{ height: 5, borderRadius: 999, background: "var(--nv-files-hair, #EEF1EF)", overflow: "hidden" }}>
-                  <div style={{ height: "100%", borderRadius: 999, width: `${row.pct || 0}%`, background: bar }} />
-                </div>
               </div>
             </div>
           );
         }) : (
-          <div style={{ padding: 24, textAlign: "center", fontSize: 12.5, color: "var(--nv-ink3, #555C66)" }}>
+          <div style={{ padding: 24, textAlign: "center", fontSize: 12.5, color: "var(--nv-muted)" }}>
             {ar ? "لا موظف مطابق في هذا الفلتر." : "No one matches this filter."}
           </div>
         )}
@@ -535,7 +477,7 @@ export default function OrgEmployeeFilesBoard({
         <div
           role="presentation"
           onClick={() => setTransferId("")}
-          style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(12,20,16,.28)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+          style={{ position: "fixed", inset: 0, zIndex: 80, background: "color-mix(in oklab, var(--nv-navy) 26%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
         >
           <div role="dialog" aria-label={ar ? "نقل" : "Transfer"} onClick={(event) => event.stopPropagation()} style={{ width: "min(560px, 100%)", maxHeight: "90vh", overflow: "auto" }}>
             <StationTransferPanel

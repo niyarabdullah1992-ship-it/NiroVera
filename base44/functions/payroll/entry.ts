@@ -7,6 +7,7 @@ import {
   deriveStationBreakdown,
   deriveWpsStatus,
   enrichLine,
+  lineOvertimeHours,
   overtimePay,
   settlementStamp,
   type PayrollLineLike,
@@ -23,6 +24,33 @@ function requireCompanyId(companyId: unknown) {
 
 function uid(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Line fields the law sets rather than the payroll clerk: wage not due (Arts. 97/116/117/137/139),
+ * holiday overtime hours (Art. 107(3)), refunds (Arts. 91/97) and the GOSI identity. The client
+ * derives them from leave, injury and attendance; the server keeps them so its net and its
+ * Art. 93 gate read the same line the payslip does.
+ */
+const LAW_FIELDS = [
+  "sickReduction", "sickUnpaid", "injuryReduction", "injuryUnpaid", "injuryWageStop",
+  "unpaidLeaveDays", "unpaidLeaveCut", "detentionDays", "detentionCut", "lateMinutes", "lateDays", "lateCut", "refunds", "damageRefunds",
+  "holidayOvertimeHours", "overtimeHoursYtd", "gosiRegisteredAt", "gosiAsOf", "housingAllowance", "commissionAmount",
+] as const;
+
+function lawFields(src: Record<string, unknown> | undefined, prev: Record<string, unknown> | undefined) {
+  const out: Record<string, unknown> = {};
+  for (const key of LAW_FIELDS) {
+    const value = src?.[key] ?? prev?.[key];
+    if (value == null || value === "") continue;
+    out[key] = typeof value === "string" && /At$|Iso$|AsOf$/.test(key) ? value : (Number(value) || 0);
+  }
+  return out;
+}
+
+// Art. 107: the overtime hour is the actual hourly wage (base + allowances) plus half the basic hourly.
+function lineOtPay(line: PayrollLineLike) {
+  return overtimePay(Number(line.base) || 0, lineOvertimeHours(line), Number(line.allowances) || 0);
 }
 
 function monthKey(d = new Date()) {
@@ -142,11 +170,12 @@ Deno.serve(async (req) => {
             allowances: Number(it.allowances) || 0,
             bonus: Number(it.bonus) || 0,
             overtimeHours: Number(it.overtimeHours) || 0,
-            overtimePay: overtimePay(Number(it.base) || 0, Number(it.overtimeHours) || 0),
+            overtimePay: lineOtPay(it),
             deductions: Number(it.deductions) || 0,
             currency: String(it.currency || "SAR").toUpperCase(),
             qiwaWage: it.qiwaWage != null ? Number(it.qiwaWage) : (Number(it.base) || 0) + (Number(it.allowances) || 0),
             isSaudi: it.isSaudi ?? null,
+            ...lawFields(it as Record<string, unknown>, undefined),
             paid: false,
           })),
           approvedAt: null,
@@ -203,9 +232,10 @@ Deno.serve(async (req) => {
           ? Number(lineIn.qiwaWage)
           : (li >= 0 ? items[li].qiwaWage : null),
         isSaudi: lineIn.isSaudi ?? (li >= 0 ? items[li].isSaudi : null),
+        ...lawFields(lineIn, li >= 0 ? items[li] : undefined),
         paid: false,
       };
-      next.overtimePay = overtimePay(next.base || 0, next.overtimeHours || 0);
+      next.overtimePay = lineOtPay(next);
       if (li >= 0) items[li] = next;
       else items.push(next);
       runs[idx] = { ...run, items };

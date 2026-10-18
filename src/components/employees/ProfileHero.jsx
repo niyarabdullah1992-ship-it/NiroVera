@@ -1,5 +1,4 @@
 import React, { useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { base44 } from "@/api/base44Client";
 import { updateEmployeeProfile } from "@/lib/store";
@@ -162,13 +161,6 @@ export default function ProfileHero({
           ))}
         </span>
         <span style={{ fontSize: 12, color: "#A9CDB8" }}>{metaLine}</span>
-        {voice.own ? (
-          <span style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-            <Link to="/app/requests" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 36, padding: "0 14px", borderRadius: 8, background: "#C8A45A", color: "#0B3D27", fontSize: 12.5, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}>{ar ? "طلب جديد" : "New request"}</Link>
-            <Link to="/app/payroll?view=self&tab=payslip" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 36, padding: "0 14px", borderRadius: 8, border: "1px solid rgba(244,247,245,.35)", color: "#F4F7F5", fontSize: 12.5, textDecoration: "none", whiteSpace: "nowrap" }}>{ar ? "قسيمتي" : "My payslip"}</Link>
-            <Link to="/app/signing" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 36, padding: "0 14px", borderRadius: 8, border: "1px solid rgba(244,247,245,.35)", color: "#F4F7F5", fontSize: 12.5, textDecoration: "none", whiteSpace: "nowrap" }}>{ar ? "توقيعاتي" : "My signatures"}</Link>
-          </span>
-        ) : null}
       </div>
     </article>
   );

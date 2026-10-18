@@ -16,6 +16,7 @@ import { localPayrollAction } from "@/lib/localPayrollFallback";
 import { toast } from "@/components/ui/use-toast";
 import EmployeeIdentityRow from "@/components/employees/EmployeeIdentityRow";
 import { MUTED, NAVY, OK, WARN, BAD, NEUTRAL, ui, CARD, SURFACE } from "@/lib/platformStyles";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 
 async function payrollApi(payload) {
   const res = await base44.functions.invoke("payroll", payload);
@@ -200,14 +201,14 @@ export default function PayrollWpsBoard({
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
           <div className="nv-paper" style={{ border: "1px solid var(--nv-line)", padding: "14px 16px", background: CARD }}>
             <p style={{ margin: 0, fontSize: 10, fontWeight: 600, color: MUTED, letterSpacing: "0.04em" }}>{ar ? "مهلة الإيداع" : "Deposit deadline"}</p>
-            <p style={{ margin: "8px 0 0", fontSize: 16, fontWeight: 600, color: late ? "var(--nv-warn-ink)" : NAVY }}>
+            <p style={{ margin: "8px 0 0", fontSize: 16, fontWeight: 600, color: NAVY }}>
               {deadline ? formatDate(deadline, lang, { year: "numeric", month: "long", day: "numeric" }) : "—"}
             </p>
-            {late && <p style={{ margin: "4px 0 0", fontSize: 10, color: "var(--nv-warn-ink)" }}>{ar ? "متأخر" : "Late"}</p>}
+            {late && <StatusFlag tone="warn" ar={ar} flag={ar ? "فات موعد الإيداع" : "Deposit window passed"} style={{ marginTop: 6 }} />}
           </div>
           <div className="nv-paper" style={{ border: "1px solid var(--nv-line)", padding: "14px 16px", background: CARD }}>
             <p style={{ margin: 0, fontSize: 10, fontWeight: 600, color: MUTED, letterSpacing: "0.04em" }}>{ar ? "جاهزية الصفوف" : "Row readiness"}</p>
-            <p style={{ margin: "8px 0 0", fontSize: 16, fontWeight: 600, color: blockedCount ? "var(--nv-warn-ink)" : NAVY, lineHeight: 1.5 }}>
+            <p style={{ margin: "8px 0 0", fontSize: 16, fontWeight: 600, color: NAVY, lineHeight: 1.5 }}>
               {rows.length ? readiness : (ar ? "لا صفوف بعد" : "No rows yet")}
             </p>
             {rows.length > 0 && (

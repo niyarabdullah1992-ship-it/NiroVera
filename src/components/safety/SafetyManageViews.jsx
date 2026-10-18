@@ -1,7 +1,13 @@
 import React, { useRef, useState } from "react";
-import { isHeatBanDate } from "@/lib/contractLawDerivations";
-import { SAFETY_REPORT_CONTROLS, deriveOpenRiskMap, safetyReportSlaLine } from "@/lib/safetyReportCard";
+import RightHint from "@/components/shared/RightHint";
+import { injuryHint } from "@/lib/rightHints.disc";
+import { SAFETY_REPORT_CONTROLS, deriveOpenRiskMap, safetyReportSlaHours, safetyReportSlaLine } from "@/lib/safetyReportCard";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
+import { ListStack } from "@/components/shared/TwoPaneWorkspace";
+import CollapsibleItemCard, { useCollapsibleItems } from "@/components/shared/CollapsibleItemCard";
 import { PERMIT_TYPES } from "@/lib/safetyStandards";
+import { deriveTrainingRegister } from "@/lib/employerDuties";
+import TrainingMedicalPanel from "@/components/safety/TrainingMedicalPanel";
 
 const MONO = "'IBM Plex Mono', monospace";
 
@@ -72,7 +78,7 @@ function Kpi({ label, value, sub, tone }) {
   );
 }
 
-export function SafetyDashboard({ ar, stations, recFor, onOpenRegister }) {
+export function SafetyDashboard({ ar, stations, recFor, onOpenRegister, data = null, companyId = "", canEdit = false, command = null }) {
   const L = (a, e) => (ar ? a : e);
   const now = Date.now();
   const openReports = [];
@@ -142,17 +148,30 @@ export function SafetyDashboard({ ar, stations, recFor, onOpenRegister }) {
   });
   const readyKnown = readyRows.filter((row) => row.pct != null);
   const readyAvg = readyKnown.length ? Math.round(readyKnown.reduce((sum, row) => sum + row.pct, 0) / readyKnown.length) : null;
-  const daysClear = lastInjuryAt ? Math.max(0, Math.floor((now - lastInjuryAt) / 86400000)) : null;
+  // The board reads the inspection rounds and the lost-time register (lib/safetyOps) when they are given.
+  const daysClear = command ? command.daysClear : (lastInjuryAt ? Math.max(0, Math.floor((now - lastInjuryAt) / 86400000)) : null);
+  const readiness = command ? command.readiness : readyAvg;
+  const livePermits = command ? command.permits.live : activePermits;
 
   const goalPct = daysClear == null ? 0 : Math.min(100, Math.round((daysClear / 180) * 100));
   return (
     <div data-hse="admin-board" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
         <Kpi label={L("مخاطر مفتوحة", "Open hazards")} value={openHazards} sub={L("في نطاقك", "In your scope")} tone={openHazards ? "bad" : "ok"} />
-        <Kpi label={L("تصاريح عمل سارية", "Live permits")} value={activePermits} sub={expiringWeek ? (ar ? `${expiringWeek} تنتهي هذا الأسبوع` : `${expiringWeek} expire this week`) : "—"} tone={expiringWeek ? "warn" : "ok"} />
-        <Kpi label={L("إتمام تدريب السلامة", "Safety training")} value="—" sub={L("لا سجل تدريب في النطاق", "No training record in scope")} />
-        <Kpi label={L("جاهزية الفروع", "Branch readiness")} value={readyAvg == null ? "—" : `${readyAvg}%`} sub={L("الإسعاف · الإطفاء · الإخلاء", "First aid · fire · evacuation")} tone={readyAvg == null ? null : readyAvg >= 80 ? "ok" : "warn"} />
+        <Kpi label={L("تصاريح عمل سارية", "Live permits")} value={livePermits} sub={expiringWeek ? (ar ? `${expiringWeek} تنتهي هذا الأسبوع` : `${expiringWeek} expire this week`) : "—"} tone={expiringWeek ? "warn" : "ok"} />
+        {(() => {
+          const scopeIds = new Set(stations.map((s) => String(s.id)));
+          const scoped = (data?.employees || []).filter((e) => scopeIds.has(String(e.stationId || e.station_id || "")));
+          const reg = deriveTrainingRegister({ employees: scoped });
+          const any = scoped.some((e) => (e.trainings || []).length);
+          return any
+            ? <Kpi label={L("إتمام تدريب السلامة", "Safety training")} value={`${Math.round(reg.safetyShare * 100)}%`} sub={ar ? `${reg.trained} من ${reg.headcount} تدرّبوا هذا العام · المواد 42–44` : `${reg.trained} of ${reg.headcount} trained this year`} tone={reg.safetyShare >= 0.8 ? "ok" : "warn"} />
+            : <Kpi label={L("إتمام تدريب السلامة", "Safety training")} value="—" sub={L("لا سجل تدريب في النطاق — يُسجَّل من ملف العامل", "No training record in scope — add it on the worker's file")} />;
+        })()}
+        <Kpi label={L("جاهزية الفروع", "Branch readiness")} value={readiness == null ? "—" : `${readiness}%`} sub={command ? L("من آخر جولة تفتيش لكل فرع", "From each branch's last inspection round") : L("الإسعاف · الإطفاء · الإخلاء", "First aid · fire · evacuation")} tone={readiness == null ? null : readiness >= 80 ? "ok" : "warn"} />
       </div>
+
+      {data ? <TrainingMedicalPanel data={data} companyId={companyId} ar={ar} canEdit={canEdit} /> : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: 14 }}>
         <article style={shell}>
@@ -162,7 +181,7 @@ export function SafetyDashboard({ ar, stations, recFor, onOpenRegister }) {
               <strong style={{ font: `700 40px ${MONO}`, lineHeight: 1, direction: "ltr" }}>{daysClear == null ? "—" : daysClear}</strong>
               <span style={{ fontSize: 13, fontWeight: 600 }}>{L("يوماً بلا إصابة مُضيِّعة للوقت", "days without a lost-time injury")}</span>
             </div>
-            <span style={{ fontSize: 11.5, color: "#C5DBCD" }}>{daysClear == null ? "—" : L("من آخر إصابة مسجّلة في النطاق", "Since the last recorded injury in scope")}</span>
+            <span style={{ fontSize: 11.5, color: "#C5DBCD" }}>{daysClear == null ? L("لا إصابة مضيّعة للوقت مسجّلة في النطاق", "No lost-time injury on record in scope") : L("من آخر إصابة مضيّعة للوقت في النطاق", "Since the last lost-time injury in scope")}</span>
             <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,.18)", overflow: "hidden", marginTop: 4 }}>
               <div style={{ height: "100%", borderRadius: 999, background: "#C8A45A", width: `${goalPct}%` }} />
             </div>
@@ -239,7 +258,7 @@ export function SafetyDashboard({ ar, stations, recFor, onOpenRegister }) {
         </article>
       </div>
 
-      <article style={shell}>
+      {command ? null : <article style={shell}>
         <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line)" }}>
           <strong style={{ fontSize: 13.5, color: "var(--nv-ink)" }}>{L("جاهزية الفروع", "Branch readiness")}</strong>
         </div>
@@ -264,88 +283,48 @@ export function SafetyDashboard({ ar, stations, recFor, onOpenRegister }) {
             )) : <p style={{ margin: 0, padding: 18, textAlign: "center", color: "var(--nv-ink3)" }}>—</p>}
           </div>
         </div>
-      </article>
+      </article>}
     </div>
   );
 }
 
-export function SafetyRiskRegister({ ar, rows, canAct, onPatch }) {
+export function SafetyRiskRegister({ ar, rows: openRows, allRows, canAct, onPatch }) {
   const L = (a, e) => (ar ? a : e);
   const fileRef = useRef(null);
   const [pendingClose, setPendingClose] = useState(null);
   const now = Date.now();
+  // The register is an action queue: it opens on «مفتوحة», with الكل first and «مُغلقة» last.
+  const [face, setFace] = useState("open");
+  const everyRow = allRows || openRows;
+  const isCritical = (row) => (Number(row.item.card?.score) || 0) >= 15 || row.item.card?.levelKey === "critical";
+  const isElapsed = (row) => {
+    const card = row.item.card;
+    if (!card || card.positive || row.item.status === "closed" || !row.item.at) return false;
+    const hours = safetyReportSlaHours(card.levelKey);
+    return hours > 0 && new Date(row.item.at).getTime() + hours * 3600000 <= now;
+  };
+  const faces = {
+    all: everyRow,
+    open: openRows,
+    critical: openRows.filter(isCritical),
+    elapsed: openRows.filter(isElapsed),
+    closed: everyRow.filter((row) => row.item.status === "closed"),
+  };
+  const rows = faces[face] || openRows;
 
   const askClose = (row) => {
     setPendingClose(row);
     fileRef.current?.click();
   };
   const rowKey = (row) => row.item.id || `${row.stationId}-${row.item.at}`;
-  const [picked, setPicked] = useState("");
-  const selected = rows.find((row) => rowKey(row) === picked) || rows[0] || null;
-  const card = selected?.item?.card || {};
-  const score = Number(card.score) || 0;
-  const crit = score >= 15 || card.levelKey === "critical";
-
-  return (
-    <div data-hse="admin-register" style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start" }}>
-    <section style={{ ...shell, flex: "1 1 260px", minWidth: 0 }}>
-      <header style={{ padding: "12px 14px", borderBottom: "1px solid var(--nv-line)", display: "flex", justifyContent: "space-between", gap: 8 }}>
-        <strong style={{ fontSize: 13.5, color: "var(--nv-ink)" }}>{L("سجل المخاطر", "Risk register")}</strong>
-        <span style={{ fontSize: 11, color: "var(--nv-ink3)" }}>{ar ? `${rows.length} مفتوحة` : `${rows.length} open`}</span>
-      </header>
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        hidden
-        onChange={(event) => {
-          const name = event.target.files?.[0]?.name || "";
-          const row = pendingClose;
-          event.target.value = "";
-          setPendingClose(null);
-          if (row && name) onPatch(row.stationId, row.item.id, { afterPhotoName: name });
-        }}
-      />
-      <div style={{ maxHeight: 640, overflow: "auto" }}>
-        {rows.length ? rows.map((row) => {
-          const rowCard = row.item.card || {};
-          const on = selected && rowKey(row) === rowKey(selected);
-          const tone = levelTone(rowCard.levelTone || "");
-          return (
-            <button
-              key={rowKey(row)}
-              type="button"
-              onClick={() => setPicked(rowKey(row))}
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "11px 14px",
-                border: "none",
-                borderBottom: "1px solid var(--nv-line2)",
-                background: on ? "var(--nv-soft)" : "transparent",
-                boxShadow: on ? "inset -3px 0 0 var(--nv-ink)" : "none",
-                cursor: "pointer",
-                textAlign: "start",
-                fontFamily: "inherit",
-                color: "inherit",
-              }}
-            >
-              <span style={{ width: 32, height: 32, borderRadius: 8, flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", font: `700 12px ${MONO}`, ...tone }}>{rowCard.score || "—"}</span>
-              <span style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column" }}>
-                <strong style={{ fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dash(row.item.description || rowCard.what)}</strong>
-                <span style={{ fontSize: 11, color: "var(--nv-ink3)" }}>{dash(rowCard.code)} · {dash(rowCard.categoryAr && ar ? rowCard.categoryAr : rowCard.categoryEn)}</span>
-              </span>
-              <span style={{ ...tone, height: 22, display: "inline-flex", alignItems: "center", padding: "0 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, flex: "none" }}>{row.item.status === "closed" ? L("مُغلق", "Closed") : L("مفتوح", "Open")}</span>
-            </button>
-          );
-        }) : <p style={{ margin: 0, padding: 18, textAlign: "center", color: "var(--nv-ink3)" }}>—</p>}
-      </div>
-    </section>
-    <article style={{ ...shell, flex: "999 1 520px", minWidth: 0, borderTop: crit ? "3px solid #9B2335" : undefined }}>
-      {selected ? (
-        <>
+  // Each report folds to one row under the header card; opening it shows the hazard, controls and actions.
+  const fold = useCollapsibleItems(rows.map(rowKey), "");
+  const detailOf = (selected) => {
+    const card = selected?.item?.card || {};
+    const score = Number(card.score) || 0;
+    const crit = score >= 15 || card.levelKey === "critical";
+    return (
+      <div style={{ margin: "-12px -14px -14px", borderTop: crit ? "3px solid #9B2335" : undefined }}>
           <header style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line)", display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -393,18 +372,75 @@ export function SafetyRiskRegister({ ar, rows, canAct, onPatch }) {
           </div>
           <footer style={{ padding: "14px 18px", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center", background: "var(--nv-soft)" }}>
             <span style={{ fontSize: 11.5, color: "var(--nv-ink3)" }}>{L("لا يُغلق البند قبل صورة بعد واعتماد الإجراء.", "A report stays open until the action is approved and an after photo is filed.")}</span>
-            {canAct ? (
+            {canAct && selected.item.status !== "closed" ? (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 <button type="button" onClick={() => onPatch(selected.stationId, selected.item.id, { approveAction: true })} style={{ ...actionBtn(false), background: "#3C7D50", color: "#fff", borderColor: "#3C7D50" }}>{L("اعتماد الإجراء", "Approve action")}</button>
                 <button type="button" onClick={() => askClose(selected)} style={actionBtn(false)}>{L("إغلاق بصورة بعد", "Close with after photo")}</button>
                 <button type="button" onClick={() => onPatch(selected.stationId, selected.item.id, { escalate: true })} style={actionBtn(true)}>{L("صعّد", "Escalate")}</button>
               </div>
-            ) : <span style={{ color: "var(--nv-ink3)" }}>—</span>}
+            ) : <span style={{ color: "var(--nv-ink3)" }}>{selected.item.status === "closed" ? L("أُغلق البلاغ", "Report closed") : "—"}</span>}
           </footer>
-        </>
-      ) : <p style={{ margin: 0, padding: 24, textAlign: "center", color: "var(--nv-ink3)" }}>—</p>}
-    </article>
-    </div>
+      </div>
+    );
+  };
+
+  return (
+    <ListStack data-hse="admin-register">
+      <StatusFilterPills
+        card
+        dataKey="safety-register"
+        title={L("بلاغات السلامة", "Safety reports")}
+        value={face}
+        onChange={setFace}
+        size="sm"
+        hideZero
+        items={[
+          { id: "all", label: L("الكل", "All"), n: faces.all.length },
+          { id: "open", label: L("مفتوحة", "Open"), n: faces.open.length },
+          { id: "critical", label: L("حرجة", "Critical"), n: faces.critical.length },
+          { id: "elapsed", label: L("انتهت مهلتها", "SLA elapsed"), n: faces.elapsed.length },
+          { id: "closed", label: L("مُغلقة", "Closed"), n: faces.closed.length },
+        ]}
+      />
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(event) => {
+          const name = event.target.files?.[0]?.name || "";
+          const row = pendingClose;
+          event.target.value = "";
+          setPendingClose(null);
+          if (row && name) onPatch(row.stationId, row.item.id, { afterPhotoName: name });
+        }}
+      />
+      {rows.length ? rows.map((row) => {
+        const rowCard = row.item.card || {};
+        const tone = levelTone(rowCard.levelTone || "");
+        const key = rowKey(row);
+        return (
+          <CollapsibleItemCard
+            key={key}
+            open={fold.isOpen(key)}
+            onToggle={() => fold.toggle(key)}
+            dot={rowCard.levelTone === "crit" ? "#9B2335" : tone.color}
+            title={dash(row.item.description || rowCard.what)}
+            person={`${dash(rowCard.categoryAr && ar ? rowCard.categoryAr : rowCard.categoryEn)} · ${dash(row.stationName)}`}
+            date={dash(rowCard.code)}
+            status={(
+              <>
+                <span style={{ ...tone, height: 22, minWidth: 28, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 6px", borderRadius: 6, font: `700 11px ${MONO}` }}>{rowCard.score || "—"}</span>
+                <span style={{ ...tone, height: 22, display: "inline-flex", alignItems: "center", padding: "0 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, flex: "none" }}>{row.item.status === "closed" ? L("مُغلق", "Closed") : L("مفتوح", "Open")}</span>
+              </>
+            )}
+            ar={ar}
+          >
+            {detailOf(row)}
+          </CollapsibleItemCard>
+        );
+      }) : <p className="nv-cic" style={{ margin: 0, padding: 18, textAlign: "center", color: "var(--nv-ink3)" }}>—</p>}
+    </ListStack>
   );
 }
 
@@ -527,7 +563,7 @@ export function SafetyInjuryTable({ ar, rows }) {
       <header style={{ padding: "12px 14px", borderBottom: "1px solid var(--nv-line)", display: "flex", justifyContent: "space-between", gap: 8 }}>
         <strong style={{ fontSize: 13.5 }}>{L("الحوادث والإصابات", "Incidents and injuries")}</strong>
         <span style={{ fontSize: 11.5, color: shown.some((row) => row.item.card?.injured && row.item.status !== "closed") ? "#9B2335" : "var(--nv-ink3)" }}>
-          {L("إصابة العمل تُبلَّغ فوراً — المادة 133", "A work injury is reported at once — Art. 133")}
+          {L("إصابة العمل تُبلَّغ للتأمينات خلال عشرة أيام أو لمكتب العمل خلال أسبوع", "A work injury is reported to GOSI within ten days, or the labour office within a week")}
         </span>
       </header>
       <div style={{ overflow: "auto" }}>
@@ -552,38 +588,15 @@ export function SafetyInjuryTable({ ar, rows }) {
                 </div>
                 <span style={{ fontSize: 12 }}>{kind}</span>
                 <span style={{ fontFamily: MONO, direction: "ltr", fontSize: 12 }}>{row.item.at ? String(row.item.at).slice(0, 10) : "—"}</span>
-                <span style={{ fontSize: 12 }}>{status}</span>
+                <span style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  {status}
+                  {card.injured || card.kind === 3 ? <RightHint ar={ar} hint={injuryHint(row.item, { view: "manager", ar })} /> : null}
+                </span>
               </div>
             );
           }) : <p style={{ margin: 0, padding: 18, textAlign: "center", color: "var(--nv-ink3)" }}>—</p>}
         </div>
       </div>
     </section>
-  );
-}
-
-export function SafetyMinistryPanel({ ar, criticalOpen, controlLabel, controlTone, injuryOpen }) {
-  const L = (a, e) => (ar ? a : e);
-  const inSeason = isHeatBanDate(new Date());
-  const rows = [
-    ["م 121·122", L("الحماية من الأخطار", "Protection from hazards"), criticalOpen ? L("مخالفة", "Breach") : L("مستوفٍ", "Met"), criticalOpen ? "bad" : "ok"],
-    ["م 125", L("وسائل الإسعافات الأولية", "First-aid means"), "—", ""],
-    ["م 133", L("مهلة إبلاغ الإصابة", "Injury reporting deadline"), injuryOpen ? L("مفتوح — يُبلَّغ فوراً", "Open — report at once") : "—", injuryOpen ? "bad" : ""],
-    ["ISO 45001 §8.1.2", L("ضابط لكل خطر", "A control for every hazard"), controlLabel || "—", controlTone || ""],
-    ["قرار 3337", L("لا عمل مكشوف 12:00–15:00 من 15 يونيو إلى 15 سبتمبر", "No exposed work 12:00–15:00 from 15 June to 15 September"), inSeason ? L("الموسم قائم", "Season is open") : L("بلا أثر", "No effect"), inSeason ? "warn" : ""],
-  ];
-  return (
-    <details style={{ ...shell, padding: 0, borderColor: criticalOpen ? "#9B2335" : undefined, boxShadow: criticalOpen ? "inset 0 3px 0 #9B2335" : shell.boxShadow }}>
-      <summary style={{ padding: "12px 14px", cursor: "pointer", fontSize: 13, fontWeight: 700, color: criticalOpen ? "#9B2335" : "var(--nv-ink)" }}>{L("مرجعية الوزارة", "Ministry reference")}</summary>
-      <div style={{ borderTop: "1px solid var(--nv-line)" }}>
-        {rows.map((row) => (
-          <div key={row[0]} style={{ display: "grid", gridTemplateColumns: "140px minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: "10px 14px", borderBottom: "1px solid var(--nv-line2)" }}>
-            <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: "#C8A45A" }}>{row[0]}</span>
-            <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>{row[1]}</span>
-            <span style={{ ...levelTone(row[3]), height: 22, display: "inline-flex", alignItems: "center", padding: "0 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{row[2]}</span>
-          </div>
-        ))}
-      </div>
-    </details>
   );
 }

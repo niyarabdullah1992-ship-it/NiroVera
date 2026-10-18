@@ -258,7 +258,7 @@ export function seedPreviewOwnerNightStreak(data, today = previewTodayKey()) {
     schedule.shiftTypes.push({ id: "night", start: "23:00", end: "07:00", label: "ليلي", restMinutes: 30 });
   }
   if (!schedule.shiftTypes.some((shift) => shift.id === "morning" || shift.start === "07:00")) {
-    schedule.shiftTypes.push({ id: "morning", start: "07:00", end: "15:00", label: "صباحي", restMinutes: 30 });
+    schedule.shiftTypes.push({ id: "morning", start: "07:00", end: "16:00", label: "صباحي", restMinutes: 60 });
   }
   const nightId = schedule.shiftTypes.find((shift) => shift.id === "night" || shift.start === "23:00")?.id;
   const morningId = schedule.shiftTypes.find((shift) => shift.id === "morning" || shift.start === "07:00")?.id;
@@ -522,11 +522,11 @@ export function seedPreviewWrittenConsent(data, today = previewTodayKey()) {
       ...draft(
         "wcon_preview_field",
         "site",
-        "تغيير موقع العمل",
-        "Change of work site",
+        "نقل يقتضي تغيير محل الإقامة",
+        "A move that changes residence",
         "المادة 58",
         "Art. 58",
-        "تطلب الإدارة إقرارك الخطي بالانتقال إلى موقع عمل آخر ضمن المدينة نفسها، مع بقاء الأجر والمسمّى كما هما.",
+        "تطلب الإدارة موافقتك الكتابية على نقلك من مكان عملك الأصلي إلى مكان عمل آخر يقتضي تغيير محل إقامتك، مع بقاء أجرك ومسمّاك الوظيفي كما هما. لك أن توافق أو ترفض (المادة 58).",
         owner.name,
         owner.id,
       ),
@@ -539,11 +539,22 @@ export function seedPreviewWrittenConsent(data, today = previewTodayKey()) {
   return true;
 }
 
-function ensurePreviewWage(person, wage) {
-  if (!person || Number(person.profile?.baseSalary) > 0) return false;
+function ensurePreviewWage(person, wage, parts = null) {
+  if (!person) return false;
   person.profile = person.profile && typeof person.profile === "object" ? person.profile : {};
-  assignWageFields(person.profile, { baseSalary: wage });
-  return true;
+  let changed = false;
+  if (!(Number(person.profile.baseSalary) > 0)) { assignWageFields(person.profile, { baseSalary: wage }); changed = true; }
+  // a named split (housing / transport) so قسيمتي reads a real composition, not one lump
+  if (parts && !(Number(person.profile.allowances) > 0) && !(Number(person.profile.housingAllowance) > 0)) {
+    assignWageFields(person.profile, { housingAllowance: parts.housing, transportAllowance: parts.transport, otherAllowances: parts.other || 0, allowances: parts.housing + parts.transport + (parts.other || 0) });
+    changed = true;
+  } else if (parts?.other > 0 && Number(person.profile.housingAllowance) > 0 && !(Number(person.profile.otherAllowances) > 0) && !person.profile.previewOtherSeeded) {
+    // a split seeded before other allowances existed: add the named «بدلات أخرى» once
+    assignWageFields(person.profile, { otherAllowances: parts.other, allowances: (Number(person.profile.allowances) || 0) + parts.other });
+    person.profile.previewOtherSeeded = true;
+    changed = true;
+  }
+  return changed;
 }
 
 export function seedPreviewDiscipline(data, today = previewTodayKey()) {
@@ -552,7 +563,7 @@ export function seedPreviewDiscipline(data, today = previewTodayKey()) {
   const manager = data.employees.find((row) => row.id === "emp_manager_preview") || data.employees.find((row) => row.role === "station_manager");
   const field = data.employees.find((row) => row.id === "emp_field_preview") || data.employees.find((row) => row.role === "employee");
   if (!owner || !field) return false;
-  const wages = ensurePreviewWage(owner, 15500) || ensurePreviewWage(field, 9000) || ensurePreviewWage(manager, 12800);
+  const wages = [ensurePreviewWage(owner, 15500, { housing: 3875, transport: 1200, other: 1000 }), ensurePreviewWage(field, 9000, { housing: 2250, transport: 900 }), ensurePreviewWage(manager, 12800, { housing: 3200, transport: 1000 })].some(Boolean);
   if (data.previewDisciplineSeeded) return wages;
   const cases = Array.isArray(data.disciplinaryCases) ? data.disciplinaryCases : [];
   if (cases.some((row) => String(row.id || "").startsWith("dsc_preview_"))) {
@@ -872,8 +883,128 @@ export function migratePreviewOwnerGosiIdentity(data) {
  * onto the company field the ministry board already saves, and clear the
  * employee field only when it still holds that exact value.
  */
+/**
+ * Preview: the Khafji morning shift becomes a 9-hour day (07:00–16:00) with a one-hour flex break, split
+ * in two by default — so «حدّد وقت راحتك» shows in بصمتي and the worker places his own rest. Once.
+ */
+export function migratePreviewFlexMorning(data) {
+  if (!data || data.previewFlexMorning9hAll) return false;
+  let changed = false;
+  for (const schedule of data.schedules || []) {
+    for (const morning of schedule?.shiftTypes || []) {
+      const isMorning = morning?.id === "morning" || (morning?.start === "07:00" && morning?.end === "15:00");
+      if (!isMorning || morning.end === "16:00") continue;
+      morning.end = "16:00";
+      // Past 8 hours: the platform rule opens the one-hour flex rest (lib/shiftDerivations.longShiftRestPatch).
+      delete morning.breakMode;
+      delete morning.flexBreak;
+      changed = true;
+    }
+  }
+  data.previewFlexMorning9hAll = true;
+  return changed;
+}
+
+/** Preview: the 9-hour morning's break window opens to the whole duty (the worker writes his own time). */
+export function migratePreviewOpenRestWindow(data) {
+  if (!data || data.previewOpenRestWindow) return false;
+  let changed = false;
+  for (const schedule of data.schedules || []) {
+    for (const shift of schedule?.shiftTypes || []) {
+      const fb = shift?.breakMode === "flex" ? shift.flexBreak : null;
+      if (!fb || (fb.from === shift.start && fb.to === shift.end)) continue;
+      shift.flexBreak = { ...fb, from: shift.start, to: shift.end };
+      changed = true;
+    }
+  }
+  data.previewOpenRestWindow = true;
+  return changed;
+}
+
 export function migratePreviewGosiEstablishment(data) {
-  return migratePlatformFactHomes(data);
+  const flexMorning = migratePreviewFlexMorning(data);
+  const moved = migratePlatformFactHomes(data);
+  const dated = migratePreviewDatelessLeave(data);
+  const crew = migratePreviewProofPeople(data);
+  const rhythm = migratePreviewTaskRhythm(data);
+  return dated || crew || rhythm || moved || flexMorning;
+}
+
+/**
+ * The preview pump order (34 of 50) had no day-by-day history, so its card could not show the last
+ * seven days or the last entry. Spread the 34 it already holds over the days before today.
+ */
+const PREVIEW_LOG_NOTES = ["صيانة 6 مضخات وتنظيف المرشحات", "فحص الضغط وتسجيل القراءات", "تشحيم المحامل في الوحدة 2", "استبدال حشوات المضخة 3 و4", "اختبار التشغيل بعد الصيانة"];
+
+export function migratePreviewTaskRhythm(data, today = previewTodayKey()) {
+  const task = (Array.isArray(data?.tasks) ? data.tasks : []).find((t) => t?.id === "tk_1");
+  // An earlier seed wrote «إنجاز ×n» as the note, which the thread already shows as the amount.
+  if (task && Array.isArray(task.comments) && task.comments.some((c) => String(c?.id || "").startsWith("cm_prev_") && /^إنجاز ×/.test(String(c.text || "")))) {
+    task.comments = task.comments.map((c, i) => (String(c?.id || "").startsWith("cm_prev_") && /^إنجاز ×/.test(String(c.text || ""))
+      ? { ...c, text: PREVIEW_LOG_NOTES[Number(String(c.id).slice(8)) % PREVIEW_LOG_NOTES.length] || c.text }
+      : c));
+    return true;
+  }
+  if (!task || task.paceDayLog || (Array.isArray(task.comments) && task.comments.some((c) => c?.kind === "log"))) return false;
+  const [y, m, d] = String(today).split("-").map(Number);
+  const key = (n) => previewTodayKey(new Date(y, m - 1, d + n));
+  const plan = [[-6, 6], [-5, 7], [-4, 5], [-3, 0], [-2, 8], [-1, 8]];
+  task.startAt = task.startAt || `${key(-6)}T08:00:00`;
+  task.dueAt = `${key(3)}T17:00:00`;
+  task.paceDayLog = Object.fromEntries(plan.filter(([, n]) => n).map(([o, n]) => [key(o), n]));
+  task.memberIds = task.memberIds && task.memberIds.length > 1 ? task.memberIds : [task.ownerId, "emp_hassan_preview"].filter(Boolean);
+  const who = ["عمر ناصر", "حسن العمري"];
+  task.comments = [
+    ...(Array.isArray(task.comments) ? task.comments : []),
+    ...plan.filter(([, n]) => n).map(([o, n], i) => ({
+      id: `cm_prev_${i}`,
+      kind: "log",
+      amount: n,
+      text: PREVIEW_LOG_NOTES[i % PREVIEW_LOG_NOTES.length],
+      authorName: who[i % 2],
+      at: `${key(o)}T${String(9 + i).padStart(2, "0")}:15:00`,
+      createdAt: `${key(o)}T${String(9 + i).padStart(2, "0")}:15:00`,
+      files: [],
+    })),
+  ];
+  task.completedCount = 34;
+  return true;
+}
+
+/** The preview pump job had no named crew, so the per-worker in/out on the card had nothing to show. */
+export function migratePreviewProofPeople(data) {
+  let changed = false;
+  const wp = (Array.isArray(data?.workProofs) ? data.workProofs : []).find((p) => p?.id === "wp_preview_live");
+  if (wp && !(Array.isArray(wp.people) && wp.people.some((p) => p?.name))) {
+    const day = String(wp.startedAt || "").slice(0, 10);
+    wp.people = [
+      { name: "سالم الحربي", nationality: "سعودي", idType: "national_id", id: "1102233445", title: "فني مضخات", briefed: true, inAt: `${day}T07:20:00` },
+      { name: "راجو كومار", nationality: "هندي", idType: "iqama", id: "2456677889", title: "لحّام", briefed: true, inAt: `${day}T07:35:00` },
+    ];
+    wp.personName = wp.personName || "سالم الحربي";
+    changed = true;
+  }
+  return changed;
+}
+
+/** The first preview seed filed «lv_1» as an annual leave with no dates — give it a real span so the queue reads true. */
+export function migratePreviewDatelessLeave(data, today = previewTodayKey()) {
+  let changed = false;
+  for (const person of data?.employees || []) {
+    for (const row of person.leaveRequests || []) {
+      if (row.id !== "lv_1" || row.startDate) continue;
+      const [y, m, d] = String(today).split("-").map(Number);
+      const key = (n) => previewTodayKey(new Date(y, m - 1, d + n));
+      const start = key(11);
+      row.startDate = start;
+      row.endDate = key(15);
+      row.days = 5;
+      row.reason = row.reason || "إجازة عائلية";
+      row.createdAt = row.createdAt || new Date().toISOString();
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 /** Preview files were seeded without gender, so maternity/paternity gates could not tell Omar from Noura. */
@@ -892,60 +1023,185 @@ export function migratePreviewEmployeeGenders(data) {
   return changed;
 }
 
-/** Existing preview workspaces were seeded without a register — operations need real rows. */
-export function migratePreviewAssets(data) {
-  if (!data || !Array.isArray(data.stations) || !data.stations.length) return false;
-  if (Array.isArray(data.assets) && data.assets.length) return false;
-  const north = data.stations.find((row) => /خفجي|Khafji|north/i.test(row.name || "")) || data.stations[0];
-  const east = data.stations.find((row) => /رابغ|Rabigh|east/i.test(row.name || "")) || data.stations[1] || data.stations[0];
-  const manager = (data.employees || []).find((row) => row.id === "emp_manager_preview") || (data.employees || []).find((row) => /أحمد/.test(row.name || ""));
-  const hse = (data.employees || []).find((row) => row.id === "emp_hse_preview") || (data.employees || []).find((row) => /سارة/.test(row.name || ""));
-  data.assets = [
-    {
-      id: "ast_1",
-      name: "مولد احتياطي 80 ك.و",
-      assetCode: "GEN-080",
-      qrCode: "AST-GEN080",
-      category: "معدات تشغيل",
-      stationId: north.id,
-      originStationId: north.id,
-      holderId: manager?.id || null,
-      holderName: manager?.name || "—",
-      status: "in_custody",
-      value: 42000,
-      purchaseDate: "2025-03-12",
-      nextInspectionDate: "2026-12-01",
-    },
-    {
-      id: "ast_2",
-      name: "جهاز فحص عزل",
-      assetCode: "TST-MEG",
-      qrCode: "AST-TSTMEG",
-      category: "أجهزة قياس",
-      stationId: east.id,
-      originStationId: east.id,
-      holderId: hse?.id || null,
-      holderName: hse?.name || "—",
-      status: "available",
-      value: 8500,
-      purchaseDate: "2025-08-20",
-      nextInspectionDate: "2026-10-15",
-    },
-  ];
-  if (!Array.isArray(data.assetCustody) || !data.assetCustody.length) {
-    data.assetCustody = [{
-      id: "cst_1",
-      assetId: "ast_1",
-      fromId: null,
-      fromName: "—",
-      toId: manager?.id || null,
-      toName: manager?.name || "—",
-      stationId: north.id,
-      handedAt: new Date().toISOString(),
-      notes: "initial",
-    }];
+/**
+ * Preview attendance history: the seeded roster ran for months with no punches, so «سجلي» showed the
+ * owner absent 67 days with Art. 80 warnings. Fill each past published workday with a plausible
+ * check-in / check-out (a few late arrivals), skipping approved leave. Preview only; runs once.
+ */
+export function seedPreviewAttendanceHistory(data, today = previewTodayKey()) {
+  if (!data || data.previewAttendanceHistorySeeded) return false;
+  const people = Array.isArray(data.employees) ? data.employees : [];
+  data.personalAttendance = Array.isArray(data.personalAttendance) ? data.personalAttendance : [];
+  const have = new Set(data.personalAttendance.map((row) => `${row.employeeId ?? row.employee_id}:${String(row.date || row.dateKey || "").slice(0, 10)}`));
+  const [ty, tm, td] = String(today).split("-").map(Number);
+  const floor = previewTodayKey(new Date(ty, tm - 1, td - 120));
+  const onLeave = (person, key) => (person?.leaveRequests || []).some((row) => row.status === "approved"
+    && String(row.startDate || "").slice(0, 10) <= key && String(row.endDate || row.startDate || "").slice(0, 10) >= key);
+  const hm = (v) => { const [h, m] = String(v || "").split(":").map(Number); return Number.isFinite(h) ? h * 60 + (m || 0) : null; };
+  const at = (key, minutes) => {
+    const [y, m, d] = key.split("-").map(Number);
+    const dayShift = Math.floor(minutes / 1440);
+    const rest = ((minutes % 1440) + 1440) % 1440;
+    const date = previewTodayKey(new Date(y, m - 1, d + dayShift));
+    return new Date(`${date}T${String(Math.floor(rest / 60)).padStart(2, "0")}:${String(rest % 60).padStart(2, "0")}:00+03:00`).toISOString();
+  };
+  let added = 0;
+  for (const schedule of data.schedules || []) {
+    const types = Array.isArray(schedule.shiftTypes) ? schedule.shiftTypes : [];
+    for (const [key, day] of Object.entries(schedule.assignments || {})) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || key >= today || key < floor) continue;
+      for (const [shiftId, ids] of Object.entries(day || {})) {
+        const shift = types.find((row) => row.id === shiftId);
+        const start = hm(shift?.start);
+        let end = hm(shift?.end);
+        if (start == null || end == null) continue;
+        if (end <= start) end += 1440;
+        for (const employeeId of Array.isArray(ids) ? ids : []) {
+          const id = `${employeeId}:${key}`;
+          if (have.has(id)) continue;
+          const person = people.find((row) => String(row.id) === String(employeeId));
+          if (!person || onLeave(person, key)) continue;
+          let h = 0;
+          for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 997;
+          const late = h % 13 === 0 ? 7 + (h % 9) : 0;
+          data.personalAttendance.push({
+            id: `att_seed_${employeeId}_${key}`,
+            employeeId,
+            date: key,
+            stationId: schedule.stationId || person.stationId || null,
+            checkInAt: at(key, start + (late || -(3 + (h % 6)))),
+            checkOutAt: at(key, end + 2 + (h % 4)),
+            status: late ? "late" : "present",
+            lateMinutes: late,
+            locationStatus: "inside",
+            seeded: true,
+          });
+          have.add(id);
+          added += 1;
+        }
+      }
+    }
   }
-  if (!Array.isArray(data.assetMaintenance)) data.assetMaintenance = [];
-  if (!Array.isArray(data.assetTransfers)) data.assetTransfers = [];
+  data.previewAttendanceHistorySeeded = true;
+  return added > 0;
+}
+
+/**
+ * Org design demo: a department under الخفجي, seats for every preview person (incl. a long-vacant,
+ * a frozen, a planned and an acting-covered seat), headcount budgets, one DoA row, one published
+ * decision (for the as-of view) and one change awaiting approval. Existing users and roles stay.
+ */
+export function seedPreviewOrgDesign(data, today = previewTodayKey()) {
+  if (!data || data.previewOrgDesignSeeded) return false;
+  const stations = Array.isArray(data.stations) ? data.stations : [];
+  const people = Array.isArray(data.employees) ? data.employees : [];
+  const north = stations.find((row) => row.id === "st_north_preview");
+  const east = stations.find((row) => row.id === "st_east_preview");
+  if (!north || !east) return false;
+  const shift = (days) => {
+    const d = new Date(`${today}T12:00:00`);
+    d.setDate(d.getDate() + days);
+    return previewTodayKey(d);
+  };
+  const person = (id) => people.find((row) => row.id === id);
+  const nationality = { emp_manager_preview: "سعودي", emp_hassan_preview: "سعودي", emp_noura_preview: "سعودية", emp_hse_preview: "سعودية" };
+  Object.entries(nationality).forEach(([id, value]) => {
+    const row = person(id);
+    if (row && !row.profile?.nationality) row.profile = { ...(row.profile || {}), nationality: value };
+  });
+  const omar = person("emp_field_preview");
+  if (omar && !omar.profile?.qiwaTitle) omar.profile = { ...(omar.profile || {}), qiwaTitle: "فني كهرباء" };
+
+  const deptId = "st_ops_dept_preview";
+  if (!stations.some((row) => row.id === deptId)) {
+    stations.push({
+      id: deptId,
+      name: "قسم التشغيل والصيانة",
+      parentStationId: north.id,
+      orgLevel: "department",
+      headcountBudget: 4,
+      createdAt: `${shift(-120)}T08:00:00.000Z`,
+      lat: north.lat,
+      lng: north.lng,
+      radiusMeters: north.radiusMeters || 200,
+    });
+  }
+  data.orgSeats = Array.isArray(data.orgSeats) ? data.orgSeats : [];
+  const addSeat = (seat) => {
+    if (data.orgSeats.some((row) => row.id === seat.id)) return;
+    if (seat.employeeId && data.orgSeats.some((row) => String(row.employeeId) === String(seat.employeeId))) return;
+    data.orgSeats.push({ listId: "field", gradeId: "", approverId: data.ownerId || null, createdAt: `${shift(-200)}T08:00:00.000Z`, ...seat });
+  };
+  addSeat({ id: "seat_ops_sup", code: "KHF-OPS-01", title: "مشرف تشغيل", qiwaTitle: "مشرف تشغيل", stationId: north.id, employeeId: "emp_manager_preview", deputySeatId: "seat_tech_hassan" });
+  addSeat({ id: "seat_tech_omar", code: "KHF-OPS-02", title: "فني ميداني", qiwaTitle: "فني ميداني", stationId: north.id, employeeId: "emp_field_preview" });
+  addSeat({ id: "seat_tech_hassan", code: "KHF-OPS-03", title: "فني ميداني", stationId: north.id, employeeId: "emp_hassan_preview" });
+  addSeat({ id: "seat_hse_sara", code: "RBG-HSE-01", title: "ضابط سلامة", stationId: east.id, employeeId: "emp_hse_preview", dottedToSeatId: "seat_ops_sup" });
+  addSeat({ id: "seat_cs_noura", code: "RBG-CS-01", title: "أخصائية عملاء", stationId: east.id, employeeId: "emp_noura_preview" });
+  addSeat({ id: "seat_mgr_rabigh", code: "RBG-MGR-01", title: "مدير فرع رابغ", stationId: east.id, employeeId: null, vacatedAt: `${shift(-110)}T08:00:00.000Z` });
+  addSeat({ id: "seat_planner_frozen", code: "OPS-PLN-01", title: "مخطط صيانة", stationId: deptId, employeeId: null, state: "frozen" });
+  addSeat({ id: "seat_rel_eng", code: "OPS-ENG-01", title: "مهندس موثوقية", stationId: deptId, employeeId: null, state: "planned", plannedFrom: shift(30), saudiOnly: true });
+  const vac = data.orgSeats.find((row) => row.id === "seat_vac_tech");
+  if (vac) {
+    vac.stationId = deptId;
+    vac.code = vac.code || "OPS-TEC-01";
+    if (!vac.vacatedAt) vac.vacatedAt = `${shift(-75)}T08:00:00.000Z`;
+  }
+
+  // أحمد covers the vacant Rabigh manager seat — started long enough ago to cross the acting limit.
+  const ahmed = person("emp_manager_preview");
+  if (ahmed && !(ahmed.actingAssignments || []).some((row) => row.seatId === "seat_mgr_rabigh")) {
+    ahmed.actingAssignments = [
+      ...(ahmed.actingAssignments || []),
+      { id: "act_preview_rabigh", seatId: "seat_mgr_rabigh", title: "مدير فرع رابغ", stationId: east.id, listId: "field", from: shift(-100), until: shift(5), createdAt: `${shift(-100)}T08:00:00.000Z` },
+    ];
+  }
+
+  const design = data.orgDesign && typeof data.orgDesign === "object" && !Array.isArray(data.orgDesign) ? data.orgDesign : {};
+  design.settings = design.settings || {};
+  design.doa = Array.isArray(design.doa) ? design.doa : [];
+  design.changes = Array.isArray(design.changes) ? design.changes : [];
+  if (!design.doa.some((row) => row.id === "doa_preview_leave")) {
+    design.doa.push({ id: "doa_preview_leave", kind: "leave", unitId: north.id, approverSeatId: "seat_ops_sup", limit: 5, escalateToSeatId: null, note: "الإجازات القصيرة لفريق الخفجي يعتمدها مشرف التشغيل" });
+  }
+  if (!design.changes.some((row) => row.id === "orgchg_preview_budget")) {
+    design.changes.push({
+      id: "orgchg_preview_budget",
+      title: "ميزانية عدد موظفي قسم التشغيل والصيانة",
+      reason: "اعتماد خطة القوى العاملة للربع.",
+      effectiveDate: shift(-40),
+      ops: [{ type: "setBudget", stationId: deptId, budget: 4 }],
+      status: "published",
+      createdById: data.ownerId || "",
+      createdBy: "نيار عبدالله",
+      createdAt: `${shift(-45)}T09:00:00.000Z`,
+      approvedById: data.ownerId || "",
+      approvedBy: "نيار عبدالله",
+      approvedAt: `${shift(-41)}T09:00:00.000Z`,
+      publishedAt: `${shift(-40)}T06:00:00.000Z`,
+      publishedBy: "نيار عبدالله",
+      inverse: [{ entity: "station", id: deptId, before: { headcountBudget: null } }],
+      decision: { seal: "NV-ORG-0001-PRV1", hash: "PREVIEWDECISION01", by: "نيار عبدالله", at: `${shift(-40)}T06:00:00.000Z` },
+    });
+  }
+  if (!design.changes.some((row) => row.id === "orgchg_preview_quality")) {
+    design.changes.unshift({
+      id: "orgchg_preview_quality",
+      title: "وحدة الجودة تحت فرع رابغ",
+      reason: "فصل فحص الجودة عن التشغيل اليومي، ونقل منصب الفني الشاغر إليها.",
+      effectiveDate: shift(7),
+      ops: [
+        { type: "createUnit", unitId: "st_quality_preview", name: "وحدة الجودة", parentId: east.id, orgLevel: "unit", budget: 2 },
+        { type: "moveSeat", seatId: "seat_vac_tech", toStationId: "st_quality_preview" },
+      ],
+      status: "pending",
+      createdById: "emp_hse_preview",
+      createdBy: "سارة حسن",
+      createdAt: `${shift(-2)}T10:00:00.000Z`,
+      submittedAt: `${shift(-1)}T10:00:00.000Z`,
+      submittedBy: "سارة حسن",
+    });
+  }
+  data.orgDesign = design;
+  data.previewOrgDesignSeeded = true;
   return true;
 }

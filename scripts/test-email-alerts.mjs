@@ -104,7 +104,7 @@ assert.match(localFallback, /local: true/);
 assert.match(localFallback, /action === "remind"/);
 
 const finishDialog = read("src/components/files/SigningFinishDialog.jsx");
-assert.match(finishDialog, /المعاينة المحلية لا ترسل بريدًا/);
+assert.match(finishDialog, /المعاينة لا ترسل بريداً/);
 
 const emailAlerts = read("src/lib/emailAlerts.js");
 assert.match(emailAlerts, /gmailNotify/);

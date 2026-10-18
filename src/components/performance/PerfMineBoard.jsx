@@ -1,8 +1,13 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import PlatformDateField from "@/components/shared/PlatformDateField";
+import PerfReportCopy from "@/components/performance/PerfReportCopy";
+import { useAuth } from "@/lib/PowerCareAuth";
 import { AR_GREGORIAN_MONTHS } from "@/lib/dateFormat";
 import { taskBelongsTo, taskIsProven, provenTaskWeight } from "@/lib/hcmDerivations";
+import { taskQualityFor, taskQualityLine } from "@/lib/taskQuality";
+import { modelLaw } from "@/lib/modelArticleTexts";
+import RightHint from "@/components/shared/RightHint";
 import { countPersonalHseDuty } from "@/lib/perfDerivations";
 import {
   PERF_DRIVERS,
@@ -11,6 +16,7 @@ import {
   monthsInRange,
   personFacts,
   personProofEntries,
+  rangePresets,
   scoreOf,
 } from "@/lib/perfRange";
 
@@ -76,29 +82,8 @@ function quietFacts(facts) {
   return !facts || (!facts.assigned && !facts.proof && facts.safe === 100 && facts.cover === 100);
 }
 
-function monthStart(iso, delta) {
-  const date = new Date(`${iso}T12:00:00`);
-  date.setDate(1);
-  date.setMonth(date.getMonth() + delta);
-  return isoDay(date);
-}
-
 function minePresets(today, floor = "") {
-  const year = Number(today.slice(0, 4));
-  const q2End = `${year}-06-30`;
-  const raw = [
-    { id: "m", from: monthStart(today, 0), to: today, labelAr: "هذا الشهر", labelEn: "This month" },
-    { id: "3", from: monthStart(today, -2), to: today, labelAr: "آخر 3 أشهر", labelEn: "Last 3 months" },
-    { id: "6", from: monthStart(today, -5), to: today, labelAr: "آخر 6 أشهر", labelEn: "Last 6 months" },
-    { id: "q2", from: `${year}-04-01`, to: q2End > today ? today : q2End, labelAr: "الربع الثاني", labelEn: "Second quarter" },
-  ];
-  return raw.map((row) => {
-    let to = row.to > today ? today : row.to;
-    let from = row.from;
-    if (floor && to >= floor && from < floor) from = floor;
-    if (from > to) from = to;
-    return { ...row, from, to };
-  });
+  return rangePresets(today, floor);
 }
 
 function recordFloor(employee, data) {
@@ -290,13 +275,15 @@ function proofRows(employee, from, to, data) {
     const proofId = String(row.id || "").startsWith("proof_") ? String(row.id).slice(6) : "";
     const task = taskId ? (data?.tasks || []).find((item) => String(item.id) === taskId) : null;
     const proof = proofId ? (data?.workProofs || []).find((item) => String(item.id) === proofId) : null;
-    const points = task ? provenTaskWeight(task) : (Number(proof?.points) || null);
+    const points = task ? provenTaskWeight(task, employee.id) : (Number(proof?.points) || null);
     const code = String(task?.id || proof?.id || "").trim();
+    const quality = task ? taskQualityFor(task, employee.id) : null;
     return {
       ...row,
       kind: task ? "task" : "proof",
       code,
       points: points > 0 ? points : null,
+      quality,
     };
   });
 }
@@ -321,9 +308,22 @@ function printMine({ ar, employee, job, place, period, score, band, drivers, mon
   setTimeout(() => { try { win.print(); } catch { /* print blocked */ } }, 300);
 }
 
+/** The period's quality line: the five-level scale of model Arts. 18–19, the same that fills «الكفاءة». */
+function qualityPeriodHint(ar = true) {
+  return {
+    view: "employee",
+    right: ar
+      ? "كل مهمة معتمدة تحمل مستوى جودة من خمسة (النموذج الموحد م19)، ومتوسطها في فترة التقرير يملأ عنصر «الكفاءة» في تقرير أدائك السنوي (م18). المهام المعتمدة قبل المستويات لا تدخل المتوسط ونقاطها كما مُنحت."
+      : "Every approved task carries a five-level quality level (model Art. 19); their mean over the report period fills «competence» in your annual report (Art. 18). Tasks approved before levels stay out of the mean, their points as granted.",
+    ifNot: ar ? "إن رأيت مستوى مهمة غير صحيح فاعترض عليه من بطاقة المهمة خلال خمسة أيام عمل." : "If a task's level looks wrong, object from the task card within five working days.",
+    law: modelLaw(["18", "19"], ar),
+  };
+}
+
 /** The signed-in person's own derived score. No other people, no cycle tools. */
 export default function PerfMineBoard({ lang, employee, data }) {
   const ar = lang === "ar";
+  const { company } = useAuth();
   const today = isoDay();
   const floor = useMemo(() => recordFloor(employee, data), [employee, data]);
   const presets = useMemo(() => minePresets(today, floor), [today, floor]);
@@ -358,6 +358,8 @@ export default function PerfMineBoard({ lang, employee, data }) {
       score: monthScore(employee, key, safeFrom, safeTo, data),
     }));
   }, [valid, safeFrom, safeTo, employee, data, ar]);
+  const myObjections = useMemo(() => (data?.tasks || []).flatMap((task) => (task.qualityObjections || [])
+    .filter((o) => String(o.employeeId) === String(employee?.id))), [data, employee]);
   const prevKey = valid ? previousMonthKey(safeFrom) : "";
   const prevScore = valid ? monthScore(employee, prevKey, `${prevKey}-01`, `${prevKey}-31`, data) : null;
   const delta = score == null || prevScore == null ? null : score - prevScore;
@@ -531,6 +533,14 @@ export default function PerfMineBoard({ lang, employee, data }) {
               </div>
             ))}
           </div>
+          <div data-perf-quality={facts?.quality?.n || 0} style={{ borderTop: `1px solid ${LINE}`, padding: "12px 20px", display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <strong style={{ fontSize: 13.5, color: INK }}>{ar ? "جودة المهام" : "Task quality"}</strong>
+              <span style={{ fontSize: 11, color: MUTED }}>{ar ? "المقياس نفسه لتقرير الأداء السنوي" : "The annual report's own scale"}</span>
+              <span style={{ marginInlineStart: "auto" }}><RightHint ar={ar} hint={qualityPeriodHint(ar)} /></span>
+            </div>
+            <span style={{ fontSize: 12, color: BODY, lineHeight: 1.7 }}>{facts ? taskQualityLine(facts.quality, ar) : DASH}</span>
+          </div>
           <div style={{ borderTop: `1px solid ${LINE}`, padding: "14px 20px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
               <strong style={{ fontSize: 13.5, color: INK }}>{ar ? "آخر 6 أشهر" : "Last 6 months"}</strong>
@@ -568,6 +578,13 @@ export default function PerfMineBoard({ lang, employee, data }) {
                 <span style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1 }}>
                   <strong style={{ fontSize: 12.5, color: INK }}>{row.title || DASH}</strong>
                   <span dir="ltr" style={{ ...mono, fontSize: 11, fontWeight: 500, color: MUTED, textAlign: "right" }}>{`${row.code || DASH} · ${row.at || DASH}`}</span>
+                  {row.kind === "task" ? (
+                    <span data-proof-quality={row.quality?.level || "none"} style={{ fontSize: 11, color: MUTED }}>
+                      {row.quality
+                        ? `${ar ? "الجودة" : "Quality"}: ${row.quality.level} — ${ar ? row.quality.label.ar : row.quality.label.en}${row.quality.reason ? ` · ${row.quality.reason}` : ""}`
+                        : (ar ? "الجودة: بلا مستوى" : "Quality: no level")}
+                    </span>
+                  ) : null}
                 </span>
                 <span style={{ fontSize: 11, fontWeight: 700, color: OK_INK, background: OK_SOFT, borderRadius: 999, padding: "3px 9px", whiteSpace: "nowrap", fontFamily: "inherit" }}>
                   {row.points == null ? DASH : (ar ? `+${row.points} نقطة` : `+${row.points}`)}
@@ -595,7 +612,9 @@ export default function PerfMineBoard({ lang, employee, data }) {
         </div>
       </div>
 
-      <details data-perf-card style={{ ...card, borderTop: `3px solid ${GOLD}`, padding: "12px 16px" }}>
+      <PerfReportCopy ar={ar} employee={employee} companyId={company?.id} quality={facts?.quality || null} objections={myObjections} />
+
+      <details data-perf-card style={{ ...card, padding: "12px 16px" }}>
         <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 700, color: INK }}>{ar ? "مرجع الوزارة" : "Ministry reference"}</summary>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
           {LAWS.map((row) => (

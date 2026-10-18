@@ -1,5 +1,6 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.38";
 import { authPowerCareSession } from "../../shared/powerCareSession.ts";
+import { isHrOnlyVoiceRow } from "../../shared/voicePrivacy.ts";
 import {
   appendVoiceAudit,
   applySlaAutoEscalate,
@@ -73,6 +74,19 @@ Deno.serve(async (req) => {
       "admin", "hr_manager", "hr",
     ];
     const isHandlerRole = auth.owner || auth.admin || handlerRoles.includes(auth.role);
+    // صوت الموظف: these rows are the confidential channel — HR / the administration only, never a
+    // line manager (station / branch / ops). The author follows his own by receipt.
+    const isHrReader = auth.owner || auth.admin || ["director", "hr", "hr_manager"].includes(auth.role);
+    const myReceiptIds = new Set(
+      auth.userId
+        ? (await base44.asServiceRole.entities.AnonymousReportReceipt.filter({ companyId, employeeId: auth.userId }))
+          .map((r: { reportId: string }) => r.reportId)
+        : [],
+    );
+    const canReadReport = (r: { id?: string } & Record<string, unknown>) => {
+      if (myReceiptIds.has(String(r.id))) return true;
+      return isHrOnlyVoiceRow(r, COMPLAINTS_CATEGORY) ? isHrReader : isHandlerRole;
+    };
 
     const loadBlob = async (category = COMPLAINTS_CATEGORY) => {
       const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({
@@ -172,6 +186,7 @@ Deno.serve(async (req) => {
     };
 
     const isActorHandler = (report: ComplaintLike, chain: EscalationTier[]) => {
+      if (isHrOnlyVoiceRow(report, COMPLAINTS_CATEGORY)) return isHrReader;
       if (isHandlerRole) return true;
       if (!auth.userId) return false;
       const level = Math.max(0, Number(report.escalationLevel) || 0);
@@ -180,11 +195,12 @@ Deno.serve(async (req) => {
     };
 
     const enrichBoard = (data: ComplaintsPayload, chain: EscalationTier[], nowMs = Date.now()) => {
-      const reports = data.reports.map((r) => enrichComplaint(r, chain, nowMs));
+      const readable = data.reports.filter((r) => canReadReport(r as never));
+      const reports = readable.map((r) => enrichComplaint(r, chain, nowMs));
       return {
         ok: true,
         reports,
-        stats: deriveComplaintStats(data.reports, chain, nowMs),
+        stats: deriveComplaintStats(readable, chain, nowMs),
         rateLimits: data.rateLimits,
         chain: chain.map((t) => ({
           id: t.id,
@@ -436,7 +452,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "sweepSla") {
-      if (!isHandlerRole) return Response.json({ error: "Forbidden" }, { status: 403 });
+      if (!isHrReader) return Response.json({ error: "Forbidden" }, { status: 403 });
       const data = await loadPayload();
       const chain = await resolveChain(data);
       const swept = applySlaAutoEscalate(data.reports, chain);

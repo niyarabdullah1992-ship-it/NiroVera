@@ -1,6 +1,6 @@
 /**
  * Header «كل الفروع» is allowed on decentralized / cross-branch surfaces.
- * Duty, care, and money (except inventory) must resolve to one workplace.
+ * Duty, care, and money must resolve to one workplace.
  */
 
 import { suiteAppForPath } from "./suiteApps.js";
@@ -14,8 +14,6 @@ const SINGLE_STATION_GROUPS = new Set([
   "compliance",
   "money",
 ]);
-
-const ALL_STATION_PATHS = new Set(["/app/inventory"]);
 
 const MANAGE_ROLES = new Set([
   "director",
@@ -38,7 +36,6 @@ function pathIs(pathname, base) {
 }
 
 export function headerAllowsAllStations(pathname) {
-  if ([...ALL_STATION_PATHS].some((base) => pathIs(pathname, base))) return true;
   const app = suiteAppForPath(pathname);
   if (!app) return true;
   return !SINGLE_STATION_GROUPS.has(app.group);
@@ -79,9 +76,6 @@ function sectionFromManagePath(path) {
   if (pathIsBase(path, "/app/complaints")) return "complaints";
   if (pathIsBase(path, "/app/performance")) return "performance";
   if (pathIsBase(path, "/app/payroll")) return "payroll";
-  if (pathIsBase(path, "/app/expenses")) return "expenses";
-  if (pathIsBase(path, "/app/assets")) return "assets";
-  if (pathIsBase(path, "/app/inventory")) return "inventory";
   if (pathIsBase(path, "/app/safety")) return "safety";
   if (pathIsBase(path, "/app/escalation")) return "escalation";
   if (pathIsBase(path, "/app/files")) return "files";
@@ -100,9 +94,6 @@ function sectionFromUrl(path, params) {
   }
   const money = [
     ["/app/payroll", "payroll"],
-    ["/app/expenses", "expenses"],
-    ["/app/assets", "assets"],
-    ["/app/inventory", "inventory"],
   ];
   for (const [base, id] of money) {
     if (pathIsBase(path, base)) return params.get("view") === "self" ? "" : id;

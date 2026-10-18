@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { X, Play, Pause, ChevronLeft, ChevronRight, File } from "lucide-react";
+import { X, Play, Pause, ChevronLeft, ChevronRight, File, UploadCloud } from "lucide-react";
 import {
   MUTED,
   NAVY,
@@ -32,7 +32,11 @@ import {
   TASK_MODES,
   taskModeConsequence,
   deriveTaskHeatBanNotice,
+  taskPoints,
+  taskModeLabel,
 } from "@/lib/opsDerivations";
+import { DetailHero, HeroFigure, HeroPill } from "@/components/tasks/detail/DetailKit";
+import { pointsWord } from "@/lib/opsCardFacts";
 import { formatDate } from "@/lib/dateFormat";
 import DailyPaceStrip from "@/components/tasks/DailyPaceStrip";
 import {
@@ -59,8 +63,8 @@ const LABEL_SPAN = {
 };
 
 const selectedControl = {
-  border: "1px solid var(--nv-accent-border)",
-  background: "var(--nv-btn-fill)",
+  border: "1px solid #0B3D27",
+  background: "#0B3D27",
   color: "#fff",
   fontWeight: 600,
 };
@@ -294,7 +298,7 @@ function priorityBtnStyle(active) {
     fontFamily: "inherit",
     fontSize: "12px",
     ...(active
-      ? { border: "1px solid var(--nv-accent-border)", background: "var(--nv-btn-fill)", color: "#fff", fontWeight: 600 }
+      ? { border: "1px solid #0B3D27", background: "#0B3D27", color: "#fff", fontWeight: 600 }
       : idleControl),
   };
 }
@@ -367,9 +371,10 @@ function SectionCard({ title, hint, children }) {
   return (
     <section
       style={{
-        borderRadius: 8,
+        borderRadius: 12,
         border: "1px solid var(--nv-line)",
         background: "var(--nv-card)",
+        boxShadow: "var(--nv-paper)",
         padding: 16,
         display: "flex",
         flexDirection: "column",
@@ -379,7 +384,10 @@ function SectionCard({ title, hint, children }) {
       {(title || hint) && (
         <div>
           {title ? (
-            <div style={{ fontSize: 12, fontWeight: 650, color: "var(--nv-ink)", letterSpacing: "0.01em" }}>{title}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, fontWeight: 700, color: "var(--nv-ink)" }}>
+              <span aria-hidden style={{ width: 12, height: 2, background: "#C8A45A", borderRadius: 2, flexShrink: 0 }} />
+              {title}
+            </div>
           ) : null}
           {hint ? (
             <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.6, marginTop: 4 }}>{hint}</div>
@@ -587,55 +595,6 @@ function VoiceNoteBubble({ src, index, ar, onRemove, isLast }) {
   );
 }
 
-const FIELD_BOX = {
-  width: "100%",
-  flex: 1,
-  display: "flex",
-  flexDirection: "column",
-  border: `1px solid ${BORDER}`,
-  borderRadius: CONTROL_RADIUS,
-  background: CARD,
-  overflow: "hidden",
-  boxSizing: "border-box",
-  minHeight: 120,
-};
-
-const FIELD_TOOLBAR = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  flexWrap: "wrap",
-  minHeight: 40,
-  padding: "6px 10px",
-  borderBottom: `1px solid ${BORDER}`,
-  background: SURFACE,
-  boxSizing: "border-box",
-  flexShrink: 0,
-};
-
-const FIELD_BODY = {
-  padding: "4px 10px",
-  minHeight: 56,
-  flex: 1,
-  display: "flex",
-  flexDirection: "column",
-  justifyContent: "flex-start",
-};
-
-const FIELD_EMPTY = {
-  fontSize: 12,
-  color: MUTED,
-  padding: "8px 2px",
-  lineHeight: 1.5,
-};
-
-const FIELD_COL = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 7,
-  flex: "1 1 240px",
-  minWidth: 0,
-};
 
 export default function OpsNewTaskModal({
   ar,
@@ -753,7 +712,7 @@ export default function OpsNewTaskModal({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: CONTROL_RADIUS,
-    background: submitEnabled ? "var(--nv-btn-fill)" : "#D5DCD8",
+    background: submitEnabled ? "#0B3D27" : "#D5DCD8",
     color: submitEnabled ? "#fff" : MUTE_INK,
     border: "none",
     fontSize: "14px",
@@ -817,6 +776,8 @@ export default function OpsNewTaskModal({
         : "Assigned to an employee of the branch. Work proof is for an outside party; visitor proof is for a guest."}
       onClose={onClose}
       onSubmit={handleSubmit}
+      tinted
+      wide
       footer={(
         <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
           <div style={{ display: "flex", gap: 10, width: "100%", alignItems: "center" }}>
@@ -855,16 +816,54 @@ export default function OpsNewTaskModal({
         </div>
       )}
     >
-          <label style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <span style={LABEL_SPAN}>{ar ? "عنوان المهمة" : "Task title"}</span>
+
+
+          {(() => {
+            // Live preview of the order being built — the same dark head the order opens on.
+            const names = selectedStationIds.map((id) => stationOptions.find((x) => String(x.id) === id)?.name).filter(Boolean);
+            const doers = assignMode === "all" ? teamMembers.length : selectedTeam.length;
+            const target = Math.round(Number(form.targetCount)) || 0;
+            const pri = { high: ar ? "أولوية عالية" : "High priority", medium: ar ? "أولوية متوسطة" : "Medium priority", low: ar ? "أولوية منخفضة" : "Low priority" }[String(form.priority || "medium")];
+            const due = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(form.dueAt || ""));
+            return (
+              <DetailHero
+                kind={ar ? "أمر عمل جديد — معاينة" : "New work order — preview"}
+                pills={(
+                  <>
+                    <HeroPill tone={form.priority === "high" ? "bad" : form.priority === "low" ? "mute" : "warn"}>{pri}</HeroPill>
+                    {form.mode ? <HeroPill tone="mute">{taskModeLabel(form.mode, ar ? "ar" : "en")}</HeroPill> : null}
+                  </>
+                )}
+                figure={(
+                  <HeroFigure
+                    mono={false}
+                    placeholder={!String(form.title || "").trim()}
+                    value={String(form.title || "").trim() || (ar ? "عنوان المهمة" : "Task title")}
+                    line={submitBlock ? (ar ? `بقي: ${submitBlock}` : `Left: ${submitBlock}`) : (ar ? "جاهز للإسناد" : "Ready to assign")}
+                    lineTone={submitBlock ? "warn" : "ok"}
+                  />
+                )}
+                facts={[
+                  { label: ar ? "الفرع" : "Branch", value: names.length ? (names.length > 1 ? (ar ? `${names.length} فروع` : `${names.length} branches`) : names[0]) : "—" },
+                  { label: ar ? "المنفّذون" : "Doers", value: doers || "—", mono: true },
+                  { label: ar ? "العدد" : "Count", value: target || "—", mono: true },
+                  { label: ar ? "الاستحقاق" : "Due", value: due ? `${due[3]}/${due[2]}/${due[1]}` : "—", mono: true },
+                  { label: ar ? "عند الاعتماد" : "On approval", value: pointsWord(taskPoints(form.priority, form.effortWeight), ar), tone: "gold" },
+                ]}
+              />
+            );
+          })()}
+
+          <SectionCard title={ar ? "عنوان المهمة" : "Task title"}>
             <input
               required
+              data-task-title="1"
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               placeholder={ar ? "مثال: استبدال فلتر الهواء — المرحلة الثالثة" : "e.g. Air filter replacement — phase 3"}
               style={{ ...FIELD, fontSize: 15 }}
             />
-          </label>
+          </SectionCard>
 
           <SectionCard title={ar ? "الإسناد" : "Assignment"}>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }} data-assign-slot>
@@ -1364,169 +1363,128 @@ export default function OpsNewTaskModal({
             ) : null}
           </SectionCard>
 
-          <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            <span style={LABEL_SPAN}>{ar ? "خطوات التنفيذ" : "Execution steps"}</span>
-            <textarea
-              rows={3}
-              value={form.steps}
-              onChange={(e) => setForm((f) => ({ ...f, steps: e.target.value }))}
-              placeholder={ar ? "خطوة في كل سطر — تظهر مرقّمة في بطاقة المهمة" : "One step per line — they appear numbered on the task card"}
-              style={{
-                border: `1px solid ${BORDER}`,
-                borderRadius: CONTROL_RADIUS,
-                background: SURFACE,
-                padding: "9px 12px",
-                fontFamily: "inherit",
-                fontSize: 13,
-                color: NAVY,
-                outline: "none",
-                resize: "vertical",
-              }}
-            />
-          </label>
-
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "stretch",
-              gap: 12,
-              width: "100%",
-            }}
+          <SectionCard
+            title={ar ? "الخطوات والمرفقات" : "Steps and attachments"}
+            hint={ar ? "ما يحتاجه المنفّذ ليبدأ: الخطوات بالترتيب، وملاحظة صوتية، وصور أو مستندات." : "What the doer needs to start: steps in order, a voice note, pictures or documents."}
           >
-            {/* Voice field */}
-            <div style={FIELD_COL}>
-              <span style={LABEL_SPAN}>{ar ? "المقاطع الصوتية" : "Voice notes"}</span>
-              <div style={FIELD_BOX}>
-                <div style={FIELD_TOOLBAR}>
-                  <VoiceRecorder
-                    disabled={busy}
-                    circle
-                    label={ar ? "تسجيل صوتي" : "Record voice"}
-                    onRecorded={(voice) => setFiles((prev) => [...prev, voice])}
-                  />
-                </div>
-                <div style={FIELD_BODY}>
-                  {(() => {
-                    const voiceItems = files
-                      .map((fl, i) => ({ fl, i }))
-                      .filter(({ fl }) => isAudioAttachment(fl));
-                    if (!voiceItems.length) {
-                      return (
-                        <div style={FIELD_EMPTY}>
-                          {ar
-                            ? "لا توجد مقاطع بعد — سجّل من الميكروفون لتظهر هنا."
-                            : "No clips yet — record from the mic to list them here."}
-                        </div>
-                      );
-                    }
-                    return voiceItems.map(({ fl, i }, idx) => {
-                      const audioIndex = idx + 1;
-                      return (
+            <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              <span style={LABEL_SPAN}>{ar ? "خطوات التنفيذ" : "Execution steps"}</span>
+              <textarea
+                rows={3}
+                value={form.steps}
+                onChange={(e) => setForm((f) => ({ ...f, steps: e.target.value }))}
+                placeholder={ar ? "خطوة في كل سطر — تظهر مرقّمة في بطاقة المهمة" : "One step per line — they appear numbered on the task card"}
+                style={{ border: `1px solid ${BORDER}`, borderRadius: 10, background: SURFACE, padding: "10px 12px", fontFamily: "inherit", fontSize: 13, color: NAVY, outline: "none", resize: "vertical", lineHeight: 1.8 }}
+              />
+            </label>
+
+            <div className="nv-attach-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+              {/* Voice note: one big tile to record, the clips under it. */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+                <span style={LABEL_SPAN}>{ar ? "ملاحظة صوتية" : "Voice note"}</span>
+                <VoiceRecorder
+                  disabled={busy}
+                  tile
+                  label={ar ? "سجّل ملاحظة صوتية" : "Record a voice note"}
+                  hint={ar ? "اشرح المطلوب بصوتك — يسمعها المنفّذ في البطاقة" : "Explain it in your voice — the doer hears it on the card"}
+                  onRecorded={(voice) => setFiles((prev) => [...prev, voice])}
+                />
+                {(() => {
+                  const voiceItems = files.map((fl, i) => ({ fl, i })).filter(({ fl }) => isAudioAttachment(fl));
+                  if (!voiceItems.length) return null;
+                  return (
+                    <div data-voice-list="1" style={{ border: `1px solid ${BORDER}`, borderRadius: 12, background: "var(--nv-card)", padding: "4px 10px" }}>
+                      {voiceItems.map(({ fl, i }, idx) => (
                         <VoiceNoteBubble
                           key={`voice-${fl.name || "clip"}-${i}`}
                           src={previewUrls[i] || ""}
-                          index={audioIndex}
+                          index={idx + 1}
                           ar={ar}
                           isLast={idx === voiceItems.length - 1}
                           onRemove={() => setFiles((prev) => prev.filter((_, x) => x !== i))}
                         />
-                      );
-                    });
-                  })()}
-                </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
-            </div>
 
-            {/* Attachments field — same width column */}
-            <div style={FIELD_COL}>
-              <span style={LABEL_SPAN}>{ar ? "المرفقات" : "Attachments"}</span>
-              <div style={FIELD_BOX}>
-                <div style={FIELD_TOOLBAR}>
-                  <label
-                    title={ar ? "أرفق ملفًا" : "Attach a file"}
+              {/* Files: a drop zone that also opens the picker; pictures show as thumbnails. */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+                <span style={LABEL_SPAN}>{ar ? "صور ومستندات" : "Pictures and documents"}</span>
+                <label
+                  data-drop-zone="1"
+                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.dataset.over = "1"; }}
+                  onDragLeave={(e) => { e.currentTarget.dataset.over = ""; }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.dataset.over = "";
+                    const dropped = Array.from(e.dataTransfer?.files || []);
+                    if (dropped.length) setFiles((prev) => [...prev, ...dropped]);
+                  }}
+                  className="nv-drop-zone"
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderRadius: 12, border: "1.5px dashed var(--nv-line)", background: "var(--nv-soft)", cursor: "pointer" }}
+                >
+                  <span aria-hidden style={{ width: 44, height: 44, borderRadius: 12, flexShrink: 0, display: "grid", placeItems: "center", background: "var(--nv-card)", border: `1px solid ${BORDER}`, color: "#0B3D27" }}>
+                    <UploadCloud size={20} strokeWidth={1.75} />
+                  </span>
+                  <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                    <strong style={{ fontSize: 13.5, color: "var(--nv-ink)" }}>{ar ? "اسحب الملفات هنا أو اخترها" : "Drop files here or pick them"}</strong>
+                    <span style={{ fontSize: 11.5, color: MUTED }}>{ar ? "صور، PDF، Word، Excel" : "Pictures, PDF, Word, Excel"}</span>
+                  </span>
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.webm,.m4a,.ogg,.mp3,.wav"
                     aria-label={ar ? "أرفق ملفًا" : "Attach a file"}
-                    style={clipCircleStyle}
-                  >
-                    <File size={14} aria-hidden="true" />
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.webm,.m4a,.ogg,.mp3,.wav"
-                      aria-label={ar ? "أرفق ملفًا" : "Attach a file"}
-                      style={{ display: "none" }}
-                      onChange={(e) => {
-                        const picked = Array.from(e.target.files || []);
-                        e.target.value = "";
-                        if (picked.length) setFiles((prev) => [...prev, ...picked]);
-                      }}
-                    />
-                  </label>
-                </div>
-                <div style={FIELD_BODY}>
-                  {(() => {
-                    const fileItems = files
-                      .map((fl, i) => ({ fl, i }))
-                      .filter(({ fl }) => !isAudioAttachment(fl));
-                    if (!fileItems.length) {
-                      return (
-                        <div style={FIELD_EMPTY}>
-                          {ar
-                            ? "لا مرفقات بعد — أرفق ملفًا ليظهر هنا."
-                            : "No files yet — attach a file to list it here."}
-                        </div>
-                      );
-                    }
-                    return (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "6px 0" }}>
-                        {fileItems.map(({ fl, i }) => (
-                          <div
-                            key={`file-${fl.name || "file"}-${i}`}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 6,
-                              maxWidth: "100%",
-                              height: 30,
-                              padding: "0 8px 0 10px",
-                              borderRadius: PILL_RADIUS,
-                              border: `1px solid ${BORDER}`,
-                              background: SURFACE,
-                              fontSize: 12,
-                              color: NAVY,
-                            }}
-                          >
-                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {fl?.name || (ar ? "مرفق" : "File")}
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const picked = Array.from(e.target.files || []);
+                      e.target.value = "";
+                      if (picked.length) setFiles((prev) => [...prev, ...picked]);
+                    }}
+                  />
+                </label>
+                {(() => {
+                  const fileItems = files.map((fl, i) => ({ fl, i })).filter(({ fl }) => !isAudioAttachment(fl));
+                  if (!fileItems.length) return null;
+                  return (
+                    <div data-file-list="1" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 8 }}>
+                      {fileItems.map(({ fl, i }) => {
+                        const isImg = String(fl?.type || "").startsWith("image/") || /\.(png|jpe?g|webp|gif|heic)$/i.test(String(fl?.name || ""));
+                        const thumb = isImg && typeof URL !== "undefined" && fl instanceof Blob ? URL.createObjectURL(fl) : (isImg ? fl?.url : "");
+                        const ext = (String(fl?.name || "").split(".").pop() || "").toUpperCase().slice(0, 4);
+                        const kb = Number(fl?.size) ? (fl.size >= 1048576 ? `${(fl.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(fl.size / 1024))} KB`) : "";
+                        return (
+                          <div key={`file-${fl.name || "file"}-${i}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: 6, borderRadius: 10, border: `1px solid ${BORDER}`, background: "var(--nv-card)", minWidth: 0 }}>
+                            {thumb ? (
+                              <img src={thumb} alt="" onLoad={(e) => { if (fl instanceof Blob) URL.revokeObjectURL(e.currentTarget.src); }} style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+                            ) : (
+                              <span aria-hidden style={{ width: 36, height: 36, borderRadius: 8, flexShrink: 0, display: "grid", placeItems: "center", background: "var(--nv-ok-soft)", color: "var(--nv-ok-ink)", fontSize: 9.5, fontWeight: 700 }}>
+                                {ext || <File size={14} />}
+                              </span>
+                            )}
+                            <span style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1 }}>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: NAVY, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fl?.name || (ar ? "مرفق" : "File")}</span>
+                              {kb ? <span dir="ltr" style={{ fontSize: 10.5, color: MUTED, textAlign: "start" }}>{kb}</span> : null}
                             </span>
                             <button
                               type="button"
                               aria-label={ar ? "حذف المرفق" : "Remove attachment"}
                               onClick={() => setFiles((prev) => prev.filter((_, x) => x !== i))}
-                              style={{
-                                width: 18,
-                                height: 18,
-                                borderRadius: CONTROL_RADIUS,
-                                border: "none",
-                                background: "transparent",
-                                color: MUTED,
-                                cursor: "pointer",
-                                fontFamily: "inherit",
-                                lineHeight: 1,
-                                padding: 0,
-                              }}
+                              style={{ width: 24, height: 24, borderRadius: 999, border: "none", background: "var(--nv-soft)", color: MUTED, cursor: "pointer", display: "grid", placeItems: "center", flexShrink: 0, padding: 0 }}
                             >
-                              ×
+                              <X size={12} />
                             </button>
                           </div>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
-          </div>
+          </SectionCard>
     </ComposerModalShell>
   );
 }

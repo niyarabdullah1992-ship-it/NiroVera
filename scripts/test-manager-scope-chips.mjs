@@ -19,8 +19,8 @@ const data = {
     { id: "c1", employeeId: "emp", stationId: "khf", status: "notice" },
     { id: "c2", employeeId: "e2", stationId: "dmm", status: "appeal" },
   ],
-  expenseClaims: [
-    { id: "x1", stationId: "dmm", status: "pending" },
+  payrollRuns: [
+    { id: "pr1", month: "2026-09", status: "draft", items: [{ employeeId: "e2", employeeStationId: "dmm", base: 5000 }] },
   ],
   publicReports: [
     { id: "v1", stationId: "khf", authorId: "emp", kind: "complaint", message: "تأخر تسليم العهدة", status: "open", createdAt: new Date().toISOString() },
@@ -61,12 +61,13 @@ assert.equal(voice.counts.khf?.count, 1);
 assert.equal(voice.counts.khf?.tone, "warn");
 assert.equal(voice.counts.dmm?.count || 0, 0);
 
-const money = buildManagerScopeModel({ pathname: "/app/expenses", search: "?view=manage", user: owner, data, scope: "all" });
+// Expenses were removed (HR scope) — the money row is the payroll run awaiting approval.
+const money = buildManagerScopeModel({ pathname: "/app/payroll", search: "?view=manage", user: owner, data, scope: "all" });
 assert.equal(money.visible, true);
 assert.equal(money.counts.dmm?.count, 1);
 assert.equal(money.counts.dmm?.tone, "plain");
 
-const selfMoney = buildManagerScopeModel({ pathname: "/app/expenses", search: "?view=self", user: owner, data, scope: "all" });
+const selfMoney = buildManagerScopeModel({ pathname: "/app/payroll", search: "?view=self", user: owner, data, scope: "all" });
 assert.equal(selfMoney.visible, false);
 
 const mgr = { id: "mgr", role: "station_manager", stationId: "khf" };

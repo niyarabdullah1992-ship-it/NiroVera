@@ -6,6 +6,7 @@ import { useI18n } from "@/lib/i18n";
 import { getTodaysShift, isLocationRequired } from "@/lib/attendance";
 import { workplaceStations } from "@/lib/stationTree";
 import { checkCheckInLeaveGate } from "@/lib/attendanceGate";
+import LeaveCutOffer from "@/components/attendance/LeaveCutOffer";
 import { getAccuratePosition, startGeoWarmup } from "@/lib/geo";
 import { LogIn, LogOut, MapPin, Loader2, CheckCircle2 } from "lucide-react";
 import { ACCENT, BORDER, MUTED, NAVY, CARD } from "@/lib/platformStyles";
@@ -13,7 +14,7 @@ import { ACCENT, BORDER, MUTED, NAVY, CARD } from "@/lib/platformStyles";
 export default function QuickCheckInCard({ currentUser, company }) {
   const { t, lang } = useI18n();
   const ar = lang === "ar";
-  const { data } = useAuth();
+  const { data, refresh } = useAuth();
   const shift = getTodaysShift(data, currentUser);
   const scheduledStationId = shift?.stationId || currentUser.stationId || data?.stations?.[0]?.id || null;
   const workplaces = workplaceStations(data?.stations);
@@ -23,6 +24,7 @@ export default function QuickCheckInCard({ currentUser, company }) {
   const [attendance, setAttendance] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [leaveCut, setLeaveCut] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -48,8 +50,10 @@ export default function QuickCheckInCard({ currentUser, company }) {
     const leaveGate = checkCheckInLeaveGate(currentUser);
     if (!leaveGate.ok) {
       setError(ar ? leaveGate.reason : leaveGate.reasonEn);
+      setLeaveCut(leaveGate.error === "ON_APPROVED_LEAVE");
       return;
     }
+    setLeaveCut(false);
     if (scheduleBlocks) {
       setError(ar ? "لا يمكنك تسجيل الحضور لأنك غير مدرج في جدول اليوم." : "You cannot check in because you are not scheduled today.");
       return;
@@ -201,6 +205,7 @@ export default function QuickCheckInCard({ currentUser, company }) {
               {ar ? "غير مدرج في جدول اليوم — لا بصمة" : "Not on today's rota — no punch"}
             </Link>
           )}
+          {leaveCut ? <LeaveCutOffer ar={ar} companyId={company?.id} employee={currentUser} onDone={async () => { setError(""); setLeaveCut(false); await refresh?.(); }} /> : null}
           {error ? (
             <p style={{ margin: 0, fontSize: 11, color: "var(--nv-bad-ink)" }}>{error}</p>
           ) : (

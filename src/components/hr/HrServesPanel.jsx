@@ -9,6 +9,8 @@ import {
   isRegionalHr,
   servedStationIds,
 } from "@/lib/hrTree";
+import NvIcon from "@/components/shared/NvIcon";
+import { SearchWrap } from "@/components/shared/NvIcon";
 
 const MONO = "'IBM Plex Mono', monospace";
 
@@ -195,7 +197,7 @@ function BranchPicker({ employee, data, companyId, ar, canWrite }) {
                   fontFamily: "inherit",
                 }}
               >
-                ✕
+                <NvIcon name="cross" size={11} strokeWidth={2} />
               </button>
             ) : null}
           </span>
@@ -208,25 +210,30 @@ function BranchPicker({ employee, data, companyId, ar, canWrite }) {
 
       <div style={{ border: "1px solid var(--nv-line)", borderRadius: 10, background: "var(--nv-card)", overflow: "hidden" }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center", padding: 8, background: "var(--nv-soft)", borderBottom: "1px solid var(--nv-line3)" }}>
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={ar ? "⌕ ابحث باسم الفرع" : "⌕ Search by branch"}
-            aria-label={ar ? "بحث في الفروع" : "Search branches"}
-            style={{
-              flex: 1,
-              height: 32,
-              borderRadius: 8,
-              border: "1px solid var(--nv-line)",
-              padding: "0 10px",
-              fontSize: 12,
-              outline: "none",
-              fontFamily: "inherit",
-              color: "var(--nv-ink)",
-              background: "var(--nv-card)",
-              minWidth: 0,
-            }}
-          />
+          <SearchWrap style={{ flex: 1 }}>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={ar ? "ابحث باسم الفرع" : "Search by branch"}
+              aria-label={ar ? "بحث في الفروع" : "Search branches"}
+              style={{
+                flex: 1,
+                height: 32,
+                borderRadius: 8,
+                border: "1px solid var(--nv-line)",
+                padding: "0 10px",
+                paddingInlineStart: 30,
+                "--nv-input-start": "30px",
+                width: "100%",
+                fontSize: 12,
+                outline: "none",
+                fontFamily: "inherit",
+                color: "var(--nv-ink)",
+                background: "var(--nv-card)",
+                minWidth: 0,
+              }}
+            />
+          </SearchWrap>
           {canWrite ? (
             <>
               <button type="button" onClick={selectVisible} style={textBtn("var(--nv-ok-ink)")}>
@@ -292,7 +299,7 @@ function BranchPicker({ employee, data, companyId, ar, canWrite }) {
                     fontWeight: 700,
                   }}
                 >
-                  {on ? "✓" : ""}
+                  {on ? <NvIcon name="check" size={11} strokeWidth={2.25} inline={false} /> : ""}
                 </span>
                 <span style={{ fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {station.name || "—"}

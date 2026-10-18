@@ -12,8 +12,6 @@ export const DO_NOT_WRITE = [
   "complaintQueue",
   "attendanceLedger",
   "orgStructure",
-  "expenseBudget",
-  "stockBoard",
   "signingChain",
   "companySettings",
 ] as const;
@@ -25,7 +23,6 @@ export const LEGACY_FALLBACK: Record<string, string[]> = {
   anonymousReports: ["complaintQueue"],
   personalAttendance: ["attendanceLedger"],
   orgTree: ["orgStructure"],
-  stationBudgets: ["expenseBudget"],
   companyMeta: ["companySettings"],
 };
 
@@ -50,7 +47,7 @@ export function payloadHasRows(payload: unknown): boolean {
   if (Array.isArray(payload)) return payload.length > 0;
   if (typeof payload !== "object") return false;
   const bag = payload as Record<string, unknown>;
-  for (const key of ["nodes", "reports", "punches", "treeNodes", "branches", "budgets", "items", "docs"]) {
+  for (const key of ["nodes", "reports", "punches", "treeNodes", "branches", "items", "docs"]) {
     if (Array.isArray(bag[key]) && bag[key].length) return true;
   }
   return Object.keys(bag).length > 0;
@@ -81,7 +78,6 @@ export function asRowArray(payload: unknown): unknown[] {
     if (Array.isArray(bag.reports)) return bag.reports;
     if (Array.isArray(bag.punches)) return bag.punches;
     if (Array.isArray(bag.treeNodes)) return bag.treeNodes;
-    if (Array.isArray(bag.budgets)) return bag.budgets;
     if (Array.isArray(bag.items)) return bag.items;
   }
   return [];

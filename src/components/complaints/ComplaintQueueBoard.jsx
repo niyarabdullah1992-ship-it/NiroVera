@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { hoursWord } from "@/lib/compLeave";
 import { ArrowUpCircle, Check, Loader2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -42,13 +43,13 @@ function slaText(r, ar) {
       const d = Math.round(overdue / 24);
       return ar ? `تجاوز ${d} يومًا` : `${d}d overdue`;
     }
-    return ar ? `تجاوز ${Math.round(overdue)} ساعات` : `${Math.round(overdue)}h overdue`;
+    return ar ? `تجاوز ${hoursWord(Math.round(overdue))}` : `${Math.round(overdue)}h overdue`;
   }
   if (h >= 24) {
     const d = Math.round(h / 24);
     return ar ? `${d} أيام` : `${d} days`;
   }
-  return ar ? `${Math.round(h)} ساعات` : `${Math.round(h)}h`;
+  return ar ? hoursWord(Math.round(h)) : `${Math.round(h)}h`;
 }
 
 export default function ComplaintQueueBoard({ lang = "ar", stationScope = "all", voice = "all" }) {
@@ -216,7 +217,7 @@ export default function ComplaintQueueBoard({ lang = "ar", stationScope = "all",
             <div key={s.label} style={{ padding: "12px 16px", minWidth: 0 }}>
               <div style={{ fontSize: "11px", color: MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.label}</div>
               <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginTop: "6px", flexWrap: "wrap" }}>
-                <span dir="ltr" style={{ ...num(s.danger ? "#DC2626" : s.accent ? ACCENT : NAVY) }}>
+                <span dir="ltr" style={{ ...num("var(--nv-ink)") }}>
                   {s.value}
                 </span>
                 <span style={{ fontSize: "11px", color: MUTED }}>{s.suffix}</span>

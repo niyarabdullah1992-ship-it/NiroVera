@@ -8,10 +8,7 @@ import { generateSignedReport } from "@/lib/signedReport";
 import { base44 } from "@/api/base44Client";
 import { exportExcelColored } from "@/lib/exportExcelColored";
 import { buildDocumentHtml, openDocumentHtml } from "@/lib/printDocument";
-import { enrichAssistantContext } from "@/lib/assistantLiveContext";
 import { uiDateLocale } from "@/lib/dateFormat";
-import { inventoryCall } from "@/lib/inventoryApi";
-import { expensesCall } from "@/lib/expensesApi";
 
 // Turns markdown-ish document text ("## heading", "- bullet", paragraphs) into sections.
 function parseDocContent(md) {
@@ -53,7 +50,6 @@ const matches = (a, b) => norm(a).includes(norm(b)) || norm(b).includes(norm(a))
 
 async function datasetRows(action, data, currentUser, company) {
   const ctx = buildAssistantContext(data, currentUser);
-  await enrichAssistantContext(ctx, { session: { companyId: company.id }, data });
   const dataset = norm(action.dataset);
   if (dataset === "tasks" || dataset === "targets") {
     const res = await base44.functions.invoke("supabaseTargets", {
@@ -98,10 +94,6 @@ async function datasetRows(action, data, currentUser, company) {
     leaves: ctx.employeeDetails.map((e) => ({ employee: e.employee, leaveRequests: e.leaveRequests })),
     certificates: ctx.employeeDetails.map((e) => ({ employee: e.employee, certificates: e.certificates })),
     performance: ctx.employees.map(({ id, name, station, points }) => ({ name, station, points })),
-    inventory: ctx.inventory,
-    inventory_movements: ctx.inventoryMovements,
-    material_requests: ctx.materialRequests,
-    expenses: ctx.expenses,
     payroll: ctx.payroll.flatMap((run) => run.items.map((item) => ({ period: run.period, status: run.status, ...item }))),
   };
   return map[dataset];
@@ -208,48 +200,13 @@ export async function executeAssistantAction(action, { data, company, currentUse
       stations: "/app/stations", hr: "/app/hr", payroll: "/app/payroll", complaints: "/app/complaints",
       files: "/app/files",
       signing: "/app/signing", verify: "/verify",
-      inventory: "/app/inventory", expenses: "/app/expenses", safety: "/app/safety",
+      safety: "/app/safety",
       leave: "/app/requests/leave", requests: "/app/requests",
     };
     const path = routes[norm(action.page)];
     if (!path) return { ok: false, message: t("aiActionFailed") };
     window.open(path, "_blank");
     return { ok: true, message: t("aiOpeningPage") };
-  }
-
-  if (action.type === "create_inventory_item") {
-    const station = data.stations.find((entry) => matches(entry.name, action.station || ""));
-    if (!station || !action.title || !action.itemCode || !action.supplierName || Number(action.quantity) <= 0 || Number(action.totalCost) < 0) return { ok: false, message: t("aiNoData") };
-    await inventoryCall(sessionAuth, "createItem", { name: action.title, itemCode: action.itemCode, supplierName: action.supplierName, locationId: station.id, quantity: Number(action.quantity), totalCost: Number(action.totalCost), minimumStock: Number(action.minimumStock || 0), purchaseDate: new Date().toISOString().slice(0, 10) });
-    return { ok: true, message: document.documentElement.dir === "rtl" ? "تم تسجيل عملية الشراء في المخزون." : "Inventory purchase recorded." };
-  }
-
-  if (["request_inventory", "issue_inventory", "review_inventory_request"].includes(action.type)) {
-    const inventory = await inventoryCall(sessionAuth, "list", { stations: data.stations || [] });
-    if (action.type === "review_inventory_request") {
-      await inventoryCall(sessionAuth, "reviewRequest", { requestId: action.requestId, decision: action.decision });
-      return { ok: true, message: document.documentElement.dir === "rtl" ? "تمت مراجعة طلب المواد." : "Material request reviewed." };
-    }
-    const item = inventory.requestItems.find((entry) => matches(entry.name, action.title || "") || matches(entry.itemCode, action.title || ""));
-    if (!item) return { ok: false, message: t("aiNoData") };
-    if (action.type === "request_inventory") {
-      const source = data.stations.find((entry) => matches(entry.name, action.sourceStation || ""));
-      const destination = data.stations.find((entry) => matches(entry.name, action.destinationStation || ""));
-      if (!source || !destination) return { ok: false, message: t("aiNoData") };
-      await inventoryCall(sessionAuth, "request", { itemId: item.id, sourceStationId: source.id, stationId: destination.id, quantity: Number(action.quantity), notes: action.description });
-      return { ok: true, message: document.documentElement.dir === "rtl" ? "تم إرسال طلب المواد." : "Material request submitted." };
-    }
-    const station = data.stations.find((entry) => matches(entry.name, action.station || ""));
-    const employee = data.employees.find((entry) => matches(entry.name, action.assignee || ""));
-    if (!station || !employee) return { ok: false, message: t("aiNoData") };
-    await inventoryCall(sessionAuth, "issueToWork", { itemId: item.id, fromLocationId: station.id, employeeId: employee.id, quantity: Number(action.quantity), workReference: action.workReference, workDate: action.workDate, notes: action.description || "" });
-    return { ok: true, message: document.documentElement.dir === "rtl" ? "تم صرف الصنف للعمل." : "Inventory issued to work." };
-  }
-
-  if (action.type === "review_expense") {
-    const reviewAction = String(action.decision || "").startsWith("finance_") ? "financeReview" : "managerReview";
-    await expensesCall(sessionAuth, reviewAction, { claimId: action.claimId, decision: action.decision });
-    return { ok: true, message: document.documentElement.dir === "rtl" ? "تمت مراجعة المصروف." : "Expense reviewed." };
   }
 
   if (action.type === "submit_leave") {

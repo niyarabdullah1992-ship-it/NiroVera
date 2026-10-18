@@ -1,7 +1,7 @@
 // Shared leave category config used across leave components.
 
 import { profileGender } from "./employeeProfileFields.js";
-import { citeLeaveType, isRamadanHoursSubject, ruleAt, ruleValue } from "./laborRules.js";
+import { citeLeaveType, isRamadanHoursSubject, religionOnFile, ruleAt, ruleValue } from "./laborRules.js";
 import { chargeableAnnualWorkDays, chargeableSpanExcludingHolidays } from "./leaveEidOverlap.js";
 import { officialHolidayKindLabel, officialHolidayLeaveLabel, officialHolidayOn } from "./ummAlQuraCalendar.js";
 
@@ -16,11 +16,19 @@ export const LEAVE_TYPES = [
   { key: "maternity", defaultTotal: ruleValue("leave.maternity.days"), article: citeLeaveType("maternity")?.article || null, gender: "female", requiresFile: true, ar: "أمومة", en: "Maternity" },
   { key: "maternity_extend", defaultTotal: ruleValue("leave.maternity.unpaidExtendDays"), article: citeLeaveType("maternity_extend")?.article || "151", gender: "female", ar: "تمديد وضع بلا أجر", en: "Unpaid maternity extension" },
   { key: "maternity_companion", defaultTotal: ruleValue("leave.maternity.disabledChildDays"), article: citeLeaveType("maternity_companion")?.article || "151", gender: "female", requiresFile: true, ar: "مرافقة مولود مريض/معاق", en: "Sick or disabled-child companion" },
-  { key: "iddah", defaultTotal: ruleValue("leave.iddah.days"), article: citeLeaveType("iddah")?.article || null, gender: "female", requiresFile: true, ar: "عدّة وفاة الزوج", en: "Iddah" },
+  { key: "iddah", defaultTotal: ruleValue("leave.iddah.days"), article: citeLeaveType("iddah")?.article || null, gender: "female", religionDependent: true, requiresFile: true, ar: "عدّة وفاة الزوج", en: "Iddah" },
   { key: "paternity", defaultTotal: ruleValue("leave.paternity.days"), article: citeLeaveType("paternity")?.article || null, gender: "male", ar: "أبوة", en: "Paternity" },
   { key: "hajj", defaultTotal: ruleValue("leave.hajj.days"), article: citeLeaveType("hajj")?.article || null, religion: "muslim", ar: "حج", en: "Hajj" },
-  { key: "eid", defaultTotal: null, article: citeLeaveType("eid")?.article || null, ar: "اليوم الوطني · يوم التأسيس · العيد", en: "National Day · Founding Day · Eid" },
+  { key: "eid", defaultTotal: null, automatic: true, article: citeLeaveType("eid")?.article || null, ar: "اليوم الوطني · يوم التأسيس · العيد", en: "National Day · Founding Day · Eid" },
+  { key: "work_injury", defaultTotal: null, article: null, requiresFile: true, ar: "إصابة عمل", en: "Work injury" },
   { key: "emergency", defaultTotal: ruleValue("leave.emergency.days"), article: citeLeaveType("emergency")?.article || null, ar: "اضطرارية", en: "Emergency" },
+  { key: "comp", defaultTotal: null, article: "107", ar: "تعويضية (بدل إضافي)", en: "Compensatory (for overtime)" },
+  { key: "job_search", defaultTotal: null, article: "78", employerNoticeOnly: true, ar: "يوم بحث عن عمل", en: "Job-search day" },
+  // Model regulation Art. 42: paid leave on each kidney-dialysis day, on a report from the treating provider.
+  { key: "dialysis", defaultTotal: null, article: null, requiresFile: true, ar: "غسيل كلوي (النموذج الموحد م42)", en: "Kidney dialysis (Model regulation Art. 42)" },
+  // Regs Annex 2 (accommodations), §6 temporary disability / chronic or temporary illness: days absent for
+  // physical or occupational therapy, chemotherapy or radiotherapy are paid leave — on the treating report.
+  { key: "therapy", defaultTotal: null, article: null, requiresFile: true, disabilityAccommodation: true, ar: "جلسة علاج (اللائحة، الملحق 2)", en: "Therapy session (Regs Annex 2)" },
   { key: "unpaid", defaultTotal: null, article: citeLeaveType("unpaid")?.article || null, ar: "بدون راتب", en: "Unpaid" },
 ];
 
@@ -94,6 +102,16 @@ export function leaveTypesForProfile(profile) {
     if (ty.gender && ty.gender !== g) return false;
     if (ty.religion === "muslim" && !muslim) return false;
     if (ty.religion === "non_muslim" && muslim) return false;
+    // Religion decides these (Hajj — Art. 114; iddah 130 or 15 days — Art. 160): hidden until it is on the file.
+    if ((ty.religion || ty.religionDependent) && !religionOnFile({ profile })) return false;
+    // Annex 2 accommodations: hidden only when the file says plainly there is no disability or chronic illness.
+    if (ty.disabilityAccommodation && therapyLeaveEligibility(profile) === "no") return false;
+    // Art. 78: only while a notice given by the employer runs.
+    if (ty.employerNoticeOnly) {
+      const exit = profile?.contractExit || {};
+      const today = new Date().toISOString().slice(0, 10);
+      if (exit.party !== "employer" || !exit.effectiveDate || String(exit.effectiveDate).slice(0, 10) < today) return false;
+    }
     return true;
   });
 }
@@ -110,23 +128,94 @@ export function serviceYearsFromHire(hireDate, onDate) {
   return Math.max(0, (now.getTime() - hired.getTime()) / 31557600000);
 }
 
+/** Annex 2 eligibility: "yes" (flag on file), "no" (file says none), "unknown" (shown to all with a note). */
+export function therapyLeaveEligibility(profile) {
+  const p = profile || {};
+  const flags = [p.disability, p.hasDisability, p.chronicIllness, p.disabilityStatus];
+  if (flags.some((v) => v === true || v === "yes" || v === "true")) return "yes";
+  if (flags.some((v) => v === false || v === "no" || v === "none")) return "no";
+  return "unknown";
+}
+
+/** Art. 116 — the parties agreed this unpaid leave does not suspend the contract. */
+export function unpaidAgreedOtherwise(r) {
+  return r?.agreedOtherwise === true || r?.contractNotSuspended === true || r?.agreedNotSuspended === true;
+}
+
+/**
+ * Art. 116 + Regs Art. 25: unpaid leave beyond twenty days suspends the contract and every effect of it,
+ * unless the parties agree otherwise. Counted per work (hire-anniversary) year, cumulatively — the Law's
+ * definition of continuous service keeps only unpaid absences "not over twenty days, intermittent, within
+ * the work year". Returns the suspended day keys and a per-request summary.
+ */
+export function unpaidSuspensionPlan(requests, hireDate, extraRequest) {
+  const cap = ruleValue("leave.unpaid.suspendAfterDays") || 20;
+  const rows = (requests || [])
+    .filter((r) => r && String(r.type || "").toLowerCase() === "unpaid" && ["approved", "accepted"].includes(String(r.status || "").toLowerCase()))
+    .filter((r) => !extraRequest || r.id !== extraRequest.id);
+  if (extraRequest) rows.push({ ...extraRequest, status: "approved" });
+  rows.sort((a, b) => dateOnly(a.startDate).localeCompare(dateOnly(b.startDate)));
+  const hire = dateOnly(hireDate);
+  const perYear = new Map();
+  const days = [];
+  const byRequest = {};
+  for (const r of rows) {
+    const start = dateOnly(r.startDate);
+    const end = dateOnly(r.endDate) || (start && Number(r.days) > 1 ? addCalendarDays(start, Math.round(Number(r.days)) - 1) : start);
+    if (!start || end < start) continue;
+    let cursor = start;
+    let guard = 0;
+    while (cursor && cursor <= end && guard < 2000) {
+      guard += 1;
+      const yearKey = hire ? (anniversaryYearWindow(hire, cursor)?.start || cursor.slice(0, 4)) : cursor.slice(0, 4);
+      const n = (perYear.get(yearKey) || 0) + 1;
+      perYear.set(yearKey, n);
+      // «ما لم يتفق الطرفان على خلاف ذلك» — any of the agreement flags keeps the contract running.
+      if (n > cap && !unpaidAgreedOtherwise(r)) {
+        days.push(cursor);
+        const s = byRequest[r.id || `${start}:${end}`] || { days: 0, from: cursor, to: cursor };
+        s.days += 1;
+        s.to = cursor;
+        byRequest[r.id || `${start}:${end}`] = s;
+      }
+      cursor = addCalendarDays(cursor, 1);
+    }
+  }
+  days.sort();
+  return { cap, days, byRequest };
+}
+
+/** Suspended contract days (Art. 116) that fall inside [from, to]. */
+export function unpaidSuspensionDays(requests, from, to, hireDate) {
+  const a = dateOnly(from) || "0000-01-01";
+  const b = dateOnly(to) || "9999-12-31";
+  return unpaidSuspensionPlan(requests, hireDate).days.filter((d) => d >= a && d <= b).length;
+}
+
+/**
+ * Service that counts for the five-year 30-day step (Art. 109), the Hajj two-year condition (Art. 114)
+ * and annual-leave accrual: suspended contract days (Art. 116, Regs Art. 25(1)) are taken out.
+ */
+export function effectiveServiceYears(profile, requests, onDate) {
+  const years = serviceYearsFromHire(profile?.hireDate, onDate);
+  const list = requests || profile?.leaveRequests;
+  const suspended = Array.isArray(list)
+    ? unpaidSuspensionDays(list, profile?.hireDate, onDate, profile?.hireDate)
+    : Math.max(0, Number(profile?.unpaidSuspendedDays) || 0);
+  return Math.max(0, years - suspended / 365.25);
+}
+
 /** Ministry floor — the company may give more, never less. */
-export function statutoryLeaveFloor(key, profile, onDate) {
+export function statutoryLeaveFloor(key, profile, onDate, requests) {
   const k = String(key || "").trim().toLowerCase();
   if (k === "annual") {
-    const years = serviceYearsFromHire(profile?.hireDate, onDate);
+    const years = effectiveServiceYears(profile, requests, onDate);
     return years >= 5
       ? ruleValue("leave.annual.afterFiveYearsDays", onDate)
       : ruleValue("leave.annual.days", onDate);
   }
-  if (k === "maternity") {
-    let days = ruleValue("leave.maternity.days", onDate);
-    if (profile?.maternityDisabledChild) {
-      const extra = ruleAt("leave.maternity.disabledChildDays", onDate);
-      if (extra) days += extra.value;
-    }
-    return days;
-  }
+  // Art. 151(1): twelve weeks. The sick/disabled-child month (151(2)) is its own leave type, never added here.
+  if (k === "maternity") return ruleValue("leave.maternity.days", onDate);
   if (k === "sick") {
     return ruleValue("leave.sick.days", onDate);
   }
@@ -145,11 +234,7 @@ export function leaveCiteRuleId(key, profile, onDate, calendar) {
       ? "leave.annual.afterFiveYearsDays"
       : "leave.annual.days";
   }
-  if (k === "maternity") {
-    return profile?.maternityDisabledChild
-      ? "leave.maternity.disabledChildDays"
-      : "leave.maternity.days";
-  }
+  if (k === "maternity") return "leave.maternity.days";
   if (k === "exam") return "leave.exam.cite";
   if (k === "unpaid") return "leave.unpaid.cite";
   if (k === "eid") {
@@ -204,16 +289,18 @@ export function maternityFollowOnSpan(requests, days) {
   return { start, end: addCalendarDays(start, n - 1), days: n, after: start, maternityEnd };
 }
 
-export function getLeaveTotal(profile, key, onDate) {
-  const floor = statutoryLeaveFloor(key, profile, onDate);
+export function getLeaveTotal(profile, key, onDate, requests) {
+  const floor = statutoryLeaveFloor(key, profile, onDate, requests);
   const k = String(key || "").trim().toLowerCase();
   // Art. 160 is an event span, not a stored balance. A leftover 130 from a
   // previous Muslim floor must not outrank the 15-day non-Muslim entitlement.
   if (k === "iddah" || k === "maternity_extend" || k === "maternity_companion") return floor;
   const custom = profile?.leaveTotals?.[key];
-  if (floor == null) return custom ?? null;
-  if (custom == null) return floor;
-  return Math.max(Number(custom) || 0, floor);
+  // Days the company granted on top of an internal balance (never annual — Art. 109 is fixed).
+  const extra = GRANT_EXTENDS_TOTAL_KEYS.includes(k) ? grantedDaysOfType(profile, k) : 0;
+  if (floor == null) return custom == null ? (extra || null) : (Number(custom) || 0) + extra;
+  if (custom == null) return floor + extra;
+  return Math.max(Number(custom) || 0, floor) + extra;
 }
 
 function dateOnly(iso) {
@@ -303,25 +390,22 @@ export function accruedAnnualDaysAtExit(hireDate, entitlement, exitDate) {
   return floor * (worked / yearLen);
 }
 
-/** Article 117: the sick year starts on the first sick leave and rolls every 365 days. */
+/** Article 117 + Model regulation Art. 41: the sick year starts on the first sick leave and runs
+ *  365 days; the next sick year starts on the first sick leave taken after that
+ *  window ends (not on the anniversary of the very first one). */
 export function sickStatutoryYearWindow(requests, onDate) {
   const day = dateOnly(onDate) || new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
-  const first = (requests || [])
+  const starts = [...new Set((requests || [])
     .filter((r) => String(r.type || "").toLowerCase() === "sick" && r.status === "approved")
     .map((r) => dateOnly(r.startDate))
-    .filter(Boolean)
-    .sort()[0];
-  if (!first) return { start: day, end: addCalendarDays(day, 364) };
-  const origin = parseLocalDay(first);
-  const on = parseLocalDay(day) || origin;
-  let start = new Date(origin.getTime());
-  while (true) {
-    const next = new Date(start.getFullYear() + 1, start.getMonth(), start.getDate());
-    if (next > on) break;
-    start = next;
+    .filter((d) => d && d <= day))]
+    .sort();
+  let win = null;
+  for (const s of starts) {
+    if (!win || s > win.end) win = { start: s, end: addCalendarDays(s, 364) };
   }
-  const startIso = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`;
-  return { start: startIso, end: addCalendarDays(startIso, 364) };
+  if (!win || day > win.end) return { start: day, end: addCalendarDays(day, 364) };
+  return win;
 }
 
 export function examLeaveChargesAnnual(request) {
@@ -330,9 +414,22 @@ export function examLeaveChargesAnnual(request) {
     && request?.examPayFrom === "annual";
 }
 
-export function usedLeaveDays(requests, key, onDate, hireDate, calendar, company, employee) {
+/**
+ * Leaves the law gives again at every occurrence (Arts. 113 and 151): marriage, a death, a birth.
+ * Their days are counted per event, never as one balance for the whole service.
+ */
+export const PER_EVENT_LEAVE_TYPES = ["marriage", "bereavement", "bereavement_sibling", "paternity", "maternity"];
+
+export function usedLeaveDays(requests, key, onDate, hireDate, calendar, company, employee, { eventDate, exceptId } = {}) {
   const k = String(key || "").trim().toLowerCase();
   const approved = (requests || []).filter((r) => String(r.type || "").toLowerCase() === k && r.status === "approved");
+  if (PER_EVENT_LEAVE_TYPES.includes(k)) {
+    const ev = dateOnly(eventDate);
+    if (!ev) return 0;
+    return approved
+      .filter((r) => r.id !== exceptId && dateOnly(r.eventDate) === ev)
+      .reduce((sum, r) => sum + (Number(r.days) || computeDays(r.startDate, r.endDate) || 0), 0);
+  }
   if (k === "sick") {
     const win = sickStatutoryYearWindow(requests, onDate);
     return approved.reduce((sum, r) => {
@@ -350,7 +447,13 @@ export function usedLeaveDays(requests, key, onDate, hireDate, calendar, company
       const end = dateOnly(r.endDate) || (start ? addCalendarDays(start, Math.max(1, Number(r.days) || 1) - 1) : "");
       if (start && end && win) {
         const span = overlapRange(start, end, win.start, win.end);
-        return sum + (span ? chargeableAnnualDays(span.start, span.end, calendar, company, employee) : 0);
+        if (!span) return sum;
+        // Approved: the days frozen at approval decide — a later roster change never moves the balance.
+        const locked = r.lockedDays && typeof r.lockedDays === "object" ? r.lockedDays : null;
+        if (locked && Object.keys(locked).length) {
+          return sum + Object.entries(locked).filter(([day, kind]) => day >= span.start && day <= span.end && (kind === "charge" || kind === "dutyOnRest")).length;
+        }
+        return sum + chargeableAnnualDays(span.start, span.end, calendar, company, employee);
       }
       return sum + (Number(r.days) || 0);
     }, 0);
@@ -378,8 +481,25 @@ export function endDateFromLeaveDays(startDate, days) {
   return addCalendarDays(startDate, n - 1);
 }
 
+/**
+ * Leave types the company may grant extra days on, with no upper cap. Annual is not one of them:
+ * its entitlement is fixed by Art. 109 (21 days, 30 after five years) and never raised by a grant.
+ * «grant» is the discretionary «رصيد» leave; «emergency» is the internal emergency balance.
+ */
+export const GRANTABLE_LEAVE_KEYS = ["grant", "emergency"];
+/** Types whose total is the floor plus the granted days (grant itself is all granted days). */
+const GRANT_EXTENDS_TOTAL_KEYS = ["emergency"];
+
+/** Granted days on one type. A grant without `type` is a discretionary «رصيد» grant. */
+export function grantedDaysOfType(profile, type = "grant") {
+  const key = String(type || "grant").trim().toLowerCase();
+  return (profile?.discretionaryGrants || [])
+    .filter((grant) => String(grant?.type || "grant").trim().toLowerCase() === key)
+    .reduce((n, grant) => n + Math.max(0, Number(grant.days) || 0), 0);
+}
+
 export function grantDaysOf(profile) {
-  return (profile?.discretionaryGrants || []).reduce((n, grant) => n + Math.max(0, Number(grant.days) || 0), 0);
+  return grantedDaysOfType(profile, "grant");
 }
 
 /** Discretionary days still available — grant leave and annual overflow share this pool. */
@@ -387,6 +507,29 @@ export function leftoverGrantDays(profile, requests, onDate, company, employee) 
   const split = annualBalanceSplit(profile, requests, onDate, company, employee);
   const overflow = Math.max(0, (split.currentUsed + split.carryUsed) - (split.currentTotal || 0) - split.carryTotal);
   return Math.max(0, grantDaysOf(profile) - usedLeaveDays(requests, "grant", onDate, profile?.hireDate) - overflow);
+}
+
+/**
+ * «رصيد إجازاتي» — one row per leave type the company granted days on: the total it opens (Y) and what
+ * is left of it (X). Derived from the file's grants and approved leave only — never a stored figure.
+ */
+export function grantedLeaveBalances(profile, requests, onDate, company, employee) {
+  return GRANTABLE_LEAVE_KEYS.map((key) => {
+    const granted = grantedDaysOfType(profile, key);
+    if (!(granted > 0)) return null;
+    if (key === "grant") {
+      const remaining = leftoverGrantDays(profile, requests, onDate, company, employee);
+      return { key, granted, total: granted, used: Math.max(0, granted - remaining), remaining };
+    }
+    const total = getLeaveTotal(profile, key, onDate) || 0;
+    const used = usedLeaveDays(requests, key, onDate, profile?.hireDate);
+    return { key, granted, total, used, remaining: Math.max(0, total - used) };
+  }).filter(Boolean).map((row) => ({
+    ...row,
+    ar: row.key === "grant" ? "رصيد ممنوح" : leaveTypeLabel(row.key, true),
+    en: row.key === "grant" ? "Granted days" : leaveTypeLabel(row.key, false),
+    pct: row.total ? Math.max(0, Math.min(100, Math.round((row.remaining / row.total) * 100))) : 0,
+  }));
 }
 
 export function remainingLeaveDays(profile, requests, key = "annual", onDate, company, employee) {
@@ -401,40 +544,250 @@ export function remainingLeaveDays(profile, requests, key = "annual", onDate, co
   return Math.max(0, total - usedLeaveDays(requests, key, onDate, profile?.hireDate));
 }
 
-/** Unused days of the previous hire-anniversary year — Art. 110 carry line. */
-export function unusedFromPreviousYear(profile, requests, onDate) {
-  const hire = dateOnly(profile?.hireDate);
-  const current = anniversaryYearWindow(hire, onDate);
-  if (!current || !hire || current.start === hire) return 0;
-  const prevEnd = addCalendarDays(current.start, -1);
-  const prev = anniversaryYearWindow(hire, prevEnd);
-  if (!prev) return 0;
-  const entitlement = getLeaveTotal(profile, "annual", prev.end) ?? 0;
-  const used = usedLeaveDays(requests, "annual", prev.end, hire);
-  return Math.max(0, entitlement - used);
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+/** Hire-anniversary windows from the first year through the one holding onDate. */
+function anniversaryWindowsThrough(hire, day) {
+  const cur = anniversaryYearWindow(hire, day);
+  if (!cur) return [];
+  const out = [];
+  let w = anniversaryYearWindow(hire, hire);
+  let guard = 0;
+  while (w && w.start <= cur.start && guard < 80) {
+    out.push(w);
+    w = anniversaryYearWindow(hire, addCalendarDays(w.end, 1));
+    guard += 1;
+  }
+  return out.length ? out : [cur];
 }
 
-/** Current-year statutory line plus a separate carry line; carry is consumed first. */
+/** Agreed carry (Art. 110(1), «leave_carry» approvals) per bucket index — attributed to the year it was agreed in. */
+function agreedCarryByBucket(profile, windows) {
+  const out = {};
+  for (const row of profile?.leaveCarryAgreed || []) {
+    const at = dateOnly(row?.fromYearStart) || dateOnly(row?.at);
+    const days = Math.max(0, Number(row?.days) || 0);
+    if (!at || !days) continue;
+    const idx = windows.findIndex((w) => w.start <= at && at <= w.end);
+    if (idx < 0) continue;
+    out[idx] = (out[idx] || 0) + days;
+  }
+  return out;
+}
+
+/**
+ * A migrated employee's annual-leave opening balance: `profile.leaveOpeningBalance = { asOf, days }` —
+ * the unused days on file at `asOf` (every year up to that day, accrual included). Null when absent.
+ */
+export function leaveOpeningBalanceOf(profile) {
+  const row = profile?.leaveOpeningBalance;
+  const asOf = dateOnly(row?.asOf);
+  const days = Number(row?.days);
+  if (!asOf || !Number.isFinite(days) || days < 0) return null;
+  return { asOf, days };
+}
+
+/**
+ * Arts. 109–111: one leave bucket per hire-anniversary year. Days are consumed FIFO — the oldest year
+ * first — so days carried from an older year are never lost by spending in a later one. Returns
+ * [{ year, start, end, entitled, used, left, status, agreed, unagreed, deadline, warnFrom, warn }].
+ *  - entitled: the year's statutory/contract days, pro-rated for suspended contract days (Art. 116,
+ *    Regs Art. 25(1)); with opts.until (exit), the current year is pro-rated to that day (Art. 111).
+ *  - status: "current"; "carried" (the year after, Art. 110 — deadline = end of that following year);
+ *    "overdue" (past the Art. 110 limit — still owed: Art. 109 forbids waiving it, Art. 111 pays it at exit).
+ *  - agreed/unagreed: carried days covered / not covered by an approved Art. 110(1) carry.
+ */
+export function annualBalanceBuckets(profile, requests, onDate, company, employee, opts = {}) {
+  const hire = dateOnly(profile?.hireDate);
+  if (!hire) return [];
+  const day = dateOnly(onDate) || todayRiyadh();
+  const until = dateOnly(opts.until);
+  const list = Array.isArray(requests) ? requests : [];
+  const windows = anniversaryWindowsThrough(hire, until || day);
+  if (!windows.length) return [];
+  const susp = unpaidSuspensionPlan(list, hire).days;
+  const curIdx = windows.length - 1;
+  // A migrated file's opening balance replaces every year up to its day; leave taken on or before it
+  // is already inside that figure.
+  const opening = leaveOpeningBalanceOf(profile);
+  const buckets = windows.map((win, i) => {
+    const full = getLeaveTotal(profile, "annual", win.end, list) ?? 0;
+    const len = inclusiveDays(win.start, win.end) || 365;
+    const lastDay = i === curIdx && until ? (until < win.end ? until : win.end) : win.end;
+    const counted = until && i === curIdx ? (lastDay < win.start ? 0 : inclusiveDays(win.start, lastDay)) : len;
+    const suspended = susp.filter((d) => d >= win.start && d <= lastDay).length;
+    let entitled = round2(full * Math.max(0, counted - suspended) / len);
+    if (opening && win.end < opening.asOf) entitled = 0;
+    else if (opening && win.start <= opening.asOf) {
+      // The year holding the opening day: its balance on file, plus accrual after that day only.
+      const from = addCalendarDays(opening.asOf, 1);
+      const after = lastDay < from ? 0 : inclusiveDays(from, lastDay);
+      const suspAfter = susp.filter((d) => d >= from && d <= lastDay).length;
+      entitled = round2(opening.days + full * Math.max(0, after - suspAfter) / len);
+    }
+    return { year: Number(win.start.slice(0, 4)), start: win.start, end: win.end, full, entitled, suspendedDays: suspended, used: 0, usedInCurrent: 0, over: 0, left: entitled };
+  });
+  const emp = employee || (profile ? { profile } : null);
+  const charged = list.filter((r) => (String(r?.type || "").toLowerCase() === "annual" && r.status === "approved") || examLeaveChargesAnnual(r));
+  const chunks = [];
+  for (const r of charged) {
+    let start = dateOnly(r.startDate);
+    let end = dateOnly(r.endDate) || (start ? addCalendarDays(start, Math.max(1, Number(r.days) || 1) - 1) : "");
+    if (!start || !end) {
+      chunks.push({ start: windows[curIdx].start, idx: curIdx, days: Number(r.days) || 0 });
+      continue;
+    }
+    if (until && end > until) end = until;
+    if (opening && end <= opening.asOf) continue;
+    if (opening && start <= opening.asOf) start = addCalendarDays(opening.asOf, 1);
+    windows.forEach((win, idx) => {
+      const span = overlapRange(start, end, win.start, win.end);
+      if (!span) return;
+      chunks.push({ start: span.start, idx, days: chargeableAnnualDays(span.start, span.end, undefined, company, emp) });
+    });
+  }
+  chunks.sort((a, b) => a.start.localeCompare(b.start));
+  for (const c of chunks) {
+    let need = Math.max(0, Number(c.days) || 0);
+    for (let i = 0; i <= c.idx && need > 0; i += 1) {
+      const b = buckets[i];
+      const take = Math.min(b.left, need);
+      if (take <= 0) continue;
+      b.left = round2(b.left - take);
+      b.used = round2(b.used + take);
+      if (c.idx === curIdx) b.usedInCurrent = round2(b.usedInCurrent + take);
+      need = round2(need - take);
+    }
+    if (need > 0) {
+      const b = buckets[c.idx];
+      b.used = round2(b.used + need);
+      b.over = round2(b.over + need);
+      if (c.idx === curIdx) b.usedInCurrent = round2(b.usedInCurrent + need);
+    }
+  }
+  const agreed = agreedCarryByBucket(profile, windows);
+  const warnDays = 60;
+  buckets.forEach((b, i) => {
+    if (i === curIdx) {
+      b.status = "current";
+      b.deadline = "";
+    } else {
+      b.status = i === curIdx - 1 ? "carried" : "overdue";
+      b.deadline = buckets[i + 1].end;
+    }
+    b.agreed = i === curIdx ? 0 : Math.min(b.left, agreed[i] || 0);
+    b.unagreed = i === curIdx ? 0 : round2(Math.max(0, b.left - b.agreed));
+    b.warnFrom = b.deadline ? addCalendarDays(b.deadline, -warnDays) : "";
+    b.warn = b.status === "carried" && b.left > 0 && !!b.warnFrom && day >= b.warnFrom;
+  });
+  return buckets;
+}
+
+/** Unused days carried into the current year from every older year — Art. 110 carry line. */
+export function unusedFromPreviousYear(profile, requests, onDate, company, employee) {
+  const buckets = annualBalanceBuckets(profile, requests, onDate, company, employee);
+  return round2(buckets.slice(0, -1).reduce((n, b) => n + b.left + (b.usedInCurrent || 0), 0));
+}
+
+/** Current-year statutory line plus a separate carry line (all older years); carry is consumed first (FIFO). */
 export function annualBalanceSplit(profile, requests, onDate, company, employee) {
-  const currentTotal = getLeaveTotal(profile, "annual", onDate);
-  const usedThisYear = usedLeaveDays(requests, "annual", onDate, profile?.hireDate, undefined, company, employee || (profile ? { profile } : null));
-  const carryTotal = unusedFromPreviousYear(profile, requests, onDate);
-  const carryUsed = Math.min(carryTotal, usedThisYear);
-  const currentUsed = Math.max(0, usedThisYear - carryTotal);
-  const currentLeft = currentTotal == null ? 0 : Math.max(0, currentTotal - currentUsed);
-  const carryLeft = Math.max(0, carryTotal - carryUsed);
+  const buckets = annualBalanceBuckets(profile, requests, onDate, company, employee);
+  if (!buckets.length) {
+    const currentTotal = getLeaveTotal(profile, "annual", onDate, requests);
+    const used = usedLeaveDays(requests, "annual", onDate, profile?.hireDate, undefined, company, employee || (profile ? { profile } : null));
+    const currentLeft = currentTotal == null ? 0 : Math.max(0, currentTotal - used);
+    return { currentTotal, currentUsed: used, currentLeft, carryTotal: 0, carryUsed: 0, carryLeft: 0, remaining: currentLeft, buckets: [] };
+  }
+  const cur = buckets[buckets.length - 1];
+  const older = buckets.slice(0, -1);
+  const carryUsed = round2(older.reduce((n, b) => n + (b.usedInCurrent || 0), 0));
+  const carryLeft = round2(older.reduce((n, b) => n + b.left, 0));
+  const carryTotal = round2(carryUsed + carryLeft);
   return {
-    currentTotal,
-    currentUsed,
-    currentLeft,
+    currentTotal: cur.entitled,
+    currentUsed: cur.used,
+    currentLeft: cur.left,
     carryTotal,
     carryUsed,
     carryLeft,
-    remaining: currentLeft + carryLeft,
+    remaining: round2(cur.left + carryLeft),
+    buckets,
   };
 }
 
-/** Art. 154: after return from maternity, until nursingUntil or two years from birth/return. */
+/**
+ * Art. 111: at exit the worker is paid for the leave days of every year he did not take, plus the
+ * pro-rata of the incomplete year. FIFO buckets up to the exit day; days taken after it do not count.
+ */
+export function unusedAnnualDaysAtExit(profile, requests, exitDate, company, employee) {
+  const exit = dateOnly(exitDate) || todayRiyadh();
+  const buckets = annualBalanceBuckets(profile, requests, exit, company, employee, { until: exit });
+  if (!buckets.length) return 0;
+  const entitled = buckets.reduce((n, b) => n + b.entitled, 0);
+  const used = buckets.reduce((n, b) => n + b.used, 0);
+  return round2(Math.max(0, entitled - used));
+}
+
+/**
+ * Art. 110 carry alerts. Days are never silently dropped: Art. 109(2) forbids waiving them and Art. 111
+ * pays them at exit; the employer must let the worker take them. So:
+ *  - "unagreed": carried days with no approved Art. 110(1) carry → «مؤجلة دون موافقة» to the manager.
+ *  - "expiring": 60 days before the end of the following year (the Art. 110(2) limit) → «تنتهي في».
+ *  - "overdue": past that limit → still owed; the manager must schedule them.
+ */
+export function annualCarryAlerts(profile, requests, onDate, company, employee) {
+  const out = [];
+  for (const b of annualBalanceBuckets(profile, requests, onDate, company, employee)) {
+    if (b.status === "current" || b.left <= 0) continue;
+    const yearAr = `${b.start} → ${b.end}`;
+    if (b.status === "overdue") {
+      out.push({
+        kind: "overdue", start: b.start, days: b.left, deadline: b.deadline,
+        ar: `${b.left} يوماً من سنة ${yearAr} تجاوزت مهلة التأجيل (${b.deadline}) — ما زالت مستحقة ولا يجوز النزول عنها (المادة 109)، وتُدفع عند انتهاء الخدمة إن لم تُستعمل (المادة 111). جدولها الآن.`,
+        en: `${b.left} days from ${yearAr} passed the deferral limit (${b.deadline}) — still owed and not waivable (Art. 109), paid at exit if unused (Art. 111). Schedule them now.`,
+      });
+      continue;
+    }
+    if (b.warn) {
+      out.push({
+        kind: "expiring", start: b.start, days: b.left, deadline: b.deadline,
+        ar: `تنتهي في ${b.deadline} مهلة تأجيل ${b.left} يوماً من سنة ${yearAr} (المادة 110) — اطلبها قبلها. لا تسقط بمرور المهلة، لكن على المنشأة جدولتها.`,
+        en: `The deferral of ${b.left} days from ${yearAr} ends on ${b.deadline} (Art. 110) — request them before then. They do not lapse, but must be scheduled.`,
+      });
+    }
+    if (b.unagreed > 0) {
+      out.push({
+        kind: "unagreed", start: b.start, days: b.unagreed, deadline: b.deadline,
+        ar: `${b.unagreed} يوماً من سنة ${yearAr} مؤجلة دون موافقة على الترحيل (المادة 110/1) — جدولها مع العامل قبل ${b.deadline}.`,
+        en: `${b.unagreed} days from ${yearAr} are carried without an agreed carry (Art. 110(1)) — schedule them with the worker before ${b.deadline}.`,
+      });
+    }
+  }
+  return out;
+}
+
+/** Model regulation Art. 33: the part of this year's annual leave earned so far — the cap for an advance. */
+export function annualAdvanceCap(profile, requests, onDate, company, employee) {
+  const day = dateOnly(onDate) || todayRiyadh();
+  const buckets = annualBalanceBuckets(profile, requests, day, company, employee);
+  const cur = buckets[buckets.length - 1];
+  if (!cur) return { earned: 0, used: 0, cap: 0 };
+  const len = inclusiveDays(cur.start, cur.end) || 365;
+  const elapsed = day < cur.start ? 0 : inclusiveDays(cur.start, day < cur.end ? day : cur.end);
+  const earned = Math.floor(cur.entitled * (elapsed / len) * 10) / 10;
+  return { earned, used: cur.used, cap: round2(Math.max(0, earned - cur.used)) };
+}
+
+/** Art. 154 + Regs Art. 31(1): after return from maternity, for 24 months from the date of birth. */
+function nursingMonthsUntil(birth, months) {
+  if (!birth) return "";
+  const [y, m, d] = birth.split("-").map(Number);
+  const target = new Date(Date.UTC(y, m - 1 + months, 1));
+  const last = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(d, last) - 1 || 0);
+  return target.toISOString().slice(0, 10);
+}
+
 export function isNursingSubject(employee, onDate) {
   const profile = employee?.profile || {};
   const gender = String(profile.gender || "").toLowerCase();
@@ -448,7 +801,9 @@ export function isNursingSubject(employee, onDate) {
   ));
   if (!ended.length) return false;
   const last = [...ended].sort((a, b) => dateOnly(b.endDate).localeCompare(dateOnly(a.endDate)))[0];
-  const until = dateOnly(profile.nursingUntil) || addCalendarDays(dateOnly(last.eventDate || last.endDate), 730);
+  // Birth date on the maternity leave; without it, the latest birth the six post-birth weeks allow.
+  const birth = dateOnly(last.eventDate) || dateOnly(profile.childBirthDate) || addCalendarDays(dateOnly(last.endDate), -41);
+  const until = dateOnly(profile.nursingUntil) || nursingMonthsUntil(birth, 24);
   return !!until && day <= until;
 }
 
@@ -471,6 +826,9 @@ export function leaveCoverRange(request) {
 
 function leaveRequestCoversDay(request, day) {
   if (!request || request.status !== "approved") return false;
+  // Art. 112: official holidays apply from the platform calendar (officialHolidayOn) — an old approved
+  // «eid» request is kept as history only, so the day is never counted twice or read as a request.
+  if (String(request.type || "").trim().toLowerCase() === "eid") return false;
   const { start, end } = leaveCoverRange(request);
   return !!start && !!end && start <= day && day <= end;
 }

@@ -1,8 +1,12 @@
 /** Client mirror of base44/shared/reportsDerivations.ts
- *  Keep in sync — Reports library, timesheet (grace/8h/OT), payroll-close gates.
+ *  Keep in sync — Reports library, timesheet (rostered shift + actual duty), payroll-close gates.
  */
 
 import { ruleValue } from "./laborRules.js";
+import { deriveActualDuty, punchClockMinutes } from "./actualDuty.js";
+import { nursingHourOn } from "./dutyRequests.js";
+import { rosterShiftFor } from "./otDecisionPlan.js";
+import { laborCalendarOf } from "./ummAlQuraCalendar.js";
 
 export const GRACE_MINUTES = ruleValue("hours.grace.minutes");
 export const SHIFT_HOURS = ruleValue("hours.shift.ordinaryHours");
@@ -29,8 +33,8 @@ export const REPORT_CATALOG = [
     kickerEn: "FINANCE",
     titleAr: "تحليل تكلفة التشغيل بالفرع",
     titleEn: "Cost per station analysis",
-    descAr: "الرواتب والمخزون والصيانة منسوبة لكل فرع على حدة.",
-    descEn: "Payroll, inventory and maintenance attributed per station.",
+    descAr: "الرواتب وقيود اليومية منسوبة لكل فرع على حدة.",
+    descEn: "Payroll and journal lines attributed per station.",
     format: "XLSX",
     needsPeriod: true,
     roles: ["owner", "director", "ops_manager", "admin", "pgm", "financial_officer"],
@@ -106,16 +110,6 @@ export const SCHEDULED_REPORTS = [
     cadenceAr: "أول كل شهر",
     cadenceEn: "1st of month",
   },
-  {
-    id: "sched_stock",
-    reportId: "stock_alert",
-    titleAr: "تنبيه المخزون تحت الحد",
-    titleEn: "Below-threshold stock alert",
-    recipientsAr: "مدير المشتريات",
-    recipientsEn: "Procurement Manager",
-    cadenceAr: "عند تجاوز الحد",
-    cadenceEn: "On threshold breach",
-  },
 ];
 
 export function parseHm(hm) {
@@ -153,84 +147,120 @@ export function actorMayGenerate(actor, entry) {
   return roles.includes(String(actor.role || "").toLowerCase());
 }
 
+/** Rostered shift window → absolute minutes (an overnight end runs past midnight). */
+function rosterWindow(shift) {
+  const start = parseHm(shift?.start);
+  const endRaw = parseHm(shift?.end);
+  if (start == null || endRaw == null) return null;
+  return { start, end: endRaw <= start ? endRaw + 1440 : endRaw };
+}
+
+function emptyDay(punch, status, extra = {}) {
+  return {
+    date: punch.date,
+    status,
+    checkIn: null,
+    checkOut: null,
+    ordinaryMinutes: 0,
+    overtimeMinutes: 0,
+    lateMinutes: 0,
+    earlyMinutes: 0,
+    openCheckout: false,
+    late: false,
+    ...extra,
+  };
+}
+
+/**
+ * One timesheet day read the way the attendance board reads it (actualDuty.js): against the ROSTERED
+ * shift for that person and day — never a fixed 07:00 / 8 h. Rest is deducted (Art. 102), overtime is
+ * what passes the day's ordinary cap or the roster on the weekly criterion, all of it on a holiday or
+ * an unrostered rest day (Art. 107), and the day carries the board's flags: presence over 12 h
+ * (Art. 101), work over 10 h (Art. 106), more than five hours without a break (Art. 101).
+ * opts: { shift, employee, company, laborCalendar, breaks, duty } — `duty` is a precomputed deriveActualDuty.
+ */
 export function deriveTimesheetDay(punch, opts = {}) {
   const grace = opts.graceMinutes ?? GRACE_MINUTES;
-  const shiftMin = opts.shiftMinutes ?? SHIFT_MINUTES;
-  const shiftStart = parseHm(opts.shiftStart || DEFAULT_SHIFT_START) ?? parseHm(DEFAULT_SHIFT_START);
-  const shiftEnd = shiftStart + shiftMin;
+  const shift = opts.shift !== undefined ? opts.shift : (punch.shift || null);
 
-  if (punch.restDay || punch.status === "rest") {
-    return {
-      date: punch.date,
-      status: "rest",
-      checkIn: null,
-      checkOut: null,
-      ordinaryMinutes: 0,
-      overtimeMinutes: 0,
-      lateMinutes: 0,
-      earlyMinutes: 0,
-      openCheckout: false,
-      late: false,
-    };
-  }
-  if (punch.onLeave || punch.status === "leave") {
-    return {
-      date: punch.date,
-      status: "leave",
-      checkIn: null,
-      checkOut: null,
-      ordinaryMinutes: 0,
-      overtimeMinutes: 0,
-      lateMinutes: 0,
-      earlyMinutes: 0,
-      openCheckout: false,
-      late: false,
-    };
-  }
+  if (punch.restDay || punch.status === "rest") return emptyDay(punch, "rest");
+  if (punch.onLeave || punch.status === "leave") return emptyDay(punch, "leave");
 
-  const inM = parseHm(punch.checkIn);
-  const outM = parseHm(punch.checkOut);
-  if (inM == null) {
-    return {
-      date: punch.date,
-      status: "absent",
-      checkIn: null,
-      checkOut: null,
-      ordinaryMinutes: 0,
-      overtimeMinutes: 0,
-      lateMinutes: 0,
-      earlyMinutes: 0,
-      openCheckout: false,
-      late: false,
-      excused: !!punch.excusedAbsence,
-    };
-  }
+  const inM = punchClockMinutes(punch.checkIn);
+  const outM = punchClockMinutes(punch.checkOut);
+  const roster = {
+    rostered: !!shift,
+    shiftId: shift?.id || null,
+    shiftLabel: shift?.label || null,
+    shiftStart: shift?.start || null,
+    shiftEnd: shift?.end || null,
+  };
+  if (inM == null) return emptyDay(punch, "absent", { excused: !!punch.excusedAbsence, ...roster });
 
-  const lateMinutes = Math.max(0, inM - shiftStart - grace);
-  const late = lateMinutes > 0 || (inM - shiftStart > grace);
+  const win = rosterWindow(shift);
+  // Art. 154: her nursing minutes at the start are not lateness, at the end not an early checkout.
+  const nursingDay = win ? nursingHourOn(opts.employee, punch.date) : null;
+  const lateMinutes = win ? Math.max(0, inM - win.start - grace - (nursingDay?.startMinutes || 0)) : 0;
+  const late = lateMinutes > 0;
   const openCheckout = outM == null;
-  let ordinaryMinutes = 0;
-  let overtimeMinutes = 0;
-  let earlyMinutes = 0;
-  if (outM != null) {
-    const worked = Math.max(0, outM - inM);
-    ordinaryMinutes = Math.min(shiftMin, worked);
-    overtimeMinutes = Math.max(0, worked - shiftMin);
-    earlyMinutes = Math.max(0, shiftEnd - outM);
-  }
-
-  return {
+  const base = {
     date: punch.date,
     status: late ? "late" : "present",
     checkIn: punch.checkIn || null,
     checkOut: punch.checkOut || null,
-    ordinaryMinutes,
-    overtimeMinutes,
-    lateMinutes: late ? Math.max(lateMinutes, inM - shiftStart - grace) : 0,
-    earlyMinutes,
-    openCheckout,
+    lateMinutes,
     late,
+    openCheckout,
+    ...roster,
   };
+  if (openCheckout) {
+    return { ...base, ordinaryMinutes: 0, overtimeMinutes: 0, earlyMinutes: 0, flags: [] };
+  }
+  const duty = opts.duty || deriveActualDuty({
+    checkIn: punch.checkIn,
+    checkOut: punch.checkOut,
+    shift,
+    onDate: punch.date,
+    employee: opts.employee,
+    company: opts.company,
+    laborCalendar: opts.laborCalendar,
+    breaks: punch.breaks ?? opts.breaks,
+  });
+  const outAbs = outM <= inM ? outM + 1440 : outM;
+  const earlyMinutes = win ? Math.max(0, win.end - outAbs - (nursingDay?.endMinutes || 0)) : 0;
+  return {
+    ...base,
+    ordinaryMinutes: duty.ordinaryMinutes || 0,
+    overtimeMinutes: duty.overtimeMinutes || 0,
+    earlyMinutes,
+    presenceMinutes: duty.presenceMinutes || 0,
+    restMinutes: duty.restMinutes || 0,
+    workedMinutes: duty.workedMinutes || 0,
+    nursingCreditMinutes: duty.nursingCreditMinutes || 0,
+    rosteredMinutes: duty.rosteredMinutes || 0,
+    overtimeKind: duty.kind || "",
+    holiday: !!duty.holiday,
+    flags: (duty.flags || []).map((flag) => ({ error: flag.error, article: flag.article, reason: flag.reason, reasonEn: flag.reasonEn })),
+  };
+}
+
+/**
+ * A stored attendance row (personalAttendance) → its timesheet day, read exactly as the attendance
+ * board's stampActualOvertime reads it: the rostered shift on any station's roster (rosterShiftFor),
+ * the company bag `data` as the hours policy, and the owner labour calendar.
+ */
+export function deriveAttendanceRowDay(row, data, opts = {}) {
+  const employeeId = String(row?.employeeId || row?.employee_id || "");
+  const employee = (data?.employees || []).find((e) => String(e?.id) === employeeId) || { id: employeeId };
+  const date = String(row?.date || row?.dateKey || "").slice(0, 10);
+  const checkIn = row?.check_in_at || row?.checkInAt || row?.checkIn || null;
+  const checkOut = row?.check_out_at || row?.checkOutAt || row?.checkOut || null;
+  const status = row?.status === "leave" || row?.status === "rest" ? row.status : null;
+  const shift = rosterShiftFor(data, employee, date);
+  return deriveTimesheetDay(
+    { date, checkIn, checkOut, status, onLeave: row?.onLeave, restDay: row?.restDay, excusedAbsence: !!(row?.excused || row?.excusedAbsence), breaks: row?.breaks },
+    { ...opts, shift, employee, company: data, laborCalendar: laborCalendarOf(data) },
+  );
 }
 
 export function deriveTimesheetTotals(days) {
@@ -242,7 +272,16 @@ export function deriveTimesheetTotals(days) {
   let lateCount = 0;
   let openCheckouts = 0;
   let earlyDepartures = 0;
+  let presenceOverCap = 0;
+  let workOverCap = 0;
+  let noBreak = 0;
+  let unrosteredDays = 0;
   for (const d of list) {
+    const codes = (d.flags || []).map((flag) => flag.error);
+    if (codes.includes("ACTUAL_PRESENCE_OVER_CAP")) presenceOverCap += 1;
+    if (codes.includes("ACTUAL_WORK_OVER_CAP")) workOverCap += 1;
+    if (codes.includes("ACTUAL_NO_BREAK")) noBreak += 1;
+    if (d.checkIn && d.rostered === false) unrosteredDays += 1;
     ordinaryMinutes += d.ordinaryMinutes || 0;
     overtimeMinutes += d.overtimeMinutes || 0;
     if (d.status === "absent" && !d.excused) absenceDays += 1;
@@ -261,6 +300,10 @@ export function deriveTimesheetTotals(days) {
     lateCount,
     openCheckouts,
     earlyDepartures,
+    presenceOverCap,
+    workOverCap,
+    noBreak,
+    unrosteredDays,
     graceMinutes: GRACE_MINUTES,
     shiftHours: SHIFT_HOURS,
     closesPayroll: true,

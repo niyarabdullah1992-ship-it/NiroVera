@@ -5,8 +5,10 @@
 
 import { citeRule, isRamadanDay, isRamadanHoursSubject, ruleValue } from "./laborRules.ts";
 import { checkHeatBanGate, heatBanWindow, isHeatBanDate, monthHasHeatBanDay, shiftOverlapsNight } from "./contractLawDerivations.ts";
+import { rosterLawChecks } from "./rosterLawGates.ts";
 
-export type ShiftType = { id: string; label?: string; start: string; end: string; restMinutes?: number | null; outdoor?: boolean };
+export type FlexBreak = { minutes: number; from: string; to: string; split?: boolean; earlyEnd?: boolean };
+export type ShiftType = { id: string; label?: string; start: string; end: string; restMinutes?: number | null; outdoor?: boolean; breakMode?: "fixed" | "flex" | "continuous"; flexBreak?: FlexBreak };
 
 /** dateKey (YYYY-MM-DD) → shiftTypeId → employee ids */
 export type DayAssignments = Record<string, Record<string, string[]>>;
@@ -39,39 +41,542 @@ export function minutesBetween(start: string, end: string) {
   return m;
 }
 
+/** Clock "HH:MM" → minutes after the shift start (wraps past midnight). */
+function offsetFromStart(start: any, clock: any) {
+  return minutesBetween(start || "00:00", clock || "00:00");
+}
+
 /**
- * Art. 101 — no more than five consecutive hours without a rest of ≥ 30 minutes.
- * A missing restMinutes uses the statutory 30 so existing 8 h windows still publish.
- * restMinutes: 0 is an explicit "no break" and fails when the span exceeds five hours.
+ * Breaks inside a shift as offsets from its start. `breaks` = [{ start, end }] clocks or [{ minutes }]
+ * (an unplaced break). Sorted; unplaced breaks return `null` offsets.
  */
-export function checkConsecutiveWorkGate(input: {
-  start?: string | null;
-  end?: string | null;
-  restMinutes?: number | null;
-  onDate?: string | Date | null;
-}) {
+export function shiftBreaks(shift: any): any[] {
+  const list = Array.isArray(shift?.breaks) ? shift.breaks : [];
+  return list
+    .map((row: any) => {
+      if (row?.start && row?.end) {
+        const from = offsetFromStart(shift.start, row.start);
+        const minutes = minutesBetween(row.start, row.end);
+        return { from, to: from + minutes, minutes };
+      }
+      const minutes = Math.max(0, Number(row?.minutes) || 0);
+      return minutes ? { from: null, to: null, minutes } : null;
+    })
+    .filter(Boolean)
+    .sort((a: any, b: any) => (a.from ?? 0) - (b.from ?? 0));
+}
+
+/** Total rest inside a shift — a flex break's minutes, else the breaks list when present, else restMinutes. */
+export function shiftRestMinutes(shift: any) {
+  if (shift?.breakMode === "flex" && Number(shift?.flexBreak?.minutes) > 0) return Math.round(Number(shift.flexBreak.minutes));
+  const breaks = shiftBreaks(shift);
+  if (breaks.length) return breaks.reduce((sum: number, row: any) => sum + row.minutes, 0);
+  return shift?.restMinutes == null ? null : Math.max(0, Number(shift.restMinutes) || 0);
+}
+
+/* ── Break mode per shift type (Arts 101–103) ────────────────────────────────────────────────
+ * «راحة ثابتة» fixed (the default, and any missing value): the roster places the break; nothing to press.
+ * «راحة مرنة ببصمة» flex: the shift type sets `flexBreak: { minutes, from, to, split, earlyEnd }`;
+ *   the worker punches «بدأت راحتي» / «أنهيت راحتي» inside the window.
+ * «عمل متواصل (المادة 103)» continuous: the hours policy's Art. 103 flag — never stored on a shift type.
+ */
+export const BREAK_MODES: string[] = ["fixed", "flex", "continuous"];
+
+const clockOfHm = (hm: any): number | null => {
+  const m = String(hm ?? "").trim().match(/^(\d{1,2}):(\d{2})$/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+const hmOfClock = (mins: number) => {
+  const m = ((Math.round(mins) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+};
+const hoursText = (mins: number) => `${Math.floor(mins / 60)}:${String(Math.round(mins % 60)).padStart(2, "0")}`;
+
+/** "HH:MM" or an ISO instant → minutes after Riyadh midnight (UTC+3, no DST); null when unreadable. */
+export function riyadhClockOf(value: any): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const hm = clockOfHm(raw);
+  if (hm != null) return hm;
+  const at = new Date(raw);
+  if (Number.isNaN(at.getTime())) return null;
+  const mins = Math.floor(at.getTime() / 60000) + 180;
+  return ((mins % 1440) + 1440) % 1440;
+}
+
+/** The break mode a shift type runs under. Art. 103 (the hours policy flag) wins; else flex or fixed. */
+export function shiftBreakMode(shift: any, { continuous103 = false }: { continuous103?: boolean } = {}) {
+  if (continuous103 === true) return "continuous";
+  return shift?.breakMode === "flex" ? "flex" : "fixed";
+}
+
+/**
+ * A flex shift type's break on the shift day's clock (null unless breakMode is "flex"):
+ * { minutes, from, to, split, splitEffective, earlyEnd, minPart, span, shiftStart, fromOff, toOff, fromMin, toMin }.
+ * Offsets are minutes after the shift start; fromMin / toMin are minutes after the shift day's midnight.
+ */
+export function flexBreakOf(shift: any, onDate?: string): any {
+  if (shift?.breakMode !== "flex") return null;
+  const shiftStart = clockOfHm(shift.start);
+  if (shiftStart == null || clockOfHm(shift.end) == null) return null;
+  const span = minutesBetween(shift.start, shift.end) || 1440;
+  const cfg = shift.flexBreak && typeof shift.flexBreak === "object" ? shift.flexBreak : {};
+  const minPart = ruleValue("hours.rest.duringShiftMinutes", onDate) || 30;
+  const minutes = Math.max(0, Math.round(Number(cfg.minutes) || 0));
+  const fromClock = clockOfHm(cfg.from);
+  const toClock = clockOfHm(cfg.to);
+  const fromOff = fromClock == null ? null : offsetFromStart(shift.start, cfg.from);
+  const toOff = toClock == null ? null : offsetFromStart(shift.start, cfg.to);
+  const split = cfg.split === true;
+  return {
+    minutes,
+    from: fromClock == null ? "" : hmOfClock(fromClock),
+    to: toClock == null ? "" : hmOfClock(toClock),
+    split,
+    splitEffective: split && minutes >= minPart * 2,
+    earlyEnd: cfg.earlyEnd === true,
+    minPart,
+    span,
+    shiftStart,
+    fromOff,
+    toOff,
+    fromMin: fromOff == null ? null : shiftStart + fromOff,
+    toMin: toOff == null ? null : shiftStart + toOff,
+  };
+}
+
+/**
+ * Art. 101 for a flex break — the shape of checkConsecutiveWorkGate, with named reasons:
+ * SHIFT_STAY_OVER_CAP (presence above the 12 h workplace ceiling), FLEX_MINUTES_BELOW_MIN,
+ * FLEX_WINDOW_REQUIRED, FLEX_WINDOW_OUTSIDE_SHIFT, FLEX_WINDOW_TOO_SHORT, FLEX_WINDOW_TOO_LATE (the
+ * work before the window passes the consecutive-hours limit), FLEX_WINDOW_TOO_EARLY (the work after it
+ * does), FLEX_NO_LAWFUL_PLACEMENT (no start inside the window keeps both sides within the limit).
+ */
+export function checkFlexBreakGate({ shift, onDate, maxConsecutiveHours }: any = {}): any {
+  const flex = flexBreakOf(shift, onDate);
+  const maxHours = Number(maxConsecutiveHours) > 0 ? Number(maxConsecutiveHours) : ruleValue("hours.rest.maxConsecutiveHours", onDate);
+  const maxMin = maxHours * 60;
+  const minRest = ruleValue("hours.rest.duringShiftMinutes", onDate);
+  const cite = citeRule("hours.rest.duringShiftMinutes", onDate);
+  const art = cite?.labelAr || "المادة 101";
+  const artEn = cite?.labelEn || "Art. 101";
+  const base = { mode: "flex", cite, maxHours, minRest, span: flex?.span ?? 0, restMinutes: flex?.minutes ?? 0, flex };
+  const fail = (error: string, reason: string, reasonEn: string): any => ({ ...base, ok: false, error, reason, reasonEn, maxBlock: base.span });
+  if (!flex) return fail("FLEX_SHIFT_REQUIRED", "حدد بداية الوردية ونهايتها.", "Set the shift start and end.");
+  const stayCap = ruleValue("hours.workplace.maxHours", onDate);
+  if (flex.span > stayCap * 60) {
+    return fail(
+      "SHIFT_STAY_OVER_CAP",
+      `حضور الوردية ${hoursText(flex.span)} ساعة فوق ${stayCap} ساعة في موقع العمل (${art}).`,
+      `A ${hoursText(flex.span)} h presence is above ${stayCap} h at the workplace (${artEn}).`,
+    );
+  }
+  if (flex.minutes < minRest) {
+    return fail(
+      "FLEX_MINUTES_BELOW_MIN",
+      `مدة الراحة ${flex.minutes} دقيقة أقل من ${minRest} دقيقة نظامية (${art}).`,
+      `A ${flex.minutes}-minute break is below the statutory ${minRest} minutes (${artEn}).`,
+    );
+  }
+  if (flex.fromOff == null || flex.toOff == null) {
+    return fail("FLEX_WINDOW_REQUIRED", "حدد نافذة الراحة: من وإلى.", "Set the break window: from and to.");
+  }
+  if (flex.fromOff >= flex.span || flex.toOff > flex.span || flex.toOff <= flex.fromOff) {
+    return fail(
+      "FLEX_WINDOW_OUTSIDE_SHIFT",
+      `نافذة الراحة ⁦${flex.from}–${flex.to}⁩ خارج الوردية ⁦${shift.start}–${shift.end}⁩.`,
+      `The ${flex.from}–${flex.to} break window is outside the ${shift.start}–${shift.end} shift.`,
+    );
+  }
+  if (flex.toOff - flex.fromOff < flex.minutes) {
+    return fail(
+      "FLEX_WINDOW_TOO_SHORT",
+      `النافذة ⁦${flex.from}–${flex.to}⁩ أقصر من مدة الراحة ${flex.minutes} دقيقة.`,
+      `The ${flex.from}–${flex.to} window is shorter than the ${flex.minutes}-minute break.`,
+    );
+  }
+  const note = flex.split && !flex.splitEffective
+    ? { noteAr: `التقسيم يحتاج ${minRest * 2} دقيقة على الأقل — جزءان كل منهما ${minRest}.`, noteEn: `Splitting needs at least ${minRest * 2} minutes — two parts of ${minRest}.` }
+    : {};
+  if (flex.span <= maxMin) return { ...base, ok: true, maxBlock: flex.span, ...note };
+  const consecCite = citeRule("hours.rest.maxConsecutiveHours", onDate);
+  const cArt = consecCite?.labelAr || "المادة 101";
+  const cArtEn = consecCite?.labelEn || "Art. 101";
+  if (flex.fromOff > maxMin) {
+    return fail(
+      "FLEX_WINDOW_TOO_LATE",
+      `تبدأ نافذة الراحة ${flex.from} بعد ${hoursText(flex.fromOff)} من بداية الوردية — لا يبقى العمل قبلها ${maxHours} ساعات أو أقل (${cArt}).`,
+      `The window opens at ${flex.from}, ${hoursText(flex.fromOff)} into the shift — the work before it cannot stay within ${maxHours} hours (${cArtEn}).`,
+    );
+  }
+  if (flex.span - flex.toOff > maxMin) {
+    return fail(
+      "FLEX_WINDOW_TOO_EARLY",
+      `تنتهي نافذة الراحة ${flex.to} ويبقى بعدها ${hoursText(flex.span - flex.toOff)} عمل فوق حد ${maxHours} ساعات (${cArt}).`,
+      `The window closes at ${flex.to} with ${hoursText(flex.span - flex.toOff)} of work after it — above the ${maxHours}-hour limit (${cArtEn}).`,
+    );
+  }
+  // One part: a start s with s ≤ limit before it and span − s − minutes ≤ limit after it.
+  const lo = Math.max(flex.fromOff, flex.span - flex.minutes - maxMin);
+  const hi = Math.min(flex.toOff - flex.minutes, maxMin);
+  let ok = lo <= hi;
+  let maxBlock = ok ? Math.max(lo, flex.span - lo - flex.minutes) : flex.span;
+  if (!ok && flex.splitEffective) {
+    // Two parts: the first as late as the limit allows, the second as late as the window allows.
+    const p1 = minRest;
+    const p2 = flex.minutes - minRest;
+    const s1 = Math.min(maxMin, flex.toOff - flex.minutes);
+    const e1 = s1 + p1;
+    const s2 = Math.min(e1 + maxMin, flex.toOff - p2);
+    ok = s1 >= flex.fromOff && s2 >= e1 && flex.span - (s2 + p2) <= maxMin;
+    if (ok) maxBlock = Math.max(s1, s2 - e1, flex.span - s2 - p2);
+  }
+  if (!ok) {
+    return fail(
+      "FLEX_NO_LAWFUL_PLACEMENT",
+      `لا موضع للراحة داخل النافذة ⁦${flex.from}–${flex.to}⁩ يُبقي العمل قبلها وبعدها ${maxHours} ساعات أو أقل (${cArt}).`,
+      `No start inside the ${flex.from}–${flex.to} window keeps the work before and after it within ${maxHours} hours (${cArtEn}).`,
+    );
+  }
+  return { ...base, ok: true, maxBlock, ...note };
+}
+
+/**
+ * The break mode of one shift type, validated: BREAK_MODE_UNKNOWN, BREAK_MODE_NEEDS_103 (a stored
+ * «continuous» without the Minister's decision on the hours policy), and the flex gate's reasons.
+ * Fixed is checked by checkConsecutiveWorkGate as before. Returns { ok, mode, error?, reason?, reasonEn?, cite }.
+ */
+export function checkShiftBreakModeGate({ shift, onDate, continuous103 = false, maxConsecutiveHours }: any = {}): any {
+  const stored = shift?.breakMode;
+  if (stored != null && stored !== "" && !BREAK_MODES.includes(stored)) {
+    return { ok: false, mode: "fixed", error: "BREAK_MODE_UNKNOWN", reason: "نوع الراحة غير معروف — اختر ثابتة أو مرنة ببصمة.", reasonEn: "Unknown break mode — choose fixed or flex.", cite: citeRule("hours.rest.duringShiftMinutes", onDate) };
+  }
+  if (stored === "continuous" && continuous103 !== true) {
+    const cite = citeRule("hours.art103.cite", onDate);
+    return {
+      ok: false,
+      mode: "fixed",
+      error: "BREAK_MODE_NEEDS_103",
+      reason: `العمل المتواصل يحتاج قرار الوزير — فعّله من «لدي قرار الوزير للعمل المتواصل» أعلى أنواع الورديات (${cite?.labelAr || "المادة 103"}).`,
+      reasonEn: `Continuous work needs the Minister's decision — turn it on in «We hold the Minister's decision» above the shift types (${cite?.labelEn || "Art. 103"}).`,
+      cite,
+    };
+  }
+  const mode = shiftBreakMode(shift, { continuous103 });
+  if (mode === "continuous") return { ok: true, mode, via: "art103", cite: citeRule("hours.art103.cite", onDate) };
+  if (mode === "flex") return checkFlexBreakGate({ shift, onDate, maxConsecutiveHours });
+  return { ok: true, mode, cite: citeRule("hours.rest.duringShiftMinutes", onDate) };
+}
+
+/**
+ * The break list on an attendance day record → rows on the shift day's clock (after-midnight minutes
+ * of a night shift add 1440). Each row: { start, end, startMin, endMin, minutes, open, source, short,
+ * review, startAt, endAt }. An open break (no end) runs to `until` when given, else has no end.
+ */
+export function readDayBreaks(list: any, { shiftStart = null, until = null }: { shiftStart?: number | null; until?: number | null } = {}): any[] {
+  const lift = (m: number | null) => (m != null && shiftStart != null && m + 720 < shiftStart ? m + 1440 : m);
+  return (Array.isArray(list) ? list : [])
+    .map((row: any) => {
+      const s = lift(riyadhClockOf(row?.start));
+      if (s == null) return null;
+      const eRaw = riyadhClockOf(row?.end);
+      let e = eRaw == null ? null : lift(eRaw);
+      if (e != null && e < s) e += 1440;
+      const open = e == null;
+      const endMin = open ? (until == null ? null : Math.max(s, until)) : e;
+      return {
+        start: hmOfClock(s),
+        end: endMin == null ? "" : hmOfClock(endMin),
+        startMin: s,
+        endMin,
+        minutes: endMin == null ? 0 : endMin - s,
+        open,
+        source: row?.source === "assumed" ? "assumed" : "punch",
+        short: row?.short === true,
+        review: row?.review || null,
+        startAt: row?.start || null,
+        endAt: row?.end || null,
+      };
+    })
+    .filter(Boolean)
+    .sort((a: any, b: any) => a.startMin - b.startMin);
+}
+
+/**
+ * Where an unpunched flex break is assumed (Art. 102 still deducts it): at the prayer inside the
+ * window nearest its middle, else the window's middle — for the full minutes, kept inside the
+ * window and, when it fits, inside the presence. `latestStart` / `earliestStart` keep the work before
+ * (and after) it within the Art. 101 limit: the latest point that still keeps ≤ 5 h before it.
+ * `prayers` is a computePrayerTimes / stationPrayerTimes day ({ minutes: { fajr, dhuhr, asr, maghrib, isha } }) or null.
+ */
+export function placeAssumedFlexBreak({ flex, prayers = null, inMin = null, outMin = null, latestStart = null, earliestStart = null }: any = {}): any {
+  if (!flex || flex.fromMin == null || flex.toMin == null || !flex.minutes) return null;
+  const minutes = flex.minutes;
+  const mid = (flex.fromMin + flex.toMin) / 2;
+  let lo = flex.fromMin;
+  let hi = Math.max(flex.fromMin, flex.toMin - minutes);
+  const pLo = inMin == null ? lo : Math.max(lo, inMin);
+  const pHi = outMin == null ? hi : Math.min(hi, outMin - minutes);
+  if (pLo <= pHi) { lo = pLo; hi = pHi; }
+  // Art. 101: no more than the consecutive-hours limit before it (latestStart) and, when the window
+  // allows, after it (earliestStart). The limit before wins — the break must begin by the 5h mark.
+  if (latestStart != null) hi = Math.max(flex.fromMin, Math.min(hi, latestStart));
+  if (earliestStart != null) lo = Math.min(hi, Math.max(lo, earliestStart));
+  if (lo > hi) lo = hi;
+  let best: any = null;
+  for (const key of ["fajr", "dhuhr", "asr", "maghrib", "isha"]) {
+    let at = prayers?.minutes?.[key];
+    if (!Number.isFinite(at)) continue;
+    if (at + 720 < flex.shiftStart) at += 1440;
+    if (at < flex.fromMin || at >= flex.toMin) continue;
+    const d = Math.abs(at - mid);
+    if (!best || d < best.d) best = { d, key, at };
+  }
+  const want = best ? best.at : Math.round(mid - minutes / 2);
+  const startMin = Math.min(Math.max(want, lo), hi);
+  return {
+    start: hmOfClock(startMin),
+    end: hmOfClock(startMin + minutes),
+    startMin,
+    endMin: startMin + minutes,
+    minutes,
+    source: "assumed",
+    placedBy: best ? "prayer" : "middle",
+    prayerKey: best?.key || "",
+  };
+}
+
+/**
+ * One flex day read from its punches: { mode, flex, rows, punched, open, assumed, taken, remaining,
+ * runningMinutes, overMinutes (late return beyond the allowed minutes), shortCount, windowState,
+ * forDuty (rests deducted — punched and assumed), forConsec (the rests for Art. 101 — punched and
+ * assumed: an assumed break is a rest like a fixed one, not a breach), planned, assumedRunning }.
+ * Not flex → { mode, flex: null, …, forDuty: null } and the caller keeps its own reading.
+ * With none punched, the assumed break is decided at check-in (`planned`): the nearest prayer in the
+ * window, else its middle, no later than the consecutive-hours limit after the check-in. It begins
+ * when the clock reaches its start — `assumedRunning` until its end, as a punched break would — and a
+ * «بدأت راحتي» punch replaces it. A checkout inside it ends it there.
+ */
+export function resolveFlexDayBreaks({ shift, breaks, checkIn, checkOut, now, onDate, prayers = null, continuous103 = false }: any = {}): any {
+  const mode = shiftBreakMode(shift, { continuous103 });
+  const flex = mode === "flex" ? flexBreakOf(shift, onDate) : null;
+  const out: any = { mode, flex, rows: [], punched: [], open: null, assumed: null, taken: 0, remaining: flex?.minutes || 0, runningMinutes: 0, overMinutes: 0, shortCount: 0, windowState: "", forDuty: null, forConsec: null, planned: null, assumedRunning: false };
+  if (!flex) return out;
+  const lift = (m: number | null) => (m != null && m + 720 < flex.shiftStart ? m + 1440 : m);
+  const inM = lift(riyadhClockOf(checkIn));
+  let outM = lift(riyadhClockOf(checkOut));
+  if (inM != null && outM != null && outM <= inM) outM += 1440;
+  let nowM = outM != null ? outM : lift(riyadhClockOf(now));
+  if (inM != null && nowM != null && nowM < inM) nowM += 1440;
+  out.windowState = nowM == null || flex.fromMin == null ? "" : nowM < flex.fromMin ? "before" : nowM < flex.toMin ? "open" : "closed";
+  out.forDuty = [];
+  out.forConsec = [];
+  if (inM == null) return out;
+  const rows = readDayBreaks(breaks, { shiftStart: flex.shiftStart, until: nowM })
+    .map((row: any) => (row.open && outM != null ? { ...row, open: false, closedAtCheckout: true } : row));
+  const punched = rows.filter((row: any) => row.source === "punch");
+  const open = punched.find((row: any) => row.open) || null;
+  const taken = punched.filter((row: any) => !row.open).reduce((sum: number, row: any) => sum + row.minutes, 0);
+  const running = open && nowM != null ? Math.max(0, nowM - open.startMin) : 0;
+  out.punched = punched;
+  out.open = open;
+  out.taken = taken;
+  out.runningMinutes = running;
+  out.remaining = Math.max(0, flex.minutes - taken);
+  out.overMinutes = Math.max(0, taken + running - flex.minutes);
+  out.shortCount = punched.filter((row: any) => !row.open && row.minutes < flex.minPart).length;
+  let assumed: any = null;
+  out.planned = null;
+  out.assumedRunning = false;
+  if (!punched.length) {
+    const stored = rows.find((row: any) => row.source === "assumed");
+    const endM = nowM;
+    const consecMax = (ruleValue("hours.rest.maxConsecutiveHours", onDate) || 5) * 60;
+    const touches = endM != null && inM < flex.toMin && endM > flex.fromMin;
+    // Decided at check-in, so the notice can fire the minute it begins: never later than the 5h mark.
+    const placed = inM < flex.toMin
+      ? placeAssumedFlexBreak({ flex, prayers, inMin: inM, latestStart: inM + consecMax, earliestStart: flex.shiftStart + flex.span - consecMax - flex.minutes })
+      : null;
+    const plan = placed && placed.startMin >= inM ? placed : null;
+    out.planned = plan;
+    if (stored) {
+      assumed = { ...stored, source: "assumed" };
+    } else if (plan && endM != null && endM >= plan.startMin && (outM == null || plan.startMin < outM)) {
+      assumed = outM != null && plan.endMin > outM
+        ? { ...plan, end: hmOfClock(outM), endMin: outM, minutes: outM - plan.startMin, closedAtCheckout: true }
+        : plan;
+      out.assumedRunning = outM == null && endM < plan.endMin;
+    } else if (touches && outM != null && outM - inM > consecMax) {
+      assumed = placeAssumedFlexBreak({ flex, prayers, inMin: inM, outMin: outM });
+    }
+  }
+  out.assumed = assumed;
+  out.rows = [...punched, ...(assumed ? [assumed] : [])].sort((a: any, b: any) => a.startMin - b.startMin);
+  out.forDuty = out.rows.filter((row: any) => row.endMin != null && row.endMin > row.startMin).map((row: any) => ({ start: row.start, end: row.end }));
+  // Art. 101: an assumed break is a rest like a fixed one — the 5h check reads it too (no breach).
+  out.forConsec = out.forDuty.slice();
+  return out;
+}
+
+/**
+ * «بدأت راحتي» / «أنهيت راحتي» on a flex shift — one gate for the punch card and the server.
+ * input: { action: "start"|"end", shift, breaks (the day record's list), checkIn, checkOut, now, onDate,
+ * continuous103 }. Times may be ISO instants or "HH:MM". Named reasons: NOT_FLEX_BREAK, NOT_CHECKED_IN,
+ * DAY_CLOSED, BREAK_ALREADY_OPEN, BREAK_WINDOW_NOT_OPEN («تبدأ نافذة الراحة 11:00»), BREAK_WINDOW_CLOSED,
+ * BREAK_ALREADY_TAKEN (no split), BREAK_DONE, BREAK_REMAINDER_SHORT, NO_OPEN_BREAK, BREAK_BELOW_MIN
+ * («أقل راحة نظامية 30 دقيقة (المادة 101)») — unless the shift type allows an early end: then ok with
+ * `short: true` and the reason kept, so the card can say it will be recorded short.
+ */
+export function checkFlexBreakPunchGate(input: any = {}): any {
+  const { action, shift, breaks, checkIn, checkOut, now, onDate, continuous103 = false } = input;
+  const cite = citeRule("hours.rest.duringShiftMinutes", onDate);
+  const art = cite?.labelAr || "المادة 101";
+  const artEn = cite?.labelEn || "Art. 101";
+  const day = resolveFlexDayBreaks({ shift, breaks, checkIn, checkOut: null, now, onDate, continuous103 });
+  const flex = day.flex;
+  const base = { cite, remaining: day.remaining, taken: day.taken, open: day.open, runningMinutes: day.runningMinutes, windowState: day.windowState, flex };
+  const fail = (error: string, reason: string, reasonEn: string): any => ({ ...base, ok: false, error, reason, reasonEn });
+  if (!flex) return fail("NOT_FLEX_BREAK", "راحة هذه الوردية ثابتة في الجدول — لا تحتاج بصمة.", "This shift's break is fixed on the roster — no punch needed.");
+  if (riyadhClockOf(checkIn) == null) return fail("NOT_CHECKED_IN", "سجّل حضورك أولاً — الراحة داخل الدوام.", "Check in first — the break sits inside the duty.");
+  if (checkOut) return fail("DAY_CLOSED", "اليوم مغلق بالانصراف.", "The day is closed by the checkout.");
+  if (action === "start") {
+    if (day.open) return fail("BREAK_ALREADY_OPEN", `راحتك مفتوحة منذ ${day.open.start} — أنهِها أولاً.`, `Your break has been open since ${day.open.start} — end it first.`);
+    if (day.windowState === "before") return fail("BREAK_WINDOW_NOT_OPEN", `تبدأ نافذة الراحة ${flex.from}`, `The break window opens at ${flex.from}`);
+    if (day.windowState === "closed") return fail("BREAK_WINDOW_CLOSED", `انتهت نافذة الراحة ${flex.to}`, `The break window closed at ${flex.to}`);
+    if (day.punched.length && !flex.splitEffective) return fail("BREAK_ALREADY_TAKEN", "أخذت راحتك اليوم — هذه الوردية لا تقسّم الراحة.", "You have taken today's break — this shift does not split it.");
+    if (day.remaining <= 0) {
+      const taken = Math.round(Number(day.taken) || 0);
+      return taken > flex.minutes
+        ? fail("BREAK_DONE", `أخذت ${taken} دقيقة راحة اليوم من ${flex.minutes} — الزيادة ${taken - flex.minutes} دقيقة عودة متأخرة.`, `You took ${taken} minutes of break today out of ${flex.minutes} — the extra ${taken - flex.minutes} is a late return.`)
+        : fail("BREAK_DONE", `أخذت راحتك كاملة اليوم (${flex.minutes} دقيقة).`, `You have taken your full break today (${flex.minutes} minutes).`);
+    }
+    if (day.punched.length && day.remaining < flex.minPart) {
+      return fail("BREAK_REMAINDER_SHORT", `الباقي ${day.remaining} دقيقة أقل من ${flex.minPart} — لا يكفي جزءاً نظامياً (${art}).`, `The ${day.remaining} minutes left are under ${flex.minPart} — not a lawful part (${artEn}).`);
+    }
+    return { ...base, ok: true, part: day.punched.length + 1 };
+  }
+  if (action === "end") {
+    if (!day.open) return fail("NO_OPEN_BREAK", "لا راحة مفتوحة لإنهائها.", "There is no open break to end.");
+    const minutes = day.runningMinutes;
+    const over = Math.max(0, minutes - day.remaining);
+    if (minutes < flex.minPart) {
+      const reason = `أقل راحة نظامية ${flex.minPart} دقيقة (${art})`;
+      const reasonEn = `The statutory minimum break is ${flex.minPart} minutes (${artEn})`;
+      if (flex.earlyEnd) return { ...base, ok: true, short: true, minutes, over, reason, reasonEn, error: "BREAK_BELOW_MIN" };
+      return { ...fail("BREAK_BELOW_MIN", reason, reasonEn), minutes, endsAtMin: day.open.startMin + flex.minPart };
+    }
+    // Ending a part here may leave a remainder too short to be a lawful part — it then counts as work.
+    const leftover = Math.max(0, day.remaining - minutes);
+    if (flex.splitEffective && leftover > 0 && leftover < flex.minPart) {
+      return {
+        ...base,
+        ok: true,
+        short: false,
+        minutes,
+        over,
+        leftover,
+        warn: `إن أنهيتها الآن سيبقى ${leftover} دقيقة لا تكفي جزءاً (أقل من ${flex.minPart}) — تُحسب عملاً لا راحة.`,
+        warnEn: `Ending now leaves ${leftover} min — under the ${flex.minPart}-minute part, so it counts as work, not rest.`,
+      };
+    }
+    return { ...base, ok: true, short: false, minutes, over };
+  }
+  return fail("BREAK_ACTION_UNKNOWN", "إجراء راحة غير معروف.", "Unknown break action.");
+}
+
+/** A client-placed assumed break the server may store: inside the window, the full minutes (or cut by the checkout inside it), no punches. */
+export function checkAssumedBreakGate({ shift, breaks, start, end, onDate, checkOut = null }: any = {}): any {
+  const flex = flexBreakOf(shift, onDate);
+  const fail = (error: string, reason: string, reasonEn: string): any => ({ ok: false, error, reason, reasonEn });
+  if (!flex) return fail("NOT_FLEX_BREAK", "راحة هذه الوردية ثابتة.", "This shift's break is fixed.");
+  if (readDayBreaks(breaks).some((row: any) => row.source === "punch")) return fail("BREAK_PUNCHED", "الراحة مثبتة ببصمة — لا تُفترض.", "The break is punched — it is not assumed.");
+  const lift = (m: number | null) => (m != null && m + 720 < flex.shiftStart ? m + 1440 : m);
+  const s = lift(clockOfHm(start));
+  let e = lift(clockOfHm(end));
+  if (s == null || e == null) return fail("ASSUMED_BREAK_TIME", "وقت الراحة المفترضة غير مقروء.", "The assumed break time is unreadable.");
+  if (e < s) e += 1440;
+  const outClock = checkOut == null ? null : riyadhClockOf(checkOut);
+  let outM = outClock == null ? null : lift(outClock);
+  if (outM != null && outM < s) outM += 1440;
+  const cutAtCheckout = outM != null && e === outM && e - s > 0 && e - s < flex.minutes;
+  if (e - s !== flex.minutes && !cutAtCheckout) return fail("ASSUMED_BREAK_MINUTES", `الراحة المفترضة ${flex.minutes} دقيقة كاملة.`, `An assumed break is the full ${flex.minutes} minutes.`);
+  if (s < flex.fromMin || e > flex.toMin) return fail("ASSUMED_BREAK_OUTSIDE", `الراحة المفترضة داخل النافذة ⁦${flex.from}–${flex.to}⁩.`, `An assumed break sits inside the ${flex.from}–${flex.to} window.`);
+  return { ok: true, start: hmOfClock(s), end: hmOfClock(e), minutes: e - s };
+}
+
+/**
+ * Art. 101 — no more than five consecutive hours without a rest of ≥ 30 minutes "each time".
+ * One or more breaks: `breaks` (placed or unplaced) or `breakCount` with `restMinutes` split evenly.
+ * A missing restMinutes uses the statutory 30 so existing 8 h windows still publish.
+ * `continuous103`: the Minister's continuous-work case — rest is organised during work (Art. 103).
+ * `maxConsecutiveHours`: a category ceiling (Regs Art. 23(5) cleaners: 6). `exempt101`: Art. 108 category.
+ */
+export function checkConsecutiveWorkGate(input: any = {}): any {
   const onDate = input.onDate;
-  const maxHours = ruleValue("hours.rest.maxConsecutiveHours", onDate);
+  const maxHours = Number(input.maxConsecutiveHours) > 0 ? Number(input.maxConsecutiveHours) : ruleValue("hours.rest.maxConsecutiveHours", onDate);
   const minRest = ruleValue("hours.rest.duringShiftMinutes", onDate);
   const cite = citeRule("hours.rest.maxConsecutiveHours", onDate);
   const span = minutesBetween(input.start || "00:00", input.end || "00:00");
   const maxMin = maxHours * 60;
+  if (input.exempt101 === true) {
+    return { ok: true, via: "art108", cite: citeRule("hours.art108.cite", onDate), span, maxHours, minRest, restMinutes: 0, maxBlock: span };
+  }
+  if (input.continuous103 === true) {
+    return { ok: true, via: "art103", cite: citeRule("hours.art103.cite", onDate), span, maxHours, minRest, restMinutes: 0, maxBlock: span };
+  }
+  // «راحة مرنة ببصمة»: the window decides, not a placed or centred break.
+  if (input.breakMode === "flex") {
+    return checkFlexBreakGate({ shift: { start: input.start, end: input.end, breakMode: "flex", flexBreak: input.flexBreak }, onDate, maxConsecutiveHours: input.maxConsecutiveHours });
+  }
   if (span <= 0 || span <= maxMin) {
-    return {
-      ok: true as const,
-      cite,
-      span,
-      maxHours,
-      minRest,
-      restMinutes: 0,
-      maxBlock: Math.max(0, span),
-    };
+    return { ok: true, cite, span, maxHours, minRest, restMinutes: 0, maxBlock: Math.max(0, span) };
+  }
+  const placed = shiftBreaks({ start: input.start, breaks: input.breaks });
+  if (placed.length) {
+    const rest = placed.reduce((sum: number, row: any) => sum + row.minutes, 0);
+    const qualifying = placed.filter((row: any) => row.minutes >= minRest);
+    let maxBlock: number;
+    if (!qualifying.length) {
+      maxBlock = span - rest;
+    } else if (qualifying.every((row: any) => row.from != null)) {
+      let cursor = 0;
+      maxBlock = 0;
+      for (const row of qualifying) {
+        maxBlock = Math.max(maxBlock, row.from - cursor);
+        cursor = row.to;
+      }
+      maxBlock = Math.max(maxBlock, span - cursor);
+    } else {
+      maxBlock = Math.ceil(Math.max(0, span - rest) / (qualifying.length + 1));
+    }
+    if (!qualifying.length || maxBlock > maxMin) {
+      return {
+        ok: false,
+        error: qualifying.length ? "REST_5H_BLOCK_TOO_LONG" : "REST_5H_REQUIRED",
+        reason: qualifying.length
+          ? `مع ${qualifying.length} راحة يبقى أطول مقطع ${Math.round((maxBlock / 60) * 10) / 10} ساعة فوق حد ${maxHours} ساعات — ${cite?.labelAr || "المادة 101"}.`
+          : `لا راحة لا تقل عن ${minRest} دقيقة في المرة الواحدة — لا يجوز العمل أكثر من ${maxHours} ساعات متواصلة (${cite?.labelAr || "المادة 101"}).`,
+        reasonEn: qualifying.length
+          ? `With ${qualifying.length} rest(s) the longest block is ${Math.round((maxBlock / 60) * 10) / 10} h above the ${maxHours} h cap — Labour Law ${cite?.labelEn || "Art. 101"}.`
+          : `No rest of at least ${minRest} minutes at a time — no more than ${maxHours} consecutive hours (Labour Law ${cite?.labelEn || "Art. 101"}).`,
+        cite,
+        span,
+        maxHours,
+        minRest,
+        restMinutes: rest,
+        maxBlock,
+        breaks: qualifying.length,
+      };
+    }
+    return { ok: true, cite, span, maxHours, minRest, restMinutes: rest, maxBlock, breaks: qualifying.length };
   }
   const rest = input.restMinutes == null ? minRest : Math.max(0, Number(input.restMinutes) || 0);
+  const count = Math.max(1, Math.floor(Number(input.breakCount) || 1));
   if (rest < minRest) {
     return {
-      ok: false as const,
-      error: "REST_5H_REQUIRED" as const,
+      ok: false,
+      error: "REST_5H_REQUIRED",
       reason: `لا يجوز تشغيل العامل أكثر من ${maxHours} ساعات متواصلة دون راحة لا تقل عن ${minRest} دقيقة — ${cite?.labelAr || "المادة 101"}.`,
       reasonEn: `A worker may not work more than ${maxHours} consecutive hours without a rest of at least ${minRest} minutes — Labour Law ${cite?.labelEn || "Art. 101"}.`,
       cite,
@@ -82,31 +587,26 @@ export function checkConsecutiveWorkGate(input: {
       maxBlock: span,
     };
   }
+  // Each rest must be ≥ minRest "in one go" — a total too small to split stays fewer breaks.
+  const breaks = Math.max(1, Math.min(count, Math.floor(rest / minRest)));
   const work = Math.max(0, span - rest);
-  const maxBlock = Math.ceil(work / 2);
+  const maxBlock = Math.ceil(work / (breaks + 1));
   if (maxBlock > maxMin) {
     return {
-      ok: false as const,
-      error: "REST_5H_BLOCK_TOO_LONG" as const,
-      reason: `حتى مع راحة ${rest} دقيقة يبقى أطول مقطع ${Math.round(maxBlock / 60 * 10) / 10} ساعة فوق حد ${maxHours} ساعات — ${cite?.labelAr || "المادة 101"}.`,
-      reasonEn: `Even with a ${rest}-minute rest the longest block is ${Math.round(maxBlock / 60 * 10) / 10} h above the ${maxHours} h cap — Labour Law ${cite?.labelEn || "Art. 101"}.`,
+      ok: false,
+      error: "REST_5H_BLOCK_TOO_LONG",
+      reason: `حتى مع راحة ${rest} دقيقة يبقى أطول مقطع ${Math.round((maxBlock / 60) * 10) / 10} ساعة فوق حد ${maxHours} ساعات — ${cite?.labelAr || "المادة 101"}.`,
+      reasonEn: `Even with a ${rest}-minute rest the longest block is ${Math.round((maxBlock / 60) * 10) / 10} h above the ${maxHours} h cap — Labour Law ${cite?.labelEn || "Art. 101"}.`,
       cite,
       span,
       maxHours,
       minRest,
       restMinutes: rest,
       maxBlock,
+      breaks,
     };
   }
-  return {
-    ok: true as const,
-    cite,
-    span,
-    maxHours,
-    minRest,
-    restMinutes: rest,
-    maxBlock,
-  };
+  return { ok: true, cite, span, maxHours, minRest, restMinutes: rest, maxBlock, breaks };
 }
 
 export function dateKey(year: number, monthIndex: number, day: number) {
@@ -217,7 +717,14 @@ export function checkPublishGates(input: {
   onLeaveIds?: Iterable<string>;
   restDow?: number;
   namesById?: Record<string, string>;
-  employees?: Array<{ id?: string; employeeId?: string; religion?: string; profile?: { religion?: string } }>;
+  employees?: Array<any>;
+  /** Full schedule (sunExposure marks, night flags) — enables the 18632 / juvenile / 3337 per-person blocks. */
+  schedule?: any;
+  station?: any;
+  settings?: any;
+  company?: any;
+  laborCalendar?: any;
+  today?: string;
 }): PublishGateResult {
   const year = Number(input.year);
   const monthIndex = Number(input.monthIndex);
@@ -386,8 +893,10 @@ export function checkPublishGates(input: {
   }
 
   const consecArticle = citeRule("hours.rest.maxConsecutiveHours", onDate)?.article;
+  const policy = { ...(input.company?.hoursPolicy || {}), ...(input.company?.attendanceSettings?.hoursPolicy || {}) };
+  const continuous103 = policy.continuousWork103 === true || String(policy.continuousWork103) === "true";
   const consecFails = shiftTypes
-    .map((st) => ({ st, gate: checkConsecutiveWorkGate({ start: st.start, end: st.end, restMinutes: st.restMinutes, onDate }) }))
+    .map((st: any) => ({ st, gate: checkConsecutiveWorkGate({ start: st.start, end: st.end, restMinutes: st.restMinutes, breaks: st.breaks, breakCount: st.breakCount, breakMode: st.breakMode, flexBreak: st.flexBreak, continuous103, onDate }) }))
     .filter((row) => !row.gate.ok);
   const consecFail = consecFails[0] || null;
   const heatFails = shiftTypes
@@ -558,6 +1067,26 @@ export function checkPublishGates(input: {
       noteEn: `Classification under decision 18632: any work inside ${nightWin} performs night work. A night worker works ${nightWorkerHours} hours or more in the window. No Labour Law chip.`,
     },
   ];
+
+  if (input.schedule) {
+    // Server twin of the client's per-person blocks (18632, juveniles 161–166, 3337) — same ids.
+    const law = rosterLawChecks({
+      year,
+      monthIndex,
+      schedule: { ...input.schedule, shiftTypes, assignments },
+      employees,
+      station: input.station,
+      settings: input.settings,
+      company: input.company,
+      laborCalendar: input.laborCalendar,
+      today: input.today,
+    });
+    const lawIds = new Set(law.map((row) => row.id));
+    for (let i = checks.length - 1; i >= 0; i -= 1) if (lawIds.has(checks[i].id)) checks.splice(i, 1);
+    for (const row of law) {
+      checks.push({ id: row.id, ok: row.ok, block: row.block, article: row.article, labelAr: row.labelAr, labelEn: row.labelEn, noteAr: row.noteAr, noteEn: row.noteEn });
+    }
+  }
 
   const failed = checks.find((c) => !c.ok && c.block !== false) || null;
   return {

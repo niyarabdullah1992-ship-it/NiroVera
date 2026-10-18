@@ -1,9 +1,9 @@
 import {
   calendarDateKey,
-  dayAttendanceStatus,
   employeeScheduledOn,
-  hasPublishedScheduleOn,
 } from "./attendanceCalendar.js";
+import { dutyPersonState, myDutyDay } from "./dutyDay.js";
+import { laborCalendarOf } from "./ummAlQuraCalendar.js";
 import { liveCalendarProofs } from "./calendarProofs.js";
 import {
   visitorProofClockSource,
@@ -12,8 +12,9 @@ import {
   visitorProofsOnly,
 } from "./visitorProof.js";
 import { hydrateEmployeesLeave } from "./leaveDerivations.js";
-import { approvedLeaveOnDay, isStatutoryOffDay, leaveTypeLabel, weekendLeavePeople } from "./leaveTypes.js";
+import { approvedLeaveOnDay, leaveTypeLabel } from "./leaveTypes.js";
 import { citeLeaveType } from "./laborRules.js";
+import { AWAIT_LABEL, minutesPhrase, personDayFlags } from "./calendarDayFlags.js";
 import { LEAVE_CITE_STYLE, LEAVE_STYLE } from "./shiftWeek.js";
 import {
   canSeeOpsTask,
@@ -193,14 +194,6 @@ export function chainBreakFor(rows, { gpsRequired, dateKey, todayKey }) {
   return null;
 }
 
-function personState(status) {
-  if (status === "late") return "late";
-  if (status === "absent") return "abs";
-  if (status === "on_leave") return "leave";
-  if (status === "present") return "on";
-  return null;
-}
-
 export function deriveDayRecord({
   date,
   employees = [],
@@ -215,6 +208,9 @@ export function deriveDayRecord({
   data,
   safety = [],
   view = "team",
+  // Whose violations, waiting punches and pending requests the day reads: "all" for the management
+  // lane, "self" on the employee lane (colleagues' requests and decisions stay theirs).
+  flagsFor = "all",
 }) {
   if (!date) return null;
   const dateKey = calendarDateKey(date);
@@ -223,59 +219,46 @@ export function deriveDayRecord({
   const roster = view === "me" && currentUser
     ? hydrated.filter((employee) => String(employee.id) === String(currentUser.id))
     : hydrated;
-  const weekendHits = weekend ? weekendLeavePeople(roster, dateKey) : null;
-  if (weekend && (!weekendHits || !weekendHits.length)) return null;
-
   const byEmployee = Object.fromEntries(
     (rows || []).map((row) => [String(row.employee_id ?? row.employeeId), row]),
   );
+  // One source of truth: each person's state is the same duty-day derivation the employee's «شهري»
+  // line and file read (myDutyDay) — absence only on an assigned published shift, lateness net of
+  // excusals, leave and official holidays outside attendance. A person's day reads the whole roster
+  // (as on their file); the station scope only decides who is listed.
+  const scope = Array.isArray(data?.schedules) ? data : { ...(data || {}), schedules };
+  const calendar = laborCalendarOf(data);
   const people = [];
-  if (weekendHits) {
-    for (const hit of weekendHits) {
-      people.push({
-        id: hit.id,
-        name: hit.name,
-        state: "leave",
-        time: "—",
-        lateMinutes: 0,
-        filed: hit.request || null,
-        clash: employeeScheduledOn(schedules, hit.id, dateKey),
-      });
-    }
-  } else {
-    for (const employee of roster) {
-      const request = approvedLeaveOnDay(employee, dateKey);
-      const off = isStatutoryOffDay(employee, dateKey);
-      const onLeave = !!off;
-      const status = dayAttendanceStatus({
-        employee,
-        row: byEmployee[String(employee.id)],
-        dateKey,
-        schedules,
-        todayKey,
-        onLeave,
-      });
-      const state = personState(status);
-      if (!state) continue;
-      const row = byEmployee[String(employee.id)];
-      const lateMinutes = Number(row?.late_minutes ?? row?.lateMinutes ?? 0) || 0;
-      const clash = state === "leave" && off?.kind !== "official" && employeeScheduledOn(schedules, employee.id, dateKey);
-      people.push({
-        id: employee.id,
-        name: employee.name || employee.id,
-        state,
-        time: (state === "abs" || state === "leave") ? "—" : clockOf(row?.check_in_at || row?.checkInAt),
-        lateMinutes,
-        filed: request || null,
-        clash,
-      });
-    }
+  for (const employee of roster) {
+    const row = byEmployee[String(employee.id)];
+    const day = myDutyDay({ employee, data: scope, row, key: dateKey, todayKey, calendar });
+    const state = dutyPersonState(day);
+    if (!state) continue;
+    const request = approvedLeaveOnDay(employee, dateKey);
+    const clash = state === "leave" && day.off?.kind !== "official" && employeeScheduledOn(schedules, employee.id, dateKey);
+    people.push({
+      id: employee.id,
+      name: employee.name || employee.id,
+      state,
+      time: (state === "abs" || state === "leave") ? "—" : clockOf(day.inAt),
+      lateMinutes: day.inAt ? day.lateMinutes : 0,
+      filed: request || null,
+      clash,
+    });
   }
+  // Beyond the state: violations, punches waiting on a manager, pending طلباتي — one reading per person.
+  const flagged = [];
+  for (const employee of roster) {
+    if (flagsFor === "self" && String(employee.id) !== String(currentUser?.id)) continue;
+    if (flagsFor === "none") break;
+    const flags = personDayFlags({ employee, row: byEmployee[String(employee.id)], data, dateKey, todayKey });
+    if (!(flags.lateReturn || flags.early || flags.overtime || flags.awaiting.length || flags.pending.length)) continue;
+    flagged.push({ id: employee.id, name: employee.name || employee.id, ...flags });
+  }
+  // Fri/Sat stay quiet unless someone has a state (worked, absent from an assigned shift, or on leave).
+  if (weekend && !people.length && !flagged.length) return null;
 
-  const published = hasPublishedScheduleOn(schedules, dateKey);
-  const rosterPeople = (!published && !rows.length)
-    ? people.filter((person) => person.state === "leave")
-    : people;
+  const rosterPeople = people;
 
   const on = rosterPeople.filter((p) => p.state === "on").length;
   const late = rosterPeople.filter((p) => p.state === "late").length;
@@ -291,7 +274,7 @@ export function deriveDayRecord({
   const hazards = openHazardsOnDay(safety, dateKey);
   const allTasks = mine.concat(team);
   const broke = chainBreakFor(rows, { gpsRequired, dateKey, todayKey });
-  const hasSignal = head || mine.length || team.length || proofs.length || hazards.length;
+  const hasSignal = head || mine.length || team.length || proofs.length || hazards.length || flagged.length;
   if (!hasSignal && dateKey !== todayKey) return null;
 
   return {
@@ -317,6 +300,13 @@ export function deriveDayRecord({
     hazards,
     leaveClash: rosterPeople.filter((person) => person.clash).length,
     filed: rosterPeople.filter((person) => person.filed).length,
+    flagged,
+    lateReturn: flagged.filter((p) => p.lateReturn).length,
+    early: flagged.filter((p) => p.early).length,
+    ot: flagged.filter((p) => p.overtime).length,
+    otMinutes: flagged.reduce((sum, p) => sum + p.overtime, 0),
+    awaiting: flagged.reduce((sum, p) => sum + p.awaiting.length, 0),
+    pending: flagged.reduce((sum, p) => sum + p.pending.length, 0),
   };
 }
 
@@ -368,7 +358,7 @@ export function filedLeaveBanner(pack, monthName, ar = true) {
   return `${countAr(pack.list.length, "إجازة واحدة معتمدة", "إجازتان معتمدتان", "إجازات معتمدة", "إجازة معتمدة")} من «طلباتي» في ${monthName} (${types}) · ${countAr(pack.dayCount, "يوم واحد في هذا الشهر", "يومان في هذا الشهر", "أيام في هذا الشهر", "يوماً في هذا الشهر")} — مُعلَّمة في الشبكة وخارج حساب الحضور.`;
 }
 
-export function eventGroups(rec, ar, currentUser) {
+export function eventGroups(rec, ar, currentUser, { manage = true } = {}) {
   if (!rec) return [];
   const st = {
     done: [ar ? "منجزة" : "Done", OC.greenText],
@@ -437,6 +427,86 @@ export function eventGroups(rec, ar, currentUser) {
         stColor: OC.greenText,
         time: clockOf(item.startedAt || item.createdAt),
       })),
+    });
+  }
+  const flagged = rec.flagged || [];
+  const dutyTo = manage ? "/app/attendance?lane=manage&tab=team" : "/app/attendance";
+  const reqTo = manage ? "/app/requests/manage" : "/app/requests";
+  const violRows = [];
+  for (const person of flagged) {
+    if (person.lateReturn) {
+      violRows.push({
+        text: ar ? `${person.name} — عودة متأخرة من الراحة ${minutesPhrase(person.lateReturn, true)}` : `${person.name} — late return from break, ${minutesPhrase(person.lateReturn, false)}`,
+        state: ar ? "عودة متأخرة" : "Late return",
+        stColor: OC.goldText,
+        time: "—",
+        to: dutyTo,
+      });
+    }
+    if (person.early) {
+      violRows.push({
+        text: ar ? `${person.name} — انصرف قبل نهاية الوردية بـ${minutesPhrase(person.early, true)}` : `${person.name} — left ${minutesPhrase(person.early, false)} before shift end`,
+        state: ar ? "انصراف مبكر" : "Early leave",
+        stColor: OC.goldText,
+        time: "—",
+        to: dutyTo,
+      });
+    }
+    if (person.overtime) {
+      violRows.push({
+        text: ar ? `${person.name} — إضافي مسجّل ${minutesPhrase(person.overtime, true)}` : `${person.name} — ${minutesPhrase(person.overtime, false)} overtime recorded`,
+        state: ar ? "إضافي" : "Overtime",
+        stColor: OC.mid,
+        time: "—",
+        to: reqTo,
+      });
+    }
+  }
+  if (violRows.length) {
+    out.push({
+      title: ar ? "مخالفات الدوام والإضافي" : "Duty breaches and overtime",
+      color: OC.goldText,
+      scope: ar ? "من البصمة" : "From the punches",
+      scopeColor: OC.goldText,
+      scopeBg: OC.goldBg,
+      scopeBorder: OC.goldBd,
+      rows: violRows,
+    });
+  }
+  const waitRows = flagged.flatMap((person) => person.awaiting.map((face) => ({
+    text: `${person.name} — ${AWAIT_LABEL[face]?.[ar ? 0 : 1] || face}`,
+    state: ar ? "بانتظار القرار" : "Awaiting decision",
+    stColor: OC.abs,
+    time: "—",
+    to: dutyTo,
+  })));
+  if (waitRows.length) {
+    out.push({
+      title: ar ? "بصمات بانتظار القرار" : "Punches awaiting a decision",
+      color: OC.abs,
+      scope: ar ? "قرار المدير" : "Manager decides",
+      scopeColor: OC.abs,
+      scopeBg: OC.absBg,
+      scopeBorder: OC.absBd,
+      rows: waitRows,
+    });
+  }
+  const pendRows = flagged.flatMap((person) => person.pending.map((item) => ({
+    text: `${person.name} — ${ar ? item.label : item.labelEn}`,
+    state: ar ? "معلّق" : "Pending",
+    stColor: OC.goldText,
+    time: "—",
+    to: reqTo,
+  })));
+  if (pendRows.length) {
+    out.push({
+      title: ar ? "طلبات معلّقة لهذا اليوم" : "Pending requests for this day",
+      color: OC.goldText,
+      scope: ar ? "من طلباتي" : "From My Requests",
+      scopeColor: OC.goldText,
+      scopeBg: OC.goldBg,
+      scopeBorder: OC.goldBd,
+      rows: pendRows,
     });
   }
   const clashPeople = (rec.people || []).filter((person) => person.clash);
@@ -602,7 +672,7 @@ export function empStats(days, directory = []) {
     return hit?.name || fallback || id;
   };
   const touch = (id, name) => acc[id] || (acc[id] = {
-    id, name: nameOf(id, name), on: 0, late: 0, abs: 0, leave: 0, done: 0, prog: 0, over: 0, hse: 0, days: 0,
+    id, name: nameOf(id, name), on: 0, late: 0, abs: 0, leave: 0, done: 0, prog: 0, over: 0, viol: 0, ot: 0, wait: 0, hse: 0, days: 0,
   });
   for (const employee of directory || []) {
     if (employee?.id == null) continue;
@@ -622,6 +692,12 @@ export function empStats(days, directory = []) {
         row[item.bucket] += 1;
       }
     }
+    for (const person of rec.flagged || []) {
+      const row = touch(person.id, person.name);
+      row.viol += (person.lateReturn ? 1 : 0) + (person.early ? 1 : 0);
+      row.ot += person.overtime;
+      row.wait += person.awaiting.length + person.pending.length;
+    }
     if (rec.hse) {
       const first = rec.people?.[0];
       if (first) touch(first.id, first.name).hse += rec.hse;
@@ -630,7 +706,7 @@ export function empStats(days, directory = []) {
   return Object.values(acc);
 }
 
-export const CMP_KEYS = ["on", "late", "abs", "leave", "done", "prog", "over", "hse"];
+export const CMP_KEYS = ["on", "late", "abs", "leave", "viol", "ot", "wait", "done", "prog", "over", "hse"];
 
 export function toggleCmpKeys(current, key) {
   const list = (Array.isArray(current) ? current : [current]).filter((item) => CMP_KEYS.includes(item));
@@ -644,7 +720,7 @@ export function cmpScore(row, keys) {
 }
 
 export function emptyRec() {
-  return { head: 0, on: 0, late: 0, abs: 0, leave: 0, tDone: 0, tProg: 0, tOver: 0, hse: 0 };
+  return { head: 0, on: 0, late: 0, abs: 0, leave: 0, tDone: 0, tProg: 0, tOver: 0, hse: 0, lateReturn: 0, early: 0, ot: 0, otMinutes: 0, awaiting: 0, pending: 0 };
 }
 
 export function sumRecs(days) {
@@ -660,6 +736,12 @@ export function sumRecs(days) {
       tProg: acc.tProg + rec.tProg,
       tOver: acc.tOver + rec.tOver,
       hse: acc.hse + rec.hse,
+      lateReturn: acc.lateReturn + (rec.lateReturn || 0),
+      early: acc.early + (rec.early || 0),
+      ot: acc.ot + (rec.ot || 0),
+      otMinutes: acc.otMinutes + (rec.otMinutes || 0),
+      awaiting: acc.awaiting + (rec.awaiting || 0),
+      pending: acc.pending + (rec.pending || 0),
       days: acc.days + 1,
     };
   }, { ...emptyRec(), days: 0 });

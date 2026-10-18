@@ -4,6 +4,7 @@ import { formatDayMonthYear, formatMonthYear } from "./dateFormat.js";
 import { employeeScheduledOn, hasPublishedScheduleOn } from "./attendanceCalendar.js";
 import { countPersonalHseDuty, deriveFairHseRates, PERF_WEIGHTS } from "./perfDerivations.js";
 import { taskBelongsTo, taskIsProven } from "./hcmDerivations.js";
+import { taskQualitySummary } from "./taskQuality.js";
 
 export const MIN_PROOF = 5;
 
@@ -41,26 +42,35 @@ export function monthsInRange(from, to) {
   return out;
 }
 
-export function rangePresets(today = isoDay()) {
-  const year = Number(today.slice(0, 4));
-  const month = Number(today.slice(5, 7));
-  const quarter = Math.floor((month - 1) / 3);
-  const qStartMonth = quarter * 3 + 1;
-  const prevQ = quarter === 0 ? 3 : quarter - 1;
-  const prevYear = quarter === 0 ? year - 1 : year;
-  const prevStart = prevQ * 3 + 1;
-  const prevEndMonth = prevStart + 2;
-  const prevEndDay = new Date(prevYear, prevEndMonth, 0).getDate();
-  const half = new Date(`${today}T12:00:00`);
-  half.setMonth(half.getMonth() - 5);
-  half.setDate(1);
-  return [
-    { id: "q", from: `${year}-${String(qStartMonth).padStart(2, "0")}-01`, to: today, labelAr: "الربع الحالي", labelEn: "This quarter" },
-    { id: "pq", from: `${prevYear}-${String(prevStart).padStart(2, "0")}-01`, to: `${prevYear}-${String(prevEndMonth).padStart(2, "0")}-${String(prevEndDay).padStart(2, "0")}`, labelAr: "الربع الماضي", labelEn: "Last quarter" },
-    { id: "m", from: `${year}-${String(month).padStart(2, "0")}-01`, to: today, labelAr: "هذا الشهر", labelEn: "This month" },
-    { id: "h", from: isoDay(half), to: today, labelAr: "نصف سنة", labelEn: "Half year" },
-  ];
+function monthStartIso(iso, delta) {
+  const date = new Date(`${iso}T12:00:00`);
+  date.setDate(1);
+  date.setMonth(date.getMonth() + delta);
+  return isoDay(date);
 }
+
+/**
+ * The one period choice for performance — the employee's «فترة العرض» and the management board alike:
+ * شهر · 3 أشهر · 6 أشهر · سنة, each running to today from the first of its opening month.
+ * `floor` (a hire date) keeps a range from opening before the person's record starts.
+ */
+export function rangePresets(today = isoDay(), floor = "") {
+  const raw = [
+    { id: "m", back: 0, labelAr: "شهر", labelEn: "Month" },
+    { id: "3", back: 2, labelAr: "3 أشهر", labelEn: "3 months" },
+    { id: "6", back: 5, labelAr: "6 أشهر", labelEn: "6 months" },
+    { id: "y", back: 11, labelAr: "سنة", labelEn: "Year" },
+  ];
+  return raw.map(({ back, ...row }) => {
+    let from = monthStartIso(today, -back);
+    if (floor && today >= floor && from < floor) from = floor;
+    if (from > today) from = today;
+    return { ...row, from, to: today };
+  });
+}
+
+/** The opening period on both faces. */
+export const DEFAULT_RANGE_PRESET = "3";
 
 export function countAr(n, one, two, few, many, zero) {
   if (n === 0) return zero || "لا شيء";
@@ -266,6 +276,8 @@ export function personFacts(employee, from, to, data) {
     proof,
     assigned,
     proven: proven.length,
+    // Task quality on the one five-level scale (النموذج الموحد م19) — beside the score, not inside it.
+    quality: taskQualitySummary(proven, employee.id),
   };
 }
 

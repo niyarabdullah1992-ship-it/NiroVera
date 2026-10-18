@@ -10,11 +10,14 @@ import {
   checkApprovePayrollGate,
   deriveRunTotals,
   deriveStationBreakdown,
+  wpsDeadline,
 } from "@/lib/payrollDerivations";
+import { payHintFor } from "@/lib/rightHints.pay";
+import RightHint from "@/components/shared/RightHint";
+import FigureRow from "@/components/shared/FigureRow";
 import { toast } from "@/components/ui/use-toast";
-import { ACCENT, MUTED, NAVY, NEUTRAL, OK, ui, CARD, SURFACE } from "@/lib/platformStyles";
+import { MUTED, NAVY, NEUTRAL, OK, ui, SURFACE } from "@/lib/platformStyles";
 import IdentityCard from "@/components/shared/IdentityCard";
-import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
 async function payrollApi(payload) {
   const res = await base44.functions.invoke("payroll", payload);
@@ -251,7 +254,6 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
                 ? (ar ? " — الاعتماد على مستوى المنشأة" : " — approval is establishment-wide")
                 : (ar ? " — قبل الاعتماد" : " — before approval")
             }`}
-            rail={approved ? ACCENT : NAVY}
             dir={ar ? "rtl" : "ltr"}
             meta={(
               <>
@@ -287,26 +289,20 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
             )}
           >
 
-            <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", marginBottom: 12 }}>
-              <LaborArticleCite ruleId="payroll.wage.payment.cite" ar={ar} showText />
-              <LaborArticleCite ruleId="payroll.loan.capRatio" ar={ar} showText />
-              <LaborArticleCite ruleId="payroll.deduction.capRatio" ar={ar} showText />
-              <LaborArticleCite ruleId="hours.ot.premium" ar={ar} showText />
-            </div>
-
-            <div style={{ display: "grid", gap: "12px", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
-              {[
-                { label: ar ? "الأساسي والبدلات" : "Base & allowances", value: fmt(displayTotals.baseAndAllowances, currency) },
-                { label: ar ? "أجر الإضافي المعتمد" : "Approved overtime", value: fmt(displayTotals.overtime, currency) },
-                { label: ar ? "استقطاعات" : "Deductions", value: fmt(displayTotals.deductions, currency) },
+            {/* «سطر لا بطاقة» — the run's figures in one row; Header total still adds up from these. */}
+            <FigureRow
+              ar={ar}
+              figures={[
+                { key: "base", label: ar ? "الأساسي والبدلات" : "Base & allowances", value: fmt(displayTotals.baseAndAllowances, "").trim(), suffix: currency },
+                { key: "ot", label: ar ? "أجر الإضافي المعتمد" : "Approved overtime", value: fmt(displayTotals.overtime, "").trim(), suffix: currency },
+                { key: "deduct", label: ar ? "استقطاعات" : "Deductions", value: fmt(displayTotals.deductions, "").trim(), suffix: currency },
                 // Without it the header did not add up to the total below it.
-                { label: ar ? "التأمينات — حصة الموظف" : "GOSI — employee share", value: fmt(displayTotals.gosiEmployee || 0, currency) },
-              ].map((m) => (
-                <div key={m.label} className="nv-paper" style={{ border: "1px solid var(--nv-line)", borderRadius: 14, padding: "14px 16px", background: CARD }}>
-                  <p style={{ margin: 0, fontSize: "10px", fontWeight: 600, color: MUTED, letterSpacing: "0.04em" }}>{m.label}</p>
-                  <p dir="ltr" style={{ margin: "8px 0 0", fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "18px", fontWeight: 600, color: NAVY, textAlign: "start" }}>{m.value}</p>
-                </div>
-              ))}
+                { key: "gosi", label: ar ? "التأمينات — حصة الموظف" : "GOSI — employee share", value: fmt(displayTotals.gosiEmployee || 0, "").trim(), suffix: currency },
+              ]}
+            />
+            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, color: MUTED }}>
+              <span>{ar ? "ملف حماية الأجور لهذا المسير" : "This run's wage-protection file"}</span>
+              <RightHint ar={ar} hint={payHintFor("wps", { view: "manager", ar, heads: displayTotals.heads, deadline: wpsDeadline(month) })} />
             </div>
 
             {displayTotals.issueCount > 0 && (

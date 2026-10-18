@@ -3,8 +3,8 @@
  *
  * The local ledgers stand in for cloud functions that authenticate a session before
  * they answer. A fallback that cannot recognise the session must therefore assume
- * less than the server would, never more: the same hole appeared on expenses, on
- * inventory, on assets and on the HR register, each time because an unknown userId
+ * less than the server would, never more: the same hole appeared on the money
+ * surfaces and on the HR register, each time because an unknown userId
  * fell through to "owner". An unknown actor rises to full rights is the worst
  * possible default — the anonymous caller is promoted rather than demoted.
  *

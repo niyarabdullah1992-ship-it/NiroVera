@@ -4,6 +4,7 @@ import { looksLikePdf } from "@/lib/pdfBytes";
 import { BORDER, BRAND, CARD, MUTED } from "@/lib/platformStyles";
 import { MARK_GLYPHS, isMarkField } from "@/lib/signPdf";
 import SignMarkGlyph from "@/components/files/SignMarkGlyph";
+import { renderStampDataUrl, stampConfigFromSigner } from "@/lib/stampStudio";
 import {
   STAMP_CANVAS_HEIGHT,
   STAMP_CANVAS_WIDTH,
@@ -15,7 +16,7 @@ import {
 const NO_GUIDES = { page: 0, x: null, y: null };
 
 function GoldGlyph({ tool }) {
-  const common = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "#C4A24A", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" };
+  const common = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" };
   if (tool === "name" || tool === "email") {
     return <svg {...common} aria-hidden="true"><circle cx="12" cy="8" r="3" /><path d="M5 19c1.5-3 4-4.5 7-4.5S17.5 16 19 19" /></svg>;
   }
@@ -178,6 +179,33 @@ export function PdfPageCanvas({ pdf, pageNumber, width, onSize }) {
   return <canvas ref={canvasRef} style={{ display: "block", width, height: Math.round(width * 1.414) }} />;
 }
 
+/**
+ * The seal each signer will leave, previewed where his signature field sits — his name, role, the date and the
+ * verification frame, exactly as the finished page will carry it (the code is filled in at signing).
+ * One render per signer (name · role · design), cached across re-renders.
+ */
+function useSignerStampPreviews(signers) {
+  const [previews, setPreviews] = useState({});
+  const key = (signers || []).map((s) => `${s?.name || ""}|${s?.role || ""}|${s?.stampConfig?.design || s?.stampTheme || ""}`).join("§");
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const out = {};
+      for (let i = 0; i < (signers || []).length; i += 1) {
+        try {
+          out[i] = await renderStampDataUrl(stampConfigFromSigner(signers[i]), {});
+        } catch {
+          out[i] = "";
+        }
+      }
+      if (alive) setPreviews(out);
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return previews;
+}
+
 function fieldBox(field, size, stampRatio = STAMP_RATIO) {
   const scale = (field.scale || 100) / 100;
   if (field.type === "signature") {
@@ -209,8 +237,10 @@ export default function SigningWorkspacePages({
   onTextChange,
   onVisiblePage,
   stampRatio = STAMP_RATIO,
+  meIndex = 0,
 }) {
   const sizesRef = useRef({});
+  const stampPreviews = useSignerStampPreviews(signers);
   const pageRefs = useRef({});
   const movedRef = useRef(false);
   const [, setTick] = useState(0);
@@ -409,16 +439,32 @@ export default function SigningWorkspacePages({
               const value = textValues[field.id] || "";
               // Your own required field left empty is the one thing that will
               // block the finish button — flag it on the page, not only in the gate.
-              const gap = field.signer === 0 && field.type === "text" && field.required !== false && !value;
+              const gap = field.signer === meIndex && field.type === "text" && field.required !== false && !value;
+              // Each recipient's fields carry their own muted tint; the selected field alone takes
+              // the one green accent.
+              const tint = signer?.color || BRAND;
               return (
                 <div
                   key={field.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={active}
+                  aria-label={`${field.label || field.tool || ""} · ${signer?.name || ""} · ${ar ? `صفحة ${field.page}` : `page ${field.page}`}`}
+                  data-field-signer={field.signer}
+                  onFocus={() => { if (!active) onSelect?.(field.id); }}
+                  onKeyDown={(event) => {
+                    if (editing || event.target !== event.currentTarget) return;
+                    if (event.key === "Enter" && field.signer === meIndex && field.type === "text" && !isMarkField(field) && field.tool !== "yn") {
+                      event.preventDefault();
+                      setEditingId(field.id);
+                    }
+                  }}
                   onPointerDown={(event) => { if (!editing) startDrag(event, field); }}
                   onClick={(event) => {
                     event.stopPropagation();
                     if (movedRef.current) { movedRef.current = false; return; }
                     onSelect?.(field.id);
-                    if (field.signer !== 0) return;
+                    if (field.signer !== meIndex) return;
                     // A mark flips between tick and cross in place; only real
                     // text fields open an input.
                     if (isMarkField(field)) {
@@ -438,19 +484,24 @@ export default function SigningWorkspacePages({
                     width: box.width,
                     height: box.height,
                     transform: "translate(-50%, -50%)",
-                    border: yn
-                      ? "1px solid var(--nv-line, #DFE3EA)"
-                      : gold
-                        ? `1px solid ${gap ? "var(--nv-warn-line)" : "var(--nv-line)"}`
-                        : `1.5px ${field.type === "signature" ? "solid" : "dashed"} ${gap ? "#B45309" : signer?.color || BRAND}`,
+                    border: active
+                      ? "1px solid #0B3D27"
+                      : yn
+                        ? "1px solid var(--nv-line, #DFE3EA)"
+                        : gold
+                          ? `1px solid ${gap ? "var(--nv-warn-line)" : `color-mix(in oklab, ${tint} 45%, #fff)`}`
+                          : field.type === "signature"
+                            ? `1px solid ${gap ? "#B45309" : `color-mix(in oklab, ${tint} 45%, #fff)`}`
+                            : `1px dashed ${gap ? "#B45309" : tint}`,
+                    outline: "none",
                     background: yn
                       ? "var(--nv-card)"
-                      : gold
-                        ? "#FBF3D0"
+                      : gold && field.type !== "signature"
+                        ? `color-mix(in oklab, ${tint} 11%, #fff)`
                         : field.type === "signature"
                           ? "rgba(255,255,255,.92)"
                           : `color-mix(in oklab, ${gap ? "var(--nv-warn-ink)" : signer?.color || BRAND} 8%, #fff)`,
-                    borderRadius: yn || gold ? 10 : 4,
+                    borderRadius: yn || (gold && field.type !== "signature") ? 10 : 4,
                     boxSizing: "border-box",
                     cursor: editing ? "text" : "move",
                     display: "flex",
@@ -458,7 +509,7 @@ export default function SigningWorkspacePages({
                     justifyContent: "center",
                     overflow: "visible",
                     zIndex: active ? 3 : 1,
-                    boxShadow: active ? "0 6px 16px rgba(20,40,75,.22)" : (gold ? "0 1px 2px rgba(180,140,40,.18)" : "none"),
+                    boxShadow: active ? "0 0 0 3px #fff, 0 0 0 4px rgba(11,61,39,.22)" : "none",
                   }}
                 >
                   <div style={{
@@ -472,9 +523,11 @@ export default function SigningWorkspacePages({
                     padding: yn ? "0 12px" : 0,
                     pointerEvents: editing ? "auto" : "none",
                   }}>
-                  {field.type === "signature" && !gold ? (
-                    field.signer === 0 && sealPreview ? (
+                  {field.type === "signature" && (!gold || stampPreviews[field.signer] || (field.signer === meIndex && sealPreview)) ? (
+                    field.signer === meIndex && sealPreview ? (
                       <img src={sealPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} />
+                    ) : stampPreviews[field.signer] ? (
+                      <img data-stamp-preview={field.signer} src={stampPreviews[field.signer]} alt={ar ? `ختم ${signer?.name || ""}` : `${signer?.name || ""}'s seal`} style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} />
                     ) : (
                       <span style={{ pointerEvents: "none", textAlign: "center", lineHeight: 1.4 }}>
                         <span style={{ display: "block", fontSize: 11, fontWeight: 600, color: signer?.color || BRAND }}>
@@ -485,7 +538,7 @@ export default function SigningWorkspacePages({
                     )
                   ) : isMarkField(field) ? (
                     <span
-                      title={field.signer === 0 ? (ar ? "اضغط للتبديل بين صح وخطأ" : "Click to flip between tick and cross") : undefined}
+                      title={field.signer === meIndex ? (ar ? "اضغط للتبديل بين صح وخطأ" : "Click to flip between tick and cross") : undefined}
                       style={{ pointerEvents: "none", lineHeight: 1, color: value ? "var(--nv-ink)" : MUTED }}
                     >
                       <SignMarkGlyph glyph={value || MARK_GLYPHS[0]} size={Math.max(14, box.height * 0.62)} color="currentColor" />
@@ -516,7 +569,7 @@ export default function SigningWorkspacePages({
                       <YnChoiceBox value={value} />
                     </span>
                   ) : gold ? (
-                    <span style={{ pointerEvents: "none", display: "inline-flex", alignItems: "center", gap: 8, color: "#8A6A1A", fontWeight: 700, fontSize: 13, padding: "0 10px", maxWidth: "100%" }}>
+                    <span style={{ pointerEvents: "none", display: "inline-flex", alignItems: "center", gap: 8, color: `color-mix(in oklab, ${tint} 78%, #000)`, fontWeight: 700, fontSize: 13, padding: "0 10px", maxWidth: "100%" }}>
                       <GoldGlyph tool={field.tool} />
                       <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value || field.label}</span>
                     </span>
@@ -529,6 +582,50 @@ export default function SigningWorkspacePages({
 
                   {active ? (
                     <>
+                      {/* Institutional selection frame: corner marks, a labelled tab, a square remove key and a small handle. */}
+                      {[["top", "insetInlineStart"], ["top", "insetInlineEnd"], ["bottom", "insetInlineStart"], ["bottom", "insetInlineEnd"]].map(([v, h]) => (
+                        <span
+                          key={`${v}-${h}`}
+                          aria-hidden
+                          style={{
+                            position: "absolute",
+                            [v]: -5,
+                            [h]: -5,
+                            width: 9,
+                            height: 9,
+                            pointerEvents: "none",
+                            borderTop: v === "top" ? "2px solid #0B3D27" : "none",
+                            borderBottom: v === "bottom" ? "2px solid #0B3D27" : "none",
+                            borderInlineStart: h === "insetInlineStart" ? "2px solid #0B3D27" : "none",
+                            borderInlineEnd: h === "insetInlineEnd" ? "2px solid #0B3D27" : "none",
+                          }}
+                        />
+                      ))}
+                      <span
+                        data-field-tab={field.id}
+                        style={{
+                          position: "absolute",
+                          bottom: "100%",
+                          insetInlineStart: -1,
+                          marginBottom: 6,
+                          height: 20,
+                          padding: "0 8px",
+                          borderRadius: 4,
+                          background: "#0B3D27",
+                          color: "#fff",
+                          fontSize: 10.5,
+                          fontWeight: 600,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          whiteSpace: "nowrap",
+                          pointerEvents: "none",
+                          zIndex: 5,
+                        }}
+                      >
+                        <span aria-hidden style={{ width: 6, height: 6, borderRadius: "50%", background: tint, boxShadow: "0 0 0 1px rgba(255,255,255,.7)" }} />
+                        {(field.label || (field.type === "signature" ? (ar ? "توقيع" : "Signature") : "")) + (signer?.name ? ` · ${signer.name}` : "")}
+                      </span>
                       <button
                         type="button"
                         aria-label={ar ? "إلغاء الحقل" : "Remove field"}
@@ -536,15 +633,16 @@ export default function SigningWorkspacePages({
                         onClick={(event) => { event.stopPropagation(); onRemove?.(field.id); }}
                         style={{
                           position: "absolute",
-                          top: 0,
-                          insetInlineEnd: 0,
+                          bottom: "100%",
+                          insetInlineEnd: -1,
+                          marginBottom: 6,
                           width: 20,
                           height: 20,
-                          borderRadius: "50%",
-                          border: `1.5px solid ${CARD}`,
-                          background: "var(--nv-navy)",
-                          color: "#fff",
-                          fontSize: 15,
+                          borderRadius: 4,
+                          border: "1px solid var(--nv-line, #DFE3EA)",
+                          background: "#fff",
+                          color: "var(--nv-bad-ink, #9B2C2C)",
+                          fontSize: 14,
                           lineHeight: 1,
                           display: "flex",
                           alignItems: "center",
@@ -553,25 +651,24 @@ export default function SigningWorkspacePages({
                           cursor: "pointer",
                           fontFamily: "inherit",
                           zIndex: 5,
-                          boxShadow: "0 1px 4px rgba(20,40,75,.28)",
-                          transform: ar ? "translate(-100%, -50%)" : "translate(100%, -50%)",
                         }}
                       >
                         ×
                       </button>
                       <span
                         role="presentation"
+                        data-field-resize={field.id}
                         onPointerDown={(event) => startResize(event, field)}
                         style={{
                           position: "absolute",
-                          bottom: -7,
-                          insetInlineEnd: -7,
-                          width: 14,
-                          height: 14,
-                          borderRadius: 4,
-                          border: `2px solid ${CARD}`,
-                          background: yn ? "var(--nv-navy)" : (signer?.color || BRAND),
+                          bottom: -5,
+                          insetInlineEnd: -5,
+                          width: 9,
+                          height: 9,
+                          boxSizing: "border-box",
+                          background: "#0B3D27",
                           cursor: "ew-resize",
+                          zIndex: 6,
                         }}
                       />
                     </>

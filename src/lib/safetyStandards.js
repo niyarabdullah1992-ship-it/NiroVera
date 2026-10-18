@@ -1,4 +1,17 @@
+/**
+ * Labour Law duties on the workplace itself — each item names its article (catalog ids → citeRule), so the
+ * inspection reads the law, not a house checklist. Art. 144 (health care, medical cover) belongs to HR — it lives on
+ * each file's medical-insurance validity, not here.
+ */
+export const LABOR_WORKPLACE_ITEMS = [
+  ["law_125_fire", "احتياطات الوقاية من الحريق ووسائل مكافحته متوفرة، ومنافذ النجاة صالحة في كل وقت", "Fire prevention and fire-fighting means are in place, and escape exits are usable at all times", "safety.fire.cite"],
+  ["law_125_notice", "تعليمات مفصّلة بوسائل منع الحريق معلّقة في مكان ظاهر", "Detailed fire-prevention instructions are posted in a visible place", "safety.fire.cite"],
+  ["law_63_substances", "دخول المواد المحرمة شرعاً إلى أماكن العمل ممنوع، والمنع معلن للعاملين", "Substances forbidden by Sharia are kept out of the workplace, and the ban is made known", "safety.substances.cite"],
+  ["law_158_seats", "مقاعد لاستراحة العاملات في كل مكان تعمل فيه نساء", "Seats for women workers' rest wherever women work", "women.seats.cite"],
+];
+
 export const CHECKLIST_GROUPS = [
+  { id: "law", ar: "نظام العمل — بيئة العمل", en: "Labour Law — the workplace", items: LABOR_WORKPLACE_ITEMS },
   { id: "iso", ar: "ISO 45001", en: "ISO 45001", items: [
     ["iso_policy", "سياسة السلامة موثقة ومعلنة", "Safety policy is documented and communicated"],
     ["iso_roles", "المسؤوليات والصلاحيات محددة", "HSE roles and responsibilities are defined"],

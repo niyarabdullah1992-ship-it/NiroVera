@@ -7,11 +7,16 @@ import { INK, MUTED } from "@/lib/platformStyles";
  * States whose view the command center is showing — plain meta, not toggles.
  * Persona derives from role/position; facility type is locked at signup.
  */
-export default function DashboardPersonaBar({ lang = "ar", onGreen = false }) {
+/** One short line for headers: «عرض تنفيذي — شركة». */
+export function usePersonaLine(lang = "ar") {
   const ar = lang === "ar";
   const { currentUser, data } = useAuth();
   const { terms } = useOrgTerms();
+  const label = personaLabelOf(currentUser, data);
+  return ar ? `عرض ${label.ar} — شركة` : `${label.en} view — ${terms.orgKindShort}`;
+}
 
+function personaLabelOf(currentUser, data) {
   const role = currentUser?.role || "employee";
   const persona = (() => {
     if (role === "employee") return "employee";
@@ -27,7 +32,14 @@ export default function DashboardPersonaBar({ lang = "ar", onGreen = false }) {
     hr: { ar: "موارد بشرية", en: "HR" },
     executive: { ar: "تنفيذي", en: "Executive" },
   };
-  const label = PERSONA_LABEL[persona];
+  return PERSONA_LABEL[persona];
+}
+
+export default function DashboardPersonaBar({ lang = "ar", onGreen = false }) {
+  const ar = lang === "ar";
+  const { currentUser, data } = useAuth();
+  const { terms } = useOrgTerms();
+  const label = personaLabelOf(currentUser, data);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-start" }}>

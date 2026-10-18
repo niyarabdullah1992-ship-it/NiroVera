@@ -51,8 +51,11 @@ export default function AttendanceLocationsPanel({ t, lang = "ar" }) {
         <p style={{ ...sectionHead, fontSize: 15, fontWeight: 700 }}>
           {ar ? "مواقع الحضور" : "Attendance locations"}
           {stations.length ? (
-            <span style={{ fontWeight: 500, color: MUTED, marginInlineStart: 8 }}>
-              {ar ? `· ${stations.length} فروع` : `· ${stations.length} stations`}
+            <span style={{ fontWeight: 500, color: MUTED }}>
+              {" · "}
+              {ar && stations.length <= 2 ? placesWord(stations.length) : (
+                <><bdi dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{stations.length}</bdi>{ar ? ` ${placesWord(stations.length)}` : ` ${stations.length === 1 ? "site" : "sites"}`}</>
+              )}
             </span>
           ) : null}
         </p>
@@ -108,8 +111,8 @@ export default function AttendanceLocationsPanel({ t, lang = "ar" }) {
                       : (ar ? "بلا نقطة — حدّد الموقع" : "No point — set the location")}
                   </span>
                 </span>
-                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>
-                  {hasLocation ? `${station.radiusMeters || 200} ${ar ? "م" : "m"}` : "—"}
+                <span style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>
+                  {hasLocation ? <><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{station.radiusMeters || 200}</span> {ar ? "م" : "m"}</> : "—"}
                 </span>
               </button>
               {on ? (
@@ -162,4 +165,12 @@ export default function AttendanceLocationsPanel({ t, lang = "ar" }) {
       ) : null}
     </section>
   );
+}
+
+/** Arabic count noun for attendance sites (stations and units alike): 1 موقع، 2 موقعان، 3–10 مواقع، 11+ موقعاً. */
+function placesWord(n) {
+  if (n === 1) return "موقع واحد";
+  if (n === 2) return "موقعان";
+  if (n >= 3 && n <= 10) return "مواقع";
+  return "موقعاً";
 }

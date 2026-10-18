@@ -19,11 +19,13 @@ assert.deepEqual(monthsInRange("2026-09-13", "2026-07-01"), []);
 assert.equal(isoDay("2026-09-13"), "2026-09-13");
 
 const presets = rangePresets("2026-09-13");
-assert.equal(presets.find((row) => row.id === "q").from, "2026-07-01");
+assert.deepEqual(presets.map((row) => row.labelAr), ["شهر", "3 أشهر", "6 أشهر", "سنة"]);
 assert.equal(presets.find((row) => row.id === "m").from, "2026-09-01");
-assert.equal(presets.find((row) => row.id === "pq").to, "2026-06-30");
-assert.equal(presets.find((row) => row.id === "h").from, "2026-04-01");
-assert.notEqual(presets.find((row) => row.id === "h").from, presets.find((row) => row.id === "q").from);
+assert.equal(presets.find((row) => row.id === "3").from, "2026-07-01");
+assert.equal(presets.find((row) => row.id === "6").from, "2026-04-01");
+assert.equal(presets.find((row) => row.id === "y").from, "2025-10-01");
+assert.ok(presets.every((row) => row.to === "2026-09-13"));
+assert.equal(rangePresets("2026-09-13", "2026-08-15").find((row) => row.id === "y").from, "2026-08-15");
 
 assert.equal(scoreOf({ done: 80, time: 80, safe: 100, cover: 80 }), 83);
 assert.equal(bandOf(86, true), "جيد جداً");

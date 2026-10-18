@@ -13,7 +13,7 @@ export default function Verify() {
   usePublicPlatformTheme();
 
   return (
-    <div className="powercare-public" lang={ar ? "ar" : "en"} dir={ar ? "rtl" : "ltr"} style={{ minHeight: "100vh", background: "#eceef2", color: INK, fontSize: 13, display: "flex", flexDirection: "column" }}>
+    <div className="powercare-public" lang={ar ? "ar" : "en"} dir={ar ? "rtl" : "ltr"} style={{ minHeight: "100vh", background: "var(--nv-page, #eceef2)", color: INK, fontSize: 13, display: "flex", flexDirection: "column" }}>
       <header style={{ background: NAVY_FILL, color: "#fff", display: "flex", alignItems: "center", gap: 18, padding: "0 24px", height: 56, flexShrink: 0 }}>
         <Link to="/" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
           <Logo size={26} onDark />

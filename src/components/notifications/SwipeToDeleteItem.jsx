@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
-import { CARD, DANGER, RADIUS } from "@/lib/platformStyles";
+import { DANGER } from "@/lib/platformStyles";
 
 // Wraps a notification row with swipe-left/right-to-delete support (touch + mouse drag).
 export default function SwipeToDeleteItem({ onDelete, children }) {
@@ -32,7 +32,7 @@ export default function SwipeToDeleteItem({ onDelete, children }) {
   const opacity = Math.max(1 - Math.abs(dragX) / (THRESHOLD * 2.5), 0.3);
 
   return (
-    <div style={{ position: "relative", overflow: "hidden" }}>
+    <div style={{ position: "relative", overflow: "hidden", borderRadius: 12 }}>
       <div
         style={{
           position: "absolute",
@@ -42,7 +42,8 @@ export default function SwipeToDeleteItem({ onDelete, children }) {
           justifyContent: "center",
           background: "var(--nv-bad-soft)",
           color: DANGER,
-          borderRadius: RADIUS,
+          borderRadius: 12,
+          opacity: dragX ? 1 : 0,
         }}
       >
         <Trash2 style={{ width: 16, height: 16 }} strokeWidth={1.75} />
@@ -54,7 +55,7 @@ export default function SwipeToDeleteItem({ onDelete, children }) {
         onPointerLeave={endDrag}
         style={{
           position: "relative",
-          background: CARD,
+          background: "transparent",
           cursor: "grab",
           transform: `translateX(${dragX}px)`,
           opacity,

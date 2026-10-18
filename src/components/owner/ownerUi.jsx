@@ -5,8 +5,9 @@
  */
 
 import React from "react";
-import { DS_CONTROL_RADIUS, DS_EDGE_PX, DS_PILL_RADIUS, DS_RADIUS, DS_SHADOW } from "@/lib/designSystem";
+import { DS_CONTROL_RADIUS, DS_PILL_RADIUS, DS_RADIUS, DS_SHADOW } from "@/lib/designSystem";
 import { statusBanner } from "@/lib/platformStyles";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 
 export const OWNER_MONO = { fontFamily: "'IBM Plex Mono', monospace" };
 
@@ -22,15 +23,11 @@ export const ownerGrid = {
   gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
 };
 
-export function ownerPaper(state = "mute") {
-  const fill = state === "ok" ? "var(--nv-ok-fill)"
-    : state === "warn" ? "var(--nv-warn-fill)"
-      : state === "bad" ? "var(--nv-bad-fill)"
-        : "var(--nv-line)";
+/** Calm paper — no coloured edge; `state` is kept for callers (status shows as a chip, see StatusFlag). */
+export function ownerPaper(state = "mute") { // eslint-disable-line no-unused-vars
   return {
     background: "var(--nv-card)",
     border: "1px solid var(--nv-line)",
-    borderTop: `${DS_EDGE_PX}px solid ${fill}`,
     borderRadius: DS_RADIUS,
     boxShadow: DS_SHADOW,
     boxSizing: "border-box",
@@ -139,12 +136,15 @@ export function ownerStatusChip(state = "mute") {
   };
 }
 
-export function OwnerStatTile({ label, value, note, state = "mute", warn }) {
+export function OwnerStatTile({ label, value, note, state = "mute", warn, flag, ar = true }) {
   const tone = warn ? "warn" : state;
   return (
     <div style={{ ...ownerPaper(tone), padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-      <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{label}</span>
-      <span dir="ltr" style={{ ...OWNER_MONO, fontSize: 26, fontWeight: 500, color: warn ? "var(--nv-warn-ink)" : "var(--nv-ink)", lineHeight: 1.1 }}>
+      <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+        <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{label}</span>
+        <StatusFlag tone={tone} flag={flag} label={label} ar={ar} />
+      </span>
+      <span dir="ltr" style={{ ...OWNER_MONO, fontSize: 26, fontWeight: 500, color: "var(--nv-ink)", lineHeight: 1.1 }}>
         {value}
       </span>
       {note ? <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.65 }}>{note}</span> : null}

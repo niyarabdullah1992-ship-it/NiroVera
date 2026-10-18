@@ -1,28 +1,30 @@
 import React, { useState } from "react";
-import EscalationSteps from "@/components/escalation/EscalationSteps";
 import OpsTaskSection from "@/components/tasks/detail/OpsTaskSection";
+import OpsQualityPicker from "@/components/tasks/detail/OpsQualityPicker";
 import { BORDER, CARD, MUTED, NAVY, NAVY_FILL } from "@/lib/platformStyles";
 
 const btn = { padding: "9px 16px", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
 
-/** Awaiting-approval block: explanation, escalation ladder, approve / reject with reason. */
-export default function OpsTaskApprovalBox({ ar, busy, canManage, points, targetN, currentLevelLabel, escalationSteps, t, lang, onApprove, onReject }) {
+/** Awaiting-approval block: explanation, escalation ladder, approve with a quality level / reject with reason. */
+export default function OpsTaskApprovalBox({ ar, busy, canManage, points, targetN, currentLevelLabel, task, assignees = [], onApprove, onReject }) {
   const [open, setOpen] = useState(false);
+  const [rating, setRating] = useState(false);
   const [reason, setReason] = useState("");
   return (
-    <OpsTaskSection tone="warn" title={canManage ? (ar ? "بانتظار اعتمادك" : "Awaiting your approval") : (ar ? "بانتظار اعتماد المستوى الحالي" : "Awaiting the current level")}>
+    <OpsTaskSection tone="warn" ar={ar} flag={ar ? "قرار مطلوب" : "Decision due"} title={canManage ? (ar ? "بانتظار اعتمادك" : "Awaiting your approval") : (ar ? "بانتظار اعتماد المستوى الحالي" : "Awaiting the current level")}>
       <div style={{ fontSize: 12, color: "var(--nv-warn-ink)", lineHeight: 1.65, textWrap: "pretty" }}>
         {ar
-          ? `اكتمل العدد ${targetN}/${targetN} وأُرفق الإثبات. الاعتماد يمنح ${points} نقطة ويُقفل أمر العمل. الرفض يُعيد المهمة للمنفّذ، وسببه يظهر في مراسلات البطاقة. بعد ثلاثة رفض يحق للمنفّذ التصعيد.`
-          : `${targetN}/${targetN} logged with proof. Approval grants ${points} points and closes the work order. A reject returns the task to the executor, and the reason stays on the card thread. After three rejects the executor may escalate.`}
+          ? `اكتمل العدد ${targetN}/${targetN} وأُرفق الإثبات. الاعتماد بمستوى جودة من خمسة يمنح حتى ${points} نقطة ويُقفل أمر العمل. الرفض يُعيد المهمة للمنفّذ، وسببه يظهر في مراسلات البطاقة. بعد ثلاثة رفض يحق للمنفّذ التصعيد.`
+          : `${targetN}/${targetN} logged with proof. Approval at a quality level (1–5) grants up to ${points} points and closes the work order. A reject returns the task to the executor, and the reason stays on the card thread. After three rejects the executor may escalate.`}
         {currentLevelLabel ? (ar ? ` المستوى الحالي: ${currentLevelLabel}.` : ` Current level: ${currentLevelLabel}.`) : ""}
       </div>
-      {Array.isArray(escalationSteps) && escalationSteps.length > 0 && t && (
-        <div style={{ marginTop: 10 }}><EscalationSteps steps={escalationSteps} t={t} lang={lang || (ar ? "ar" : "en")} /></div>
-      )}
-      {canManage ? (
+      {canManage && rating ? (
+        <div style={{ marginTop: 12, padding: "12px", borderRadius: 10, background: CARD, border: `1px solid ${BORDER}` }}>
+          <OpsQualityPicker ar={ar} task={task} assignees={assignees} busy={busy} onCancel={() => setRating(false)} onConfirm={(quality) => onApprove?.(quality)} />
+        </div>
+      ) : canManage ? (
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-          <button type="button" disabled={busy} onClick={() => onApprove?.()} style={{ ...btn, background: "var(--nv-ok-fill)", color: "#fff", border: "none", opacity: busy ? 0.5 : 1 }}>{ar ? "اعتمد الإنجاز" : "Approve completion"}</button>
+          <button type="button" data-approve-open="1" disabled={busy} onClick={() => { setRating(true); setOpen(false); }} style={{ ...btn, background: "var(--nv-ok-fill)", color: "#fff", border: "none", opacity: busy ? 0.5 : 1 }}>{ar ? "اعتمد الإنجاز" : "Approve completion"}</button>
           <button type="button" disabled={busy} onClick={() => setOpen(true)} style={{ ...btn, background: CARD, color: "var(--nv-warn-ink)", border: "1px solid var(--nv-warn-line)" }}>{ar ? "رفض — يُعاد للمنفّذ" : "Reject — return"}</button>
         </div>
       ) : (

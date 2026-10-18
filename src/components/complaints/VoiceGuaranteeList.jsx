@@ -5,7 +5,7 @@ export default function VoiceGuaranteeList({ rows = [], ar }) {
   return (
     <section style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, overflow: "hidden", boxShadow: "var(--nv-paper)" }}>
       <header style={{ padding: "14px 16px", borderBottom: "1px solid var(--nv-line)" }}>
-        <strong style={{ fontSize: 15, color: "var(--nv-ink)" }}>{ar ? "ما تضمنه لك القناة" : "What the channel guarantees"}</strong>
+        <strong style={{ fontSize: 15, color: "var(--nv-ink)" }}>{ar ? "ما تضمنه لك كل قناة" : "What every channel guarantees"}</strong>
       </header>
       {rows.map((row, index) => (
         <div

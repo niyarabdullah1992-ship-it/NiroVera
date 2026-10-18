@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from "react";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
+import { KindTile, NoticeFoot, NoticeHead, NoticeShell, rowChip } from "@/components/notifications/noticeChrome";
 
 const MONO = "'IBM Plex Mono', monospace";
 const BANDS = [
@@ -21,29 +23,10 @@ function readDone(companyId, userId) {
   }
 }
 
-function chip(on) {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    height: 28,
-    minHeight: 28,
-    padding: "0 10px",
-    borderRadius: 8,
-    border: on ? "none" : "1px solid var(--nv-line)",
-    background: on ? "var(--nv-navy)" : "var(--nv-card)",
-    color: on ? "#fff" : "var(--nv-ink2)",
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: "pointer",
-    fontFamily: "inherit",
-  };
-}
-
-function dotColor(band) {
-  if (band === "urgent") return "#9B2335";
-  if (band === "decision") return "#C8A45A";
-  return "#8A938C";
+function bandTone(band) {
+  if (band === "urgent") return "bad";
+  if (band === "decision") return "warn";
+  return "navy";
 }
 
 /**
@@ -57,6 +40,7 @@ export default function BranchNoticePanel({
   userId,
   onOpen,
   onPickBranch,
+  embedded = false,
 }) {
   const ar = lang === "ar";
   const [band, setBand] = useState("all");
@@ -86,118 +70,102 @@ export default function BranchNoticePanel({
     setDoneTick((value) => value + 1);
   };
 
-  return (
-    <div
-      dir={ar ? "rtl" : "ltr"}
-      role="dialog"
-      aria-label={ar ? "إشعارات كل نطاقي" : "Notices for all my scope"}
-      style={{
-        width: "100%",
-        maxHeight: "min(76vh, 640px)",
-        display: "flex",
-        flexDirection: "column",
-        background: "var(--nv-card)",
-        border: "1px solid var(--nv-line)",
-        borderTop: "3px solid var(--nv-navy)",
-        borderRadius: 8,
-        boxShadow: "0 18px 44px rgba(12,20,16,.18)",
-        overflow: "hidden",
-      }}
-    >
-      <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--nv-line)", display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-          <strong style={{ fontSize: 13.5, color: "var(--nv-ink)" }}>{ar ? "إشعارات كل نطاقي" : "Notices for all my scope"}</strong>
-          <span style={{ fontSize: 10.5, color: "var(--nv-muted)" }}>{ar ? "مرتّبة بالأولوية · مجمّعة لكل فرع" : "By priority · grouped per branch"}</span>
-        </div>
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-          {BANDS.map((entry) => (
-            <button key={entry.id} type="button" onClick={() => setBand(entry.id)} style={chip(band === entry.id)}>
-              {ar ? entry.ar : entry.en}
-              <span dir="ltr" style={{ fontFamily: MONO, unicodeBidi: "isolate" }}>{sum(entry.id)}</span>
+  const body = (
+    <div data-scope-notices style={{ overflow: "auto", flex: 1, minHeight: 0, padding: "8px 10px 10px", display: "grid", alignContent: "start", gridAutoRows: "max-content", gap: 6 }}>
+      <div style={{ padding: "2px 2px 0" }}>
+        <StatusFilterPills
+          bare
+          size="sm"
+          dataKey="scope-notices"
+          value={band}
+          onChange={setBand}
+          items={BANDS.map((entry) => ({ id: entry.id, label: ar ? entry.ar : entry.en, n: sum(entry.id) }))}
+        />
+      </div>
+
+      {brief.length > 0 ? (
+        <section style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line2)", borderRadius: 10, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 46px 46px 46px", gap: 6, fontSize: 10.5, color: "var(--nv-muted)", alignItems: "baseline" }}>
+            <strong style={{ fontSize: 11.5, color: "var(--nv-ink)" }}>{ar ? "اليوم في فروعك" : "Today in your branches"}</strong>
+            <span style={{ textAlign: "center" }}>{ar ? "عاجل" : "Urgent"}</span>
+            <span style={{ textAlign: "center" }}>{ar ? "قرارك" : "Yours"}</span>
+            <span style={{ textAlign: "center" }}>{ar ? "للعلم" : "Notice"}</span>
+          </div>
+          {brief.map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              onClick={() => onPickBranch?.(row.id)}
+              title={ar ? "اختر هذا الفرع في «نطاقك»" : "Pick this branch in your scope"}
+              style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 46px 46px 46px", gap: 6, alignItems: "center", fontSize: 12, padding: "5px 0", border: "none", borderTop: "1px solid var(--nv-line2)", background: "transparent", cursor: "pointer", fontFamily: "inherit", textAlign: "start", color: "var(--nv-ink)" }}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                <KindTile tone="ok" letter={String(row.name || "").replace(/^فرع\s+/u, "").slice(0, 1)} />
+                <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: 600 }}>{row.name}</span>
+              </span>
+              {["urgent", "decision", "info"].map((key) => (
+                <span key={key} style={{ textAlign: "center" }}>
+                  {row[key]
+                    ? <span dir="ltr" style={{ ...rowChip(bandTone(key)), fontFamily: MONO, unicodeBidi: "isolate" }}>{row[key]}</span>
+                    : <span style={{ color: "var(--nv-line)" }}>—</span>}
+                </span>
+              ))}
             </button>
           ))}
+        </section>
+      ) : null}
+
+      {rows.length === 0 ? (
+        <div style={{ padding: "16px 14px", background: "var(--nv-card)", border: "1px solid var(--nv-line2)", borderRadius: 10, fontSize: 12, color: "var(--nv-muted)" }}>
+          {ar ? "لا إشعارات في هذا الفلتر." : "No notices in this filter."}
         </div>
-      </div>
-
-      <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
-        {brief.length > 0 ? (
-          <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--nv-line)", background: "#F6FAF7", display: "flex", flexDirection: "column", gap: 6 }}>
-            <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? "اليوم في فروعك" : "Today in your branches"}</span>
-            {brief.map((row) => (
-              <button
-                key={row.id}
-                type="button"
-                onClick={() => onPickBranch?.(row.id)}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "minmax(0,1fr) 44px 44px 44px",
-                  gap: 6,
-                  alignItems: "center",
-                  fontSize: 11.5,
-                  padding: "3px 0",
-                  border: "none",
-                  background: "transparent",
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  textAlign: "start",
-                  color: "var(--nv-ink)",
-                }}
-              >
-                <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</span>
-                <span dir="ltr" style={{ fontFamily: MONO, textAlign: "center", color: "var(--nv-bad-ink)", fontWeight: 600, unicodeBidi: "isolate" }}>{row.urgent || ""}</span>
-                <span dir="ltr" style={{ fontFamily: MONO, textAlign: "center", color: "var(--nv-warn-ink)", fontWeight: 600, unicodeBidi: "isolate" }}>{row.decision || ""}</span>
-                <span dir="ltr" style={{ fontFamily: MONO, textAlign: "center", color: "var(--nv-muted)", unicodeBidi: "isolate" }}>{row.info || ""}</span>
-              </button>
-            ))}
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 44px 44px 44px", gap: 6, fontSize: 9.5, color: "var(--nv-muted)" }}>
-              <span />
-              <span style={{ textAlign: "center" }}>{ar ? "عاجل" : "Urgent"}</span>
-              <span style={{ textAlign: "center" }}>{ar ? "قرارك" : "Yours"}</span>
-              <span style={{ textAlign: "center" }}>{ar ? "للعلم" : "Notice"}</span>
-            </div>
+      ) : rows.map((item) => (
+        <div key={item.id} data-scope-notice={item.band} className="nv-req-kind-card" style={{ cursor: "default", alignItems: "flex-start", padding: "11px 12px" }}>
+          <span className="nv-req-kind-mark" aria-hidden style={item.band === "urgent" ? { background: "var(--nv-bad-soft)", color: "var(--nv-bad-ink)" } : item.band === "decision" ? { background: "var(--nv-warn-soft)", color: "var(--nv-warn-ink)" } : undefined}>
+            {String(ar ? item.kindAr : item.kindEn || "").replace(/^ال/u, "").slice(0, 1)}
+          </span>
+          <div className="nv-req-kind-copy" style={{ flex: 1, gap: 4 }}>
+            <span className="nv-req-kind-title" style={{ lineHeight: 1.6 }}>{ar ? item.titleAr : item.titleEn}</span>
+            <span className="nv-req-kind-hint" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span>{item.branch}</span>
+              <span aria-hidden>·</span>
+              <span>{ar ? item.kindAr : item.kindEn}</span>
+              <span aria-hidden>·</span>
+              <span dir="ltr" style={{ fontFamily: MONO, unicodeBidi: "isolate" }}>{`×${item.count}`}</span>
+            </span>
           </div>
-        ) : null}
-
-        {rows.length === 0 ? (
-          <div style={{ padding: 22, textAlign: "center", fontSize: 12, color: "var(--nv-muted)" }}>
-            {ar ? "لا إشعارات في هذا الفلتر." : "No notices in this filter."}
+          <div style={{ display: "flex", flexDirection: "column", gap: 5, alignItems: "stretch", flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={() => onOpen?.(item)}
+              style={{ fontFamily: "inherit", height: 28, padding: "0 12px", borderRadius: 8, border: "none", background: "var(--nv-btn-fill, #0B3D27)", color: "#fff", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+            >
+              {ar ? "افتح" : "Open"}
+            </button>
+            <button
+              type="button"
+              onClick={() => markDone(item)}
+              style={{ fontFamily: "inherit", height: 24, padding: "0 10px", borderRadius: 8, border: "1px solid var(--nv-line2)", background: "var(--nv-card)", color: "var(--nv-muted)", fontSize: 10.5, cursor: "pointer" }}
+            >
+              {ar ? "تمّ" : "Done"}
+            </button>
           </div>
-        ) : rows.map((item) => (
-          <div key={item.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 14px", borderBottom: "1px solid var(--nv-line)" }}>
-            <span aria-hidden style={{ width: 8, height: 8, borderRadius: "50%", marginTop: 6, background: dotColor(item.band), flexShrink: 0 }} />
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: 1 }}>
-              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                <strong style={{ fontSize: 12.5, color: "var(--nv-ink)" }}>{ar ? item.titleAr : item.titleEn}</strong>
-                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 11, fontWeight: 600, color: "var(--nv-muted)", unicodeBidi: "isolate" }}>{`${item.count}×`}</span>
-              </div>
-              <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{`${item.branch} · ${ar ? item.kindAr : item.kindEn}`}</span>
-              <span style={{ fontSize: 10.5, color: "var(--nv-muted)" }}>{ar ? "الآن" : "Now"}</span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end", flexShrink: 0 }}>
-              <button
-                type="button"
-                onClick={() => onOpen?.(item)}
-                style={{ border: "none", background: "transparent", padding: 0, fontSize: 11, fontWeight: 600, color: "var(--nv-ink)", cursor: "pointer", fontFamily: "inherit" }}
-              >
-                {ar ? "افتح ←" : "Open"}
-              </button>
-              <button
-                type="button"
-                onClick={() => markDone(item)}
-                style={{ border: "none", background: "transparent", padding: 0, fontSize: 10.5, color: "var(--nv-muted)", cursor: "pointer", fontFamily: "inherit" }}
-              >
-                {ar ? "تمّ" : "Done"}
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ padding: "8px 14px", borderTop: "1px solid var(--nv-line)", background: "var(--nv-soft)", fontSize: 10.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>
-        {ar
-          ? "يصلك إشعار كل فرع تديره. فتح الإشعار يختار ذلك الفرع ويفتح قسمه. الحدث المتكرّر يُجمَّع، والعاجل بلا إجراء يصعد بعد 48 ساعة."
-          : "You are notified for every branch you administer. Opening a notice selects that branch and opens its section. Repeats are grouped, and an urgent item with no action escalates after 48 hours."}
-      </div>
+        </div>
+      ))}
     </div>
   );
+
+  if (embedded) return body;
+  return (
+    <NoticeShell ar={ar} label={ar ? "إشعارات كل نطاقي" : "Notices for all my scope"}>
+      <NoticeHead title={ar ? "إشعارات كل نطاقي" : "Notices for all my scope"} sub={ar ? "مرتّبة بالأولوية · مجمّعة لكل فرع" : "By priority · grouped per branch"} />
+      {body}
+      <NoticeFoot>{SCOPE_FOOT[ar ? "ar" : "en"]}</NoticeFoot>
+    </NoticeShell>
+  );
 }
+
+export const SCOPE_FOOT = {
+  ar: "يصلك إشعار كل فرع تديره. فتح الإشعار يختار ذلك الفرع ويفتح قسمه. الحدث المتكرّر يُجمَّع، والعاجل بلا إجراء يصعد بعد 48 ساعة.",
+  en: "You are notified for every branch you administer. Opening a notice selects that branch and opens its section. Repeats are grouped, and an urgent item with no action escalates after 48 hours.",
+};

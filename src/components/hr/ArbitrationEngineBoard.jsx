@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
+import { KpiMeter } from "@/components/shared/StatusFlag";
 import { ACCENT, BAD, MUTED, NAVY, NAVY_FILL, OK, WARN, CARD } from "@/lib/platformStyles";
 import { ChromeBox } from "@/components/shared/IdentityCard";
 import { printReport } from "@/lib/printReport";
@@ -169,9 +170,10 @@ export default function ArbitrationEngineBoard() {
 
         <div style={{ display: "flex", gap: 26, flexWrap: "wrap", marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--nv-line)" }}>
           <div>
-            <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 28, fontWeight: 600, color: ACCENT, textAlign: "right" }}>
+            <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 28, fontWeight: 600, color: "var(--nv-ink)", textAlign: "right" }}>
               {score.score == null ? "—" : `${score.score}%`}
             </div>
+            {score.score == null ? null : <KpiMeter value={score.score} label={ar ? "درجة الامتثال المشتقة" : "Derived compliance score"} />}
             <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>{ar ? "درجة الامتثال المشتقة" : "Derived compliance score"}</div>
             <span style={{ ...band.style, display: "inline-block", marginTop: 6, fontSize: 11, fontWeight: 600 }}>
               {ar ? band.ar : band.en}
@@ -193,13 +195,12 @@ export default function ArbitrationEngineBoard() {
         <div style={{ display: "flex", flexDirection: "column", marginTop: 16, borderTop: "1px solid var(--nv-line)" }}>
           {board.sectors.map((row) => {
             const empty = row.score == null;
-            const tone = empty ? MUTED : (row.blocked ? "var(--nv-bad-line)" : ACCENT);
             return (
               <div key={row.id} style={{ display: "flex", gap: 12, padding: "10px 0", borderTop: "1px solid var(--nv-line)", flexWrap: "wrap", alignItems: "baseline" }}>
                 <Link to={row.href} style={{ fontSize: 12, fontWeight: 600, color: NAVY, textDecoration: "none", minWidth: 96 }}>
                   {ar ? row.ar : row.en}
                 </Link>
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 18, fontWeight: 600, color: tone }}>
+                <span dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 18, fontWeight: 600, color: empty ? MUTED : "var(--nv-ink)" }}>
                   {empty ? "—" : `${row.score}%`}
                 </span>
                 <span style={{ fontSize: 11, color: MUTED }}>

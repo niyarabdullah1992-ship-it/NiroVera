@@ -2,36 +2,53 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { citeRule, explainRule } from "@/lib/laborRules";
-import { BORDER, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
-import { DS_RADIUS } from "@/lib/designSystem";
+import { BORDER, CARD, MUTED, NAVY, NAVY_FILL, SURFACE } from "@/lib/platformStyles";
+import { DS_CONTROL_RADIUS, DS_RADIUS } from "@/lib/designSystem";
 import { cardAwaitsNightConsent, nightConsentWaitCopy } from "@/lib/shiftWeek";
 import LawGateStatusPill, { LawGateArticleBadge } from "@/components/shared/LawGateStatusPill";
+import NvIcon from "@/components/shared/NvIcon";
+import { ArrowLeft, ArrowRight, BookOpen, ChevronUp } from "lucide-react";
+import { sectionRoutesForCard } from "@/lib/sectionRoutes";
 
 export const DUTY_ALERT_DUE = "var(--nv-bad-fill)";
 export const DUTY_ALERT_BLOCK = "var(--nv-bad-ink)";
 
 const AR = { letterSpacing: 0 };
 
-/** Quiet secondary action — underline, muted, not a primary CTA. */
-export function dutyAlertActionStyle() {
+/**
+ * Card actions — institutional controls, not underlined text.
+ * "quiet" (default): bordered secondary · "go": the section the decision belongs to (filled).
+ */
+export function dutyAlertActionStyle(kind = "quiet") {
+  const go = kind === "go";
   return {
     fontFamily: "inherit",
-    fontSize: 11,
-    fontWeight: 500,
-    padding: "2px 0",
-    border: "none",
-    background: "transparent",
-    color: MUTED,
+    fontSize: 12,
+    fontWeight: 600,
+    height: 30,
+    boxSizing: "border-box",
+    padding: "0 12px",
+    borderRadius: DS_CONTROL_RADIUS,
+    border: go ? `1px solid ${NAVY_FILL}` : `1px solid ${BORDER}`,
+    background: go ? NAVY_FILL : CARD,
+    color: go ? "#FFFFFF" : NAVY,
     cursor: "pointer",
-    textDecoration: "underline",
-    textUnderlineOffset: 3,
-    textDecorationColor: "color-mix(in oklab, var(--nv-muted, #6B7280) 55%, transparent)",
+    textDecoration: "none",
     display: "inline-flex",
     alignItems: "center",
-    lineHeight: 1.4,
+    gap: 6,
+    lineHeight: 1,
     whiteSpace: "nowrap",
     ...AR,
   };
+}
+
+/** «في طلباتي ›» → «افتح في طلباتي»: a verb on the button, the arrow drawn as an icon. */
+function sectionActionLabel(label, ar) {
+  const clean = String(label || "").replace(/\s*[›‹]\s*$/, "").trim();
+  if (ar && /^في\s/.test(clean)) return `افتح ${clean}`;
+  if (!ar && /^In\s/.test(clean)) return `Open ${clean.slice(3)}`;
+  return clean;
 }
 
 function dutyCardHasStatute(card) {
@@ -104,6 +121,7 @@ export default function DutyStripAlertCard({
   onApplyOrdinary,
   onNightRemedy,
   hideJudgment = false,
+  row = false,
 }) {
   const [readOpen, setReadOpen] = useState(false);
   const [cutOpen, setCutOpen] = useState(false);
@@ -118,8 +136,16 @@ export default function DutyStripAlertCard({
   const statuteIds = items.length && card.ruleId
     ? [card.ruleId]
     : dutyStatuteIds(card, heat);
-  const requestsHref = dutyRequestsHref(card);
-  const fileHref = card.href && card.audience === "manager" && items.length ? card.href : "";
+  // The fixed rule: each alert opens in its own section (طلباتي · السلامة), never the employee file.
+  const sectionLinks = (() => {
+    const routes = sectionRoutesForCard(card);
+    const legacy = dutyRequestsHref(card);
+    if (legacy && !routes.some((row) => row.section === "requests")) routes.unshift({ section: "requests", href: legacy });
+    return routes.map((row) => {
+      const nightRequest = row.section === "requests" && (cardAwaitsNightConsent(card) || row.gateId === "night_medical" || card.gateId === "night_medical");
+      return { ...row, label: nightRequest || !row.ar ? dutyRequestsLabel(card, ar) : (ar ? row.ar : row.en) };
+    });
+  })();
   const awaitConsent = cardAwaitsNightConsent(card);
   const gates = cardGateIds(card);
   const ordinaryApply = card.audience !== "employee"
@@ -128,17 +154,35 @@ export default function DutyStripAlertCard({
   const remedyApply = card.audience !== "employee"
     && typeof onNightRemedy === "function"
     && (gates.includes("night_compensate") || gates.includes("night_performer_comp"));
-  const hasActions = hasStatute || children || requestsHref || fileHref || ordinaryApply || remedyApply;
+  const hasActions = hasStatute || children || sectionLinks.length || ordinaryApply || remedyApply;
   const personName = String(card.name || "").trim();
   const masthead = String(card.instrument || "").trim();
   const showName = Boolean(personName && card.audience === "manager");
+  /** Row chrome: 24px control-radius chips, hairline rows — one chip style across جدول الدوام. */
+  const pillSkin = row ? { height: 24, boxSizing: "border-box", padding: "0 9px", borderRadius: DS_CONTROL_RADIUS, fontSize: 11, fontWeight: 600, lineHeight: 1 } : undefined;
+  const badgeSkin = row ? { height: 24, minWidth: 34, borderRadius: DS_CONTROL_RADIUS } : undefined;
+  const onDate = row && card.onDate ? String(card.onDate) : "";
+  const statusPill = <LawGateStatusPill status={block ? "blocked" : "waiting"} ar={ar} style={pillSkin} />;
   return (
     <article
       className="nv-duty-circular"
       data-glow={card.glow || (block ? "block" : "due")}
       data-gate={card.gateId || undefined}
       data-audience={card.audience || undefined}
-      style={{
+      data-row={row ? "1" : undefined}
+      style={row ? {
+        position: "relative",
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        width: "100%",
+        boxSizing: "border-box",
+        padding: "10px 18px",
+        borderBottom: "1px solid var(--nv-line2, #EEF2F7)",
+        background: "transparent",
+        color: NAVY,
+        ...AR,
+      } : {
         position: "relative",
         display: "flex",
         flexDirection: "column",
@@ -156,18 +200,23 @@ export default function DutyStripAlertCard({
     >
       {showName ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <strong data-duty-name="1" style={{ fontSize: 14, fontWeight: 700, color: NAVY, lineHeight: 1.4, ...AR }}>
+          <strong data-duty-name="1" style={{ fontSize: row ? 12.5 : 14, fontWeight: 700, color: NAVY, lineHeight: 1.4, ...AR }}>
             {personName}
           </strong>
-          <LawGateStatusPill status={block ? "blocked" : "waiting"} ar={ar} />
+          {onDate ? <span dir="ltr" style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 10.5, color: MUTED }}>{onDate}</span> : null}
+          <span style={{ marginInlineStart: "auto" }}>{statusPill}</span>
         </div>
       ) : card.subject ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: NAVY, lineHeight: 1.45, ...AR }}>{card.subject}</span>
-          <LawGateStatusPill status={block ? "blocked" : "waiting"} ar={ar} />
+          <span style={{ fontSize: row ? 12.5 : 13, fontWeight: 600, color: NAVY, lineHeight: 1.45, ...AR }}>{card.subject}</span>
+          {onDate ? <span dir="ltr" style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 10.5, color: MUTED }}>{onDate}</span> : null}
+          <span style={{ marginInlineStart: "auto" }}>{statusPill}</span>
         </div>
       ) : (
-        <LawGateStatusPill status={block ? "blocked" : "waiting"} ar={ar} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {onDate ? <span dir="ltr" style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 10.5, color: MUTED }}>{onDate}</span> : null}
+          <span style={{ marginInlineStart: "auto" }}>{statusPill}</span>
+        </div>
       )}
 
       {items.length ? (
@@ -189,7 +238,14 @@ export default function DutyStripAlertCard({
                 key={item.id}
                 data-gate={item.gateId || undefined}
                 dir={ar ? "rtl" : "ltr"}
-                style={{
+                style={row ? {
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                  minWidth: 0,
+                  padding: "2px 0",
+                } : {
                   display: "flex",
                   flexDirection: "row",
                   alignItems: "center",
@@ -201,6 +257,7 @@ export default function DutyStripAlertCard({
                   border: "1px solid var(--nv-line, #E2E8F0)",
                 }}
               >
+                {row && article ? <LawGateArticleBadge article={article} style={badgeSkin} /> : null}
                 <span
                   style={{
                     flex: 1,
@@ -215,7 +272,7 @@ export default function DutyStripAlertCard({
                 >
                   {item.headline || item.title}
                 </span>
-                {article ? <LawGateArticleBadge article={article} /> : null}
+                {!row && article ? <LawGateArticleBadge article={article} /> : null}
               </li>
             );
           })}
@@ -248,27 +305,26 @@ export default function DutyStripAlertCard({
       ) : null}
 
       {hasActions ? (
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", paddingTop: 2 }}>
+        <div data-duty-actions="1" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", paddingTop: 10, marginTop: 2, borderTop: `1px solid ${BORDER}` }}>
+          {sectionLinks.map((link) => (
+            <Link key={link.href} to={link.href} data-section-link={link.section} style={dutyAlertActionStyle("go")}>
+              {sectionActionLabel(link.label, ar)}
+              {ar ? <ArrowLeft size={14} aria-hidden /> : <ArrowRight size={14} aria-hidden />}
+            </Link>
+          ))}
           {hasStatute ? (
             <button
               type="button"
+              data-read-statute="1"
               onClick={() => setReadOpen((v) => !v)}
               aria-expanded={readOpen}
               style={dutyAlertActionStyle()}
             >
-              {readOpen ? (ar ? "اختصر النص" : "Show less") : (ar ? "اقرأ النص" : "Read the text")}
+              {readOpen ? <ChevronUp size={14} aria-hidden /> : <BookOpen size={14} aria-hidden />}
+              {readOpen ? (ar ? "إخفاء النص" : "Hide the text") : (ar ? "اقرأ النص النظامي" : "Read the statute")}
             </button>
           ) : null}
-          {requestsHref ? (
-            <Link to={requestsHref} style={dutyAlertActionStyle()}>
-              {dutyRequestsLabel(card, ar)}
-            </Link>
-          ) : null}
-          {fileHref ? (
-            <Link to={fileHref} style={dutyAlertActionStyle()}>
-              {ar ? "افتح الملف" : "Open the file"}
-            </Link>
-          ) : null}
+          {children ? <span style={{ display: "contents" }}>{children}</span> : null}
           {ordinaryApply ? (
             <>
               <button type="button" onClick={() => onApplyOrdinary("morning")} style={dutyAlertActionStyle()}>
@@ -294,10 +350,10 @@ export default function DutyStripAlertCard({
               {allowOpen ? (
                 <>
                   <button type="button" onClick={() => setAllowKind("pay")} style={dutyAlertActionStyle()}>
-                    {ar ? (allowKind === "pay" ? "أجر ✓" : "أجر") : (allowKind === "pay" ? "Pay ✓" : "Pay")}
+                    {ar ? "أجر" : "Pay"}{allowKind === "pay" ? <> <NvIcon name="check" size={12} /></> : null}
                   </button>
                   <button type="button" onClick={() => setAllowKind("transport")} style={dutyAlertActionStyle()}>
-                    {ar ? (allowKind === "transport" ? "نقل ✓" : "نقل") : (allowKind === "transport" ? "Transport ✓" : "Transport")}
+                    {ar ? "نقل" : "Transport"}{allowKind === "transport" ? <> <NvIcon name="check" size={12} /></> : null}
                   </button>
                   {allowKind ? (
                     <>
@@ -354,20 +410,22 @@ export default function DutyStripAlertCard({
                   {ar ? `−${hours}س` : `−${hours}h`}
                 </button>
               )) : null}
-              <button type="button" onClick={() => onNightRemedy("morning")} style={dutyAlertActionStyle()}>
-                {ar ? "غيّر إلى صباحي" : "Change to morning"}
-              </button>
-              <button type="button" onClick={() => onNightRemedy("evening")} style={dutyAlertActionStyle()}>
-                {ar ? "غيّر إلى مسائي" : "Change to evening"}
-              </button>
+              {/* One «change to ordinary hours» pair per card: when «صباحي / مسائي» already sits above, not twice. */}
+              {ordinaryApply ? null : (
+                <>
+                  <button type="button" onClick={() => onNightRemedy("morning")} style={dutyAlertActionStyle()}>
+                    {ar ? "غيّر إلى صباحي" : "Change to morning"}
+                  </button>
+                  <button type="button" onClick={() => onNightRemedy("evening")} style={dutyAlertActionStyle()}>
+                    {ar ? "غيّر إلى مسائي" : "Change to evening"}
+                  </button>
+                </>
+              )}
             </>
           ) : null}
         </div>
       ) : null}
 
-      {children ? (
-        <div style={{ width: "100%" }}>{children}</div>
-      ) : null}
 
       {readOpen && hasStatute ? (
         <span style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 4 }}>

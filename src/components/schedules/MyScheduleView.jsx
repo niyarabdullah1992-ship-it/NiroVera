@@ -36,7 +36,7 @@ import { findNextShift, inLabel } from "@/components/schedules/myDutyWeek";
 import { dutyEdge } from "@/components/schedules/dutyStatus";
 import RightHint from "@/components/shared/RightHint";
 import { attRightHint } from "@/lib/rightHints.att.js";
-import { weekHoursCap } from "@/lib/laborHoursPolicy";
+import { hoursBasisOf, weekHoursCap } from "@/lib/laborHoursPolicy";
 import { ruleValue } from "@/lib/laborRules";
 
 /** Week nav inside «أيامي»; tiles and the board use the shared duty layout (index.css). */
@@ -129,6 +129,8 @@ export default function MyScheduleView({
   // the Art. 108 category or a juvenile's — never a literal.
   const weekCap = weekHoursCap(me, data, weekDays(weekStart).map((day) => day.key), laborCalendar);
   const WEEK_LIMIT = Number.isFinite(weekCap.hours) ? weekCap.hours : ruleValue("hours.week.ordinaryMaxHours", weekDays(weekStart)[0]?.key);
+  const weeklyBasis = hoursBasisOf(data, me).basis === "weekly";
+  const dayLimit = ruleValue("hours.shift.ordinaryHours", weekDays(weekStart)[0]?.key) || 8;
   const capArt = weekCap.article ? (ar ? ` (المادة ${weekCap.article})` : ` (Art. ${weekCap.article})`) : "";
   const workDays = dayRows.filter((row) => row.shift).length;
   const restDays = dayRows.filter((row) => !row.shift && !row.leave).length;
@@ -358,7 +360,9 @@ export default function MyScheduleView({
                 <span style={{ fontSize: 11, color: hours > WEEK_LIMIT ? "#F3C9C9" : "#A9CDB8" }}>
                   {hours > WEEK_LIMIT
                     ? (ar ? `فوق حد ${WEEK_LIMIT} ساعة — الإدارة تعالجه قبل النشر` : `Over the ${WEEK_LIMIT} h limit — management fixes it before publish`)
-                    : (ar ? `الحد النظامي ${WEEK_LIMIT} ساعة أسبوعياً${capArt}` : `Statutory limit ${WEEK_LIMIT} h a week${capArt}`)}
+                    : weeklyBasis
+                      ? (ar ? `المعيار الأسبوعي: الحد ${WEEK_LIMIT} ساعة أسبوعياً${capArt}` : `Weekly criterion: ${WEEK_LIMIT} h a week${capArt}`)
+                      : (ar ? `المعيار اليومي: ${dayLimit} ساعات في اليوم، وما زاد عمل إضافي (المادة 98)` : `Daily criterion: ${dayLimit} h a day; more is overtime (Art. 98)`)}
                 </span>
               </div>
               <div style={{ padding: "12px 18px 4px", display: "flex", alignItems: "center", gap: 8 }}>

@@ -18,6 +18,7 @@ import {
 } from "@/lib/store";
 import PrayerTimeSetting from "@/components/schedules/PrayerTimeSetting";
 import WorkPostingSetting from "@/components/schedules/WorkPostingSetting";
+import HoursBasisSetting from "@/components/schedules/HoursBasisSetting";
 import { HOLIDAY_WORK_LABEL_AR, HOLIDAY_WORK_LABEL_EN, holidayWorkOn, prayerBreakHint } from "@/lib/shiftWeek";
 import { stationPrayerTimes } from "@/lib/prayerTimes";
 import NvIcon from "@/components/shared/NvIcon";
@@ -824,6 +825,7 @@ export default function ShiftWeekBoard({
   const continuous103 = hoursPolicyOf(data).continuousWork103 === true;
   const shiftTypesEditor = (
     <>
+      {mode !== "mine" ? <HoursBasisSetting ar={ar} data={data} companyId={companyId} canEdit={canEdit} onDate={hintDay} refresh={refresh} /> : null}
       <PrayerTimeSetting ar={ar} data={data} companyId={companyId} canEdit={canEdit} refresh={refresh} />
       {mode !== "mine" ? <WorkPostingSetting ar={ar} onDate={hintDay} /> : null}
       {types.map((shift, index) => {

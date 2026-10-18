@@ -114,7 +114,7 @@ function RestRules({ ar = true, onDate, prayerLine }) {
     [ar ? `لا تقل الراحة عن ${minRest?.value || 30} دقيقة في المرة الواحدة.` : `Rest is at least ${minRest?.value || 30} min at a time.`, ar ? minRest?.labelAr : minRest?.labelEn],
     [ar ? "الراحة والصلاة والطعام فيها ليست من ساعات العمل الفعلية." : "Rest, prayer and meals in it are not actual work.", ar ? notWork?.labelAr : notWork?.labelEn],
     [ar ? "وقت راحتك لك: لست فيه تحت سلطة صاحب العمل، ولا يُلزمك بالبقاء في مكان العمل." : "Your rest is yours: you are not under the employer's authority and may not be required to stay at the workplace.", ar ? notWork?.labelAr : notWork?.labelEn],
-    [prayerLine, null],
+    ...(prayerLine ? [[prayerLine, null]] : []),
   ];
   return (
     <details data-rest-rule="1" style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -235,7 +235,7 @@ export default function RestPlanPicker({ ar = true, shift, onDate, continuous103
               : "Four days on, four off: work is measured weekly, not daily — 11 h × 4 days = 44 h a week, within the cap."}
           </span>
         ) : null}
-        <RestRules ar={ar} onDate={onDate} prayerLine={ar ? "صلاتك أثناء العمل خارج الراحة لا تُستقطع ولا تطيل دوامك." : "A prayer during work, outside the rest, is not deducted and does not lengthen your day."} />
+        <RestRules ar={ar} onDate={onDate} prayerLine={null} />
       </div>
     </RestCard>
   );

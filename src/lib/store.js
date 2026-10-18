@@ -693,6 +693,8 @@ export function getCompanyData(id) {
     if (seedPreviewPerformance(data)) persist = true;
     if (migratePreviewFieldTasks(data)) persist = true;
     if (seedPreviewOrgDesign(data)) persist = true;
+    // Preview shifts stretched above may now be long — open their one-hour rest in the same load.
+    if (openLongShiftRests(data)) persist = true;
   }
   (data.employees || []).forEach((emp) => {
     const { patch } = art55FilePatch(emp);

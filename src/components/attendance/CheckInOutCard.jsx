@@ -1195,6 +1195,20 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             <strong style={{ fontSize: 14, fontWeight: 700, color: "var(--nv-ink)", letterSpacing: 0 }}>{ar ? "مسار اليوم" : "Today's timeline"}</strong>
             <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{ar ? "الجدول يحدّد الوقت، وبصمتك تثبته." : "The rota sets the time; your punch proves it."}</span>
           </div>
+          {!flexOn && !continuous103 && band && !done ? (
+            // The option is shown as information on a day of 8 hours or less: it opens at 9 hours and more.
+            <div data-rest-plan="info" style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", border: "1px dashed var(--nv-line)", borderRadius: 10, background: "var(--nv-card)" }}>
+              <NvIcon name="lock" size={14} inline={false} style={{ color: "var(--nv-muted)", marginTop: 2 }} />
+              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--nv-ink2)" }}>{ar ? "حدّد وقت راحتك — يُفتح عند 9 ساعات فأعلى" : "Set your break time — opens at 9 hours or more"}</span>
+                <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>
+                  {ar
+                    ? `إذا كان دوامك أكثر من 8 ساعات تكون لك ساعة راحة تختار وقتها بنفسك هنا. ورديتك اليوم ${band.targetMin % 60 ? band.targetLabel : band.targetMin / 60} ساعات${band.label ? `، وراحتها من الجدول ${band.label}` : ""}.`
+                    : `When your duty is longer than 8 hours you get a one-hour break you place yourself here. Today's shift is ${band.targetLabel}${band.label ? `, its break set by the roster at ${band.label}` : ""}.`}
+                </span>
+              </span>
+            </div>
+          ) : null}
           {flexOn && !done && !flexDay.punched.length ? (
             <RestPlanPicker
               key={`${dutyDay}:${restPlan?.at || ""}`}

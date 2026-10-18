@@ -258,7 +258,7 @@ export function seedPreviewOwnerNightStreak(data, today = previewTodayKey()) {
     schedule.shiftTypes.push({ id: "night", start: "23:00", end: "07:00", label: "ليلي", restMinutes: 30 });
   }
   if (!schedule.shiftTypes.some((shift) => shift.id === "morning" || shift.start === "07:00")) {
-    schedule.shiftTypes.push({ id: "morning", start: "07:00", end: "15:00", label: "صباحي", restMinutes: 30 });
+    schedule.shiftTypes.push({ id: "morning", start: "07:00", end: "16:00", label: "صباحي", restMinutes: 60 });
   }
   const nightId = schedule.shiftTypes.find((shift) => shift.id === "night" || shift.start === "23:00")?.id;
   const morningId = schedule.shiftTypes.find((shift) => shift.id === "morning" || shift.start === "07:00")?.id;
@@ -877,16 +877,21 @@ export function migratePreviewOwnerGosiIdentity(data) {
  * in two by default — so «حدّد وقت راحتك» shows in بصمتي and the worker places his own rest. Once.
  */
 export function migratePreviewFlexMorning(data) {
-  if (!data || data.previewFlexMorning9h) return false;
-  const schedule = (data.schedules || []).find((row) => row?.id === "sch_1") || null;
-  const morning = schedule?.shiftTypes?.find((row) => row?.id === "morning");
-  if (!morning) return false;
-  data.previewFlexMorning9h = true;
-  morning.end = "16:00";
-  morning.restMinutes = 60;
-  morning.breakMode = "flex";
-  morning.flexBreak = { minutes: 60, from: "07:30", to: "15:30", split: true, earlyEnd: false };
-  return true;
+  if (!data || data.previewFlexMorning9hAll) return false;
+  let changed = false;
+  for (const schedule of data.schedules || []) {
+    for (const morning of schedule?.shiftTypes || []) {
+      const isMorning = morning?.id === "morning" || (morning?.start === "07:00" && morning?.end === "15:00");
+      if (!isMorning || morning.end === "16:00") continue;
+      morning.end = "16:00";
+      // Past 8 hours: the platform rule opens the one-hour flex rest (lib/shiftDerivations.longShiftRestPatch).
+      delete morning.breakMode;
+      delete morning.flexBreak;
+      changed = true;
+    }
+  }
+  data.previewFlexMorning9hAll = true;
+  return changed;
 }
 
 export function migratePreviewGosiEstablishment(data) {

@@ -618,7 +618,7 @@ function purgePresetLadders(data) {
 }
 
 /* ----------------------------- company data ----------------------------- */
-/** Shift types past the ordinary day with no break mode chosen get the one-hour flex rest (longShiftRestPatch). */
+/** Every shift type past five hours carries the rest the worker places himself (longShiftRestPatch) — no roster break settings. */
 /** Art. 103 continuous work was removed from the platform by the owner — a stored flag is cleared on load,
  *  so every shift keeps its rest (Art. 101). The library still reads the flag; nothing can set it. */
 function clearContinuous103(data) {
@@ -5401,7 +5401,7 @@ export function updateShiftType(companyId, stationId, shiftTypeId, updates) {
     if (!st) return;
     Object.assign(st, updates);
     // A shift stretched past 8 hours opens the one-hour flex rest (unless the manager chose a break mode).
-    if ((updates?.start || updates?.end) && !updates?.breakMode) {
+    {
       const patch = longShiftRestPatch(st);
       if (patch) Object.assign(st, patch);
     }

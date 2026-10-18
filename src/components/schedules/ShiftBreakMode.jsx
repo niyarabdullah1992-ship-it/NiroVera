@@ -55,13 +55,12 @@ export default function ShiftBreakMode({ ar = true, shift, canEdit = false, cont
     const line = mode === "continuous"
       ? (ar ? `عمل متواصل (${art103}) — بلا توقف` : "Continuous work (Art. 103) — no stop")
       : mode === "flex" && flex
-        ? (ar ? `راحة مرنة ${flex.minutes} د ببصمة · ` : `Flex break ${flex.minutes}m by punch · `)
-        : (ar ? "راحة ثابتة في الجدول" : "Fixed break on the roster");
+        ? (ar ? `الراحة ${flex.minutes} د من ساعات الوردية — يختار الموظف وقتها في «بصمتي» بلا بصمة` : `${flex.minutes}m rest from the shift's hours — the worker picks its time in «My punch», no punch`)
+        : (ar ? "لا راحة — الوردية خمس ساعات أو أقل" : "No rest — the shift is five hours or less");
     return (
       <span data-break-mode={mode} style={{ fontSize: 10.5, color: "var(--nv-ink3, var(--nv-muted))", lineHeight: 1.7 }}>
         {line}
-        {mode === "flex" && flex ? <span dir="ltr" style={mono}>{flex.from}–{flex.to}</span> : null}
-        {mode === "flex" && flex?.splitEffective ? (ar ? " · تُقسَّم" : " · may split") : null}
+        {mode === "flex" && flex?.splitEffective ? (ar ? "، ويجوز أن يقسمها جزأين" : ", in up to two parts") : null}
       </span>
     );
   }

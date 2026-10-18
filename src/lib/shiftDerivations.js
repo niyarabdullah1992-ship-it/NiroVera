@@ -402,29 +402,32 @@ export const LONG_SHIFT_REST_MINUTES = 60;
  * Returns the patch to apply, or null (short shift · already flex · continuous Art. 103 · fixed by choice).
  */
 export function longShiftRestPatch(shift, onDate) {
-  if (!shift || shift.breakMode === "flex" || shift.breakMode === "continuous" || shift.breakMode === "fixed") return null;
+  // The worker sets his own rest (owner's rule): the roster holds no break settings. Every shift with more than
+  // five hours (Art. 101) gets a rest the worker places in بصمتي — its length read from the shift's hours: what
+  // the duty holds past the ordinary eight (8:30 → 30, 9:00 → 60), never under the statutory minimum and at most
+  // an hour. The window is the whole duty; a rest of twice the minimum may be split.
+  if (!shift || shift.breakMode === "continuous") return null;
   const start = clockOfHm(shift.start);
   if (start == null || clockOfHm(shift.end) == null) return null;
   const span = minutesBetween(shift.start, shift.end) || 1440;
+  const consecMax = (Number(ruleValue("hours.rest.maxConsecutiveHours", onDate)) || 5) * 60;
+  if (span <= consecMax) return null;
   const ordinary = (Number(ruleValue("hours.shift.ordinaryHours", onDate)) || 8) * 60;
-  if (span <= ordinary) return null;
   const minPart = ruleValue("hours.rest.duringShiftMinutes", onDate) || 30;
-  // The opening length reads the roster's own hours: what the duty holds past the ordinary eight
-  // (8:30 → 30 min, 9:00 → 60), never under the statutory minimum and at most an hour by default.
-  // The management changes it afterwards on the shift type («مدة الراحة»), within Art. 101.
   const minutes = Math.min(LONG_SHIFT_REST_MINUTES, Math.max(minPart, span - ordinary));
-  return {
-    breakMode: "flex",
-    restMinutes: minutes,
-    // The window is the whole duty: the worker writes his break time anywhere inside it.
-    flexBreak: {
-      minutes,
-      from: hmOfClock(start),
-      to: hmOfClock(start + span),
-      split: minutes >= minPart * 2,
-      earlyEnd: false,
-    },
+  const flexBreak = {
+    minutes,
+    from: hmOfClock(start),
+    to: hmOfClock(start + span),
+    split: minutes >= minPart * 2,
+    earlyEnd: false,
   };
+  const fb = shift.flexBreak || {};
+  const same = shift.breakMode === "flex" && Number(shift.restMinutes) === minutes
+    && Number(fb.minutes) === minutes && fb.from === flexBreak.from && fb.to === flexBreak.to
+    && fb.split === flexBreak.split && fb.earlyEnd === false;
+  if (same) return null;
+  return { breakMode: "flex", restMinutes: minutes, flexBreak };
 }
 
 /**

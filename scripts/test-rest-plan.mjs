@@ -31,8 +31,10 @@ assert.equal(nine.flexBreak.minutes, 60);
 assert.equal(nine.flexBreak.split, true);
 assert.equal(nine.flexBreak.from, "07:00", "the window is the whole duty");
 assert.equal(nine.flexBreak.to, "16:00");
-assert.equal(longShiftRestPatch({ start: "07:00", end: "15:00" }, DAY), null, "8 hours: no change");
-assert.equal(longShiftRestPatch({ start: "07:00", end: "16:00", breakMode: "fixed" }, DAY), null, "a fixed break chosen by the manager stays");
+assert.equal(longShiftRestPatch({ start: "07:00", end: "15:00" }, DAY).flexBreak.minutes, 30, "8 hours: the statutory 30 minutes, placed by the worker");
+assert.equal(longShiftRestPatch({ start: "08:00", end: "12:00" }, DAY), null, "five hours or less: no rest");
+assert.equal(longShiftRestPatch({ start: "07:00", end: "16:00", breakMode: "fixed" }, DAY).breakMode, "flex", "no roster-fixed break any more — the worker sets it");
+{ const p = longShiftRestPatch({ start: "07:00", end: "16:00" }, DAY); assert.equal(longShiftRestPatch({ start: "07:00", end: "16:00", ...p }, DAY), null, "idempotent"); }
 assert.equal(longShiftRestPatch({ start: "19:00", end: "07:00" }, DAY).breakMode, "flex", "a 12-hour night opens it too");
 const eightHalf = longShiftRestPatch({ start: "07:00", end: "15:30" }, DAY);
 assert.equal(eightHalf.flexBreak.minutes, 30, "8:30 duty → the statutory 30 minutes");

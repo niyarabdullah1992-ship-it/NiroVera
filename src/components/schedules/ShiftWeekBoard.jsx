@@ -841,33 +841,11 @@ export default function ShiftWeekBoard({
               />
               <span style={{ display: "flex", gap: 5, alignItems: "center", whiteSpace: "nowrap" }}>
                 <span style={{ fontSize: 11, color: SW.mid }}><span style={mono}>{shiftHours(shift)}</span> {ar ? "س" : "h"}</span>
-                {shift.breakMode === "flex" && !continuous103 ? (
+                {shift.breakMode === "flex" ? (
                   <span style={chip("mute", { fontSize: 10, fontWeight: 500 })}>
-                    {ar ? `راحة مرنة ${shift.flexBreak?.minutes ?? "—"} د` : `flex ${shift.flexBreak?.minutes ?? "—"}m`}
+                    {ar ? `راحة ${shift.flexBreak?.minutes ?? "—"} د · وقتها للموظف` : `${shift.flexBreak?.minutes ?? "—"}m rest · timed by the worker`}
                   </span>
-                ) : canEdit ? (
-                  <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: SW.mid }}>
-                    <span>{ar ? "راحة" : "rest"}</span>
-                    <input
-                      type="number"
-                      dir="ltr"
-                      min={0}
-                      step={15}
-                      value={shift.restMinutes ?? 30}
-                      aria-label={ar ? `راحة ${shift.label || "الوردية"} بالدقيقة` : `${shift.label || "Shift"} rest minutes`}
-                      onChange={(e) => {
-                        updateShiftType(companyId, stationId, shift.id, { restMinutes: Math.max(0, Number(e.target.value) || 0) });
-                        refresh?.();
-                      }}
-                      style={{ ...mono, width: 68, boxSizing: "border-box", fontSize: 11, padding: "2px 4px", border: `1px solid ${SW.line}`, borderRadius: DS_CONTROL_RADIUS, background: SW.card, color: SW.ink, outline: "none" }}
-                    />
-                    <span>{ar ? "د" : "m"}</span>
-                  </label>
-                ) : (
-                  <span style={chip("mute", { fontSize: 10, fontWeight: 500 })}>
-                    {ar ? `راحة ${shift.restMinutes ?? 30} د` : `${shift.restMinutes ?? 30}m rest`}
-                  </span>
-                )}
+                ) : null}
               </span>
               {canEdit && (
                 <ConfirmDeleteDialog
@@ -906,7 +884,7 @@ export default function ShiftWeekBoard({
             <ShiftBreakMode
               ar={ar}
               shift={shift}
-              canEdit={canEdit}
+              canEdit={false}
               continuous103={continuous103}
               onDate={hintDay}
               onChange={(updates) => { updateShiftType(companyId, stationId, shift.id, updates); refresh?.(); }}

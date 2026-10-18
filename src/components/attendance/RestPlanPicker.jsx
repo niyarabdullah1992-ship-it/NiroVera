@@ -94,8 +94,8 @@ export function DutyComposition({ ar = true, flex, onDate, minClock, maxClock })
       <div data-rest-length-source="1" style={{ padding: "6px 10px", borderTop: "1px solid var(--nv-line)", fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.6 }}>
         {flex.minutes > Number(restLaw?.value || 30)
           ? (ar
-            ? `الحد النظامي للراحة ${restLaw?.value || 30} دقيقة في المرة الواحدة، تجمع الراحة والصلاة والطعام. وما فوقه تنظيم من إدارتك.`
-            : `The statutory minimum is ${restLaw?.value || 30} min at a time, for rest, prayer and food together; anything above it is your management's arrangement.`)
+            ? `الحد النظامي للراحة ${restLaw?.value || 30} دقيقة في المرة الواحدة، تجمع الراحة والصلاة والطعام. ومدة راحتك من ساعات ورديتك: ما زاد على ${Number(daily?.value || 8)} ساعات عمل.`
+            : `The statutory minimum is ${restLaw?.value || 30} min at a time, for rest, prayer and food together. Your break's length comes from your shift's hours: what it holds past ${Number(daily?.value || 8)} hours of work.`)
           : (ar
             ? `راحتك هي الحد النظامي: ${restLaw?.value || 30} دقيقة في المرة الواحدة، تجمع الراحة والصلاة والطعام.`
             : `Your break is the statutory minimum: ${restLaw?.value || 30} min at a time, for rest, prayer and food together.`)}
@@ -164,8 +164,8 @@ export default function RestPlanPicker({ ar = true, shift, onDate, continuous103
   const minClock = hmOf(flex.shiftStart);
   const maxClock = hmOf(flex.shiftStart + flex.span);
   const note = ar
-    ? `مدة راحتك ${minutesAr(flex.minutes)} حددتها إدارتك في جدول الورديات. أنت تختار متى تبدأ فقط، بين ${minClock} و${maxClock}${flex.splitEffective ? "، مرة واحدة أو على جزأين" : ""}.`
-    : `Your break is ${flex.minutes} min, set by your management on the roster. You only choose when it starts, between ${minClock} and ${maxClock}${flex.splitEffective ? ", in one block or two" : ""}.`;
+    ? `راحتك ${minutesAr(flex.minutes)}، وأنت تحدد وقتها بين ${minClock} و${maxClock}${flex.splitEffective ? "، مرة واحدة أو على جزأين" : ""}.`
+    : `Your break is ${flex.minutes} min, and you set its time between ${minClock} and ${maxClock}${flex.splitEffective ? ", in one block or two" : ""}.`;
   const composition = <DutyComposition ar={ar} flex={flex} onDate={onDate} minClock={minClock} maxClock={maxClock} />;
 
   if (savedGate?.ok && !editing) {

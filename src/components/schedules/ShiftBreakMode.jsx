@@ -1,6 +1,6 @@
 import React from "react";
 import NvIcon from "@/components/shared/NvIcon";
-import { chipButton, mono } from "@/components/schedules/scheduleChrome";
+import { mono } from "@/components/schedules/scheduleChrome";
 import { DS_CONTROL_RADIUS } from "@/lib/designSystem";
 import { checkShiftBreakModeGate, flexBreakOf, minutesBetween, shiftBreakMode } from "@/lib/shiftDerivations";
 import { citeRule, ruleValue } from "@/lib/laborRules";
@@ -38,7 +38,7 @@ export function defaultFlexBreak(shift, onDate) {
 
 /**
  * «الراحة» for one shift type in «أنواع الورديات»: راحة ثابتة · راحة مرنة ببصمة · عمل متواصل (المادة 103).
- * Continuous is the hours policy's Art. 103 flag (ContinuousWork103Setting above the shift types) — shown, never stored here. The flex fields are
+ * Art. 103 continuous work is not offered (removed by the owner) — every shift keeps its rest (Art. 101). The flex fields are
  * validated with named reasons (checkShiftBreakModeGate, the same gate the server twin runs).
  */
 export default function ShiftBreakMode({ ar = true, shift, canEdit = false, continuous103 = false, onDate, onChange }) {
@@ -48,15 +48,8 @@ export default function ShiftBreakMode({ ar = true, shift, canEdit = false, cont
   const minRest = ruleValue("hours.rest.duringShiftMinutes", onDate) || 30;
   const art103 = citeRule("hours.art103.cite", onDate)?.labelAr || "المادة 103";
   const field = { ...mono, fontSize: 11, padding: "4px 6px", border: "1px solid var(--nv-line)", borderRadius: DS_CONTROL_RADIUS, background: "var(--nv-card)", color: "var(--nv-ink)", outline: "none", boxSizing: "border-box", minWidth: 0 };
-  const setFlex = (patch) => onChange?.({ breakMode: "flex", flexBreak: { ...defaultFlexBreak(shift, onDate), ...(shift?.flexBreak || {}), ...patch } });
-  const options = [
-    { id: "fixed", ar: "راحة ثابتة", en: "Fixed break" },
-    { id: "flex", ar: "راحة مرنة ببصمة", en: "Flex break by punch" },
-    { id: "continuous", ar: `عمل متواصل (${art103})`, en: "Continuous work (Art. 103)" },
-  ];
-  const lockedReason = continuous103
-    ? (ar ? `عمل متواصل بقرار الوزير — مفعّل في «لدي قرار الوزير للعمل المتواصل» أعلى أنواع الورديات (${art103}).` : "Continuous work by the Minister's decision — set in «We hold the Minister's decision» above the shift types (Art. 103).")
-    : (ar ? `يتطلب قرار الوزير — فعّله من «لدي قرار الوزير للعمل المتواصل» أعلى أنواع الورديات (${art103}).` : "Needs the Minister's decision — turn it on in «We hold the Minister's decision» above the shift types (Art. 103).");
+  // The window is the whole duty — the worker picks his own start inside it (RestPlanPicker).
+  const setFlex = (patch) => onChange?.({ breakMode: "flex", flexBreak: { ...defaultFlexBreak(shift, onDate), ...(shift?.flexBreak || {}), from: shift.start, to: shift.end, ...patch } });
 
   if (!canEdit) {
     const line = mode === "continuous"
@@ -75,43 +68,10 @@ export default function ShiftBreakMode({ ar = true, shift, canEdit = false, cont
 
   return (
     <div data-break-mode={mode} style={{ display: "flex", flexDirection: "column", gap: 7, minWidth: 0 }}>
-      <div role="radiogroup" aria-label={ar ? "نوع الراحة" : "Break mode"} style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
-        <span style={{ fontSize: 10.5, color: "var(--nv-muted)", marginInlineEnd: 2 }}>{ar ? "الراحة" : "Break"}</span>
-        {options.map((option) => {
-          const on = mode === option.id;
-          const disabled = continuous103 ? option.id !== "continuous" : option.id === "continuous";
-          return (
-            <button
-              key={option.id}
-              type="button"
-              role="radio"
-              aria-checked={on}
-              data-break-option={option.id}
-              disabled={disabled}
-              title={disabled ? lockedReason : undefined}
-              onClick={() => {
-                if (disabled || on) return;
-                if (option.id === "flex") setFlex({});
-                else onChange?.({ breakMode: "fixed" });
-              }}
-              style={chipButton(on, { height: 26, fontSize: 11, opacity: disabled && !on ? 0.5 : 1, cursor: disabled ? "not-allowed" : "pointer" })}
-            >
-              {ar ? option.ar : option.en}
-            </button>
-          );
-        })}
-      </div>
-      {mode === "continuous" || (!continuous103 && mode === "fixed") ? (
-        <span style={{ fontSize: 10.5, color: "var(--nv-ink3, var(--nv-muted))", lineHeight: 1.7 }}>
-          {mode === "continuous"
-            ? lockedReason
-            : (ar ? "يحدّد الجدول وقت الراحة، ولا يضغط الموظف شيئاً — تُخصم من ساعاته." : "The roster sets the break; the worker presses nothing — it is deducted.")}
-        </span>
-      ) : null}
       {mode === "flex" && flex ? (
-        <div data-flex-break={shift.id} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))", gap: 6, alignItems: "end" }}>
+        <div data-flex-break={shift.id} style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "end" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 10, color: "var(--nv-muted)", minWidth: 0 }}>
-            {ar ? "مدة الراحة (د)" : "Break minutes"}
+            {ar ? `مدة الراحة (د) — لا تقل عن ${minRest}` : `Break minutes — at least ${minRest}`}
             <input
               type="number"
               dir="ltr"
@@ -120,37 +80,25 @@ export default function ShiftBreakMode({ ar = true, shift, canEdit = false, cont
               value={flex.minutes}
               data-flex-minutes
               onChange={(e) => setFlex({ minutes: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
-              style={{ ...field, width: "100%" }}
+              style={{ ...field, width: 90 }}
             />
           </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 10, color: "var(--nv-muted)", minWidth: 0 }}>
-            {ar ? "النافذة من" : "Window from"}
-            <input type="time" dir="ltr" value={flex.from} data-flex-from onChange={(e) => e.target.value && setFlex({ from: e.target.value })} style={{ ...field, width: "100%" }} />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 10, color: "var(--nv-muted)", minWidth: 0 }}>
-            {ar ? "إلى" : "To"}
-            <input type="time" dir="ltr" value={flex.to} data-flex-to onChange={(e) => e.target.value && setFlex({ to: e.target.value })} style={{ ...field, width: "100%" }} />
-          </label>
-        </div>
-      ) : null}
-      {mode === "flex" && flex ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <label style={{ display: "flex", gap: 6, alignItems: "baseline", fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.6 }}>
+          <label style={{ display: "flex", gap: 6, alignItems: "baseline", fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.6, paddingBottom: 4 }}>
             <input type="checkbox" checked={flex.split} data-flex-split onChange={(e) => setFlex({ split: e.target.checked })} />
             <span>{ar ? `يجوز تقسيمها — لا يقل الجزء عن ${minRest} دقيقة` : `May be split — each part at least ${minRest} minutes`}</span>
           </label>
-          <label style={{ display: "flex", gap: 6, alignItems: "baseline", fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.6 }}>
-            <input type="checkbox" checked={flex.earlyEnd} data-flex-early onChange={(e) => setFlex({ earlyEnd: e.target.checked })} />
-            <span>{ar ? `يجوز إنهاؤها قبل ${minRest} دقيقة — تُسجَّل راحة قصيرة` : `May end before ${minRest} minutes — recorded as a short break`}</span>
-          </label>
         </div>
-      ) : null}
+      ) : (
+        <span style={{ fontSize: 10.5, color: "var(--nv-ink3, var(--nv-muted))", lineHeight: 1.7 }}>
+          {ar ? "يحدّد الجدول وقت الراحة ومدتها، ولا تُحسب من ساعات العمل." : "The roster sets the break's time and length; it is not counted as work."}
+        </span>
+      )}
       {mode === "flex" ? (
         gate.ok ? (
           <span data-flex-gate="ok" style={{ fontSize: 10.5, color: "var(--nv-ink3, var(--nv-muted))", lineHeight: 1.7 }}>
             {ar
-              ? "يبدأ الموظف راحته وينهيها ببصمة داخل النافذة؛ إن لم يبصم بدأت تلقائياً عند أقرب صلاة فيها (لا بعد خمس ساعات عمل) وأُبلغ بذلك، وتُخصم — دون مخالفة."
-              : "The worker punches the break's start and end inside the window; if not, it starts automatically at the nearest prayer (never past five hours of work), the worker is told, and it is deducted — no breach."}
+              ? "يختار الموظف متى تبدأ راحته داخل دوامه من «بصمتي»، ونخبره حين تبدأ بلا بصمة. ولا تقبل المنصة وقتاً يترك أكثر من خمس ساعات عمل متصلة (المادة 101)."
+              : "The worker chooses when the break starts inside the duty, in «My punch»; we tell him when it starts, no punch. No time leaving more than five hours of work in a row is accepted (Art. 101)."}
             {gate.noteAr ? ` ${ar ? gate.noteAr : gate.noteEn}` : ""}
           </span>
         ) : (

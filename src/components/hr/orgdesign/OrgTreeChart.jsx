@@ -1489,7 +1489,7 @@ export default function OrgTreeChart({
   const back = onBack ? (
     <button type="button" className="nv-ot-back" onClick={onBack}>
       <span className="nv-ot-back__icon" aria-hidden>{Icon.back}</span>
-      <span>{backLabel || (ar ? "رجوع" : "Back")}</span>
+      <span>{backLabel || (ar ? "خروج" : "Exit")}</span>
     </button>
   ) : null;
 
@@ -1502,6 +1502,13 @@ export default function OrgTreeChart({
           <b>{ar ? "المخطط التنظيمي" : "Org chart"}</b>
         </span>
       )}
+      {hrScope && !embedded ? (
+        <nav className="nv-ot-sections" aria-label={ar ? "أقسام الهيكل" : "Structure panes"}>
+          {[["seats", ar ? "المناصب" : "Seats"], ["health", ar ? "صحة الهيكل" : "Health"], ["authority", ar ? "الصلاحيات" : "Authority"], ["changes", ar ? "التغييرات" : "Changes"]].map(([pane, label]) => (
+            <button key={pane} type="button" className="nv-ot-tool nv-ot-tool--label" onClick={() => navigate(`/app/hr?tab=org&pane=${pane}`, { state: { from: `${location.pathname}${location.search}` } })}>{label}</button>
+          ))}
+        </nav>
+      ) : null}
       {hrScope ? (
         <div className="nv-ot-switch" role="radiogroup" aria-label={ar ? "نوع الشجرة" : "Tree"}>
           {[["view", ar ? "شجرة الموظف" : "Employee tree"], ["manage", ar ? "شجرة الإدارة" : "Management tree"]].map(([value, label]) => (

@@ -36,7 +36,8 @@ export default function OrgChart() {
 
   const onBack = useCallback(() => {
     // «رجوع» returns into «الموارد البشرية › الهيكل» (or the employee's own place)
-    navigate(from || (canWrite ? "/app/hr?tab=org" : "/app/org?view=employee"));
+    // «خروج»: back to wherever the person came from, else the HR overview (HR) or home
+    navigate(from && !from.startsWith("/app/org/chart") ? from : (canWrite ? "/app/hr" : "/app"));
   }, [navigate, from, scope]);
 
   const onHire = useCallback((detail = {}) => {

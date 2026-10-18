@@ -31,6 +31,8 @@
   background: var(--nv-card); border: 1px solid var(--nv-line); border-radius: var(--nv-radius-control, 8px); cursor: pointer;
 }
 .nv-ot-back:hover { background: var(--nv-soft); }
+.nv-ot-sections { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--nv-line); border-radius: var(--nv-radius-control, 8px); background: var(--nv-card); }
+.nv-ot-sections .nv-ot-tool { border: none; height: 30px; }
 [dir="ltr"] .nv-ot-back__icon { transform: scaleX(-1); }
 .nv-ot-back__icon { display: inline-flex; }
 

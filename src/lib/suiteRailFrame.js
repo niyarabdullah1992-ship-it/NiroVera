@@ -341,7 +341,7 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
     lane: "employee",
     iconKey: "org",
     label: ar ? "الهيكل" : "Org chart",
-    to: "/app/org?view=employee",
+    to: "/app/org/chart",
     signal: ownedSignal(null, "org", false),
   }));
 

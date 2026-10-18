@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { orgChainHealth } from "@/lib/orgChain";
 import { formerEmployeeCount } from "@/lib/formerEmployees";
 import { canEditOrgDesign, deriveOrgHealth, deriveSeatRegister, orgDesignOf } from "@/lib/orgDesign";
@@ -28,8 +28,14 @@ const sub = (on) => chipButton(on, { height: 30, padding: "0 12px", fontSize: 12
  */
 export default function HrStructurePane({ ar = true, lang = "ar", data, currentUser, company, canWrite = false, onHire }) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const requestedPane = searchParams.get("pane");
   const pane = canWrite && HR_ORG_PANES.includes(requestedPane) ? requestedPane : "chart";
+  // «الهيكل» opens as the full-page chart (SAP); the other panes live here. ?pane=chart&stay=1 keeps the embedded one.
+  const openFull = pane === "chart" && searchParams.get("stay") !== "1" && !searchParams.get("hire");
+  useEffect(() => {
+    if (openFull) navigate("/app/org/chart", { replace: true, state: { from: "/app/hr" } });
+  }, [openFull, navigate]);
   const chartMode = searchParams.get("chart") === "entry" ? "entry" : "tree";
   const [query, setQuery] = useState("");
   const [hrSignal, setHrSignal] = useState(0);
@@ -69,10 +75,10 @@ export default function HrStructurePane({ ar = true, lang = "ar", data, currentU
     edit(params);
     setSearchParams(params, { replace: true });
   }, [searchParams, setSearchParams]);
-  const setPane = useCallback((next) => setParams((p) => {
-    if (next === "chart") p.delete("pane");
-    else p.set("pane", next);
-  }), [setParams]);
+  const setPane = useCallback((next) => {
+    if (next === "chart") { navigate("/app/org/chart", { state: { from: "/app/hr" } }); return; }
+    setParams((p) => p.set("pane", next));
+  }, [setParams, navigate]);
   const setChartMode = (next) => setParams((p) => {
     if (next === "entry") p.set("chart", "entry");
     else p.delete("chart");
@@ -117,6 +123,7 @@ export default function HrStructurePane({ ar = true, lang = "ar", data, currentU
     });
   }, []);
 
+  if (openFull) return null;
   if (!canWrite) {
     return (
       <div data-hr-structure="read" style={{ display: "flex", flexDirection: "column", gap: 12 }}>

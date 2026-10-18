@@ -1099,6 +1099,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           <li>{ar ? "لا تعمل أكثر من 5 ساعات متصلة — فإن طال الدوام قُسّمت الراحة فترات." : "Never more than 5 hours in a row — a long day splits the rest into periods."}</li>
           <li>{ar ? "كل فترة نصف ساعة على الأقل «في المرة الواحدة»." : "Each period is at least half an hour «at a time»."}</li>
           <li>{ar ? "الفترة للراحة والصلاة والطعام معاً، ولا تُحسب من عملك (المادة 102)." : "Each period holds rest, prayer and food together, and is not counted as work (Art. 102)."}</li>
+          <li data-rest-free="1">{ar ? "وقت راحتك لك: لست فيه تحت سلطة صاحب العمل، ولا يُلزمك بالبقاء في مكان العمل (المادة 102)." : "Your rest is yours: you are not under the employer's authority and may not be required to stay at the workplace (Art. 102)."}</li>
           <li>{ar ? "صلاة أثناء العمل خارج الراحة لا تُستقطع ولا تطيل دوامك." : "A prayer during work, outside the rest, is not deducted and does not lengthen your day."}</li>
           <li>{ar ? "لا يزيد بقاؤك في مكان العمل على 12 ساعة." : "No more than 12 hours at the workplace."}</li>
         </ul>

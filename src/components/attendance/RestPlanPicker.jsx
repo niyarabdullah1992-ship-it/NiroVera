@@ -88,6 +88,7 @@ function RestRules({ ar = true, onDate, prayerLine }) {
     [ar ? `لا تعمل أكثر من ${consec?.value || 5} ساعات متصلة دون راحة.` : `No more than ${consec?.value || 5} hours of work in a row.`, ar ? consec?.labelAr : consec?.labelEn],
     [ar ? `لا تقل الراحة عن ${minRest?.value || 30} دقيقة في المرة الواحدة.` : `Rest is at least ${minRest?.value || 30} min at a time.`, ar ? minRest?.labelAr : minRest?.labelEn],
     [ar ? "الراحة والصلاة والطعام فيها ليست من ساعات العمل الفعلية." : "Rest, prayer and meals in it are not actual work.", ar ? notWork?.labelAr : notWork?.labelEn],
+    [ar ? "وقت راحتك لك: لست فيه تحت سلطة صاحب العمل، ولا يُلزمك بالبقاء في مكان العمل." : "Your rest is yours: you are not under the employer's authority and may not be required to stay at the workplace.", ar ? notWork?.labelAr : notWork?.labelEn],
     [prayerLine, null],
   ];
   return (

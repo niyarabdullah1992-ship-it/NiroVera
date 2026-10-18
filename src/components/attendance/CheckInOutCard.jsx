@@ -1100,7 +1100,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.6 }}>
             {band.targetMin > 480
               ? (ar ? "اختار مديرك لهذه الوردية راحة ثابتة من الجدول." : "Your manager set a fixed break for this shift on the roster.")
-              : (ar ? "الراحة المرنة — ترتاح متى شئت — تُفتح حين يكون دوامك أكثر من 8 ساعات (قرار تشغيلي من المنشأة)." : "The flexible break — rest when you choose — opens when your duty is longer than 8 hours (the company's operational decision).")}
+              : (ar ? "الراحة المرنة — ترتاح متى شئت — تُفتح حين يكون دوامك أكثر من 8 ساعات، فهي راحتك النظامية (المادة 101) لا تُحسب من عملك." : "The flexible break — rest when you choose — opens when your duty is longer than 8 hours — your statutory rest (Art. 101), not counted as work.")}
           </span>
         </div>
       </div>
@@ -1642,7 +1642,7 @@ export function flexSteps(day, { ar = true, hint = null, plan = null } = {}) {
       kind: "plan",
       at: row.startMin,
       label: plan.rows.length > 1 ? (ar ? `راحتك المخطّطة · الجزء ${i + 1}` : `Planned break · part ${i + 1}`) : (ar ? "راحتك المخطّطة" : "Your planned break"),
-      note: ar ? `${minutesAr(row.minutes)} اخترتها أنت (قرار تشغيلي من المنشأة) — نخبرك حين تبدأ، بلا بصمة` : `${row.minutes} min you chose (the company's operational decision) — we tell you when it starts, no punch`,
+      note: ar ? `${minutesAr(row.minutes)} اخترتها أنت (المادة 101) — نخبرك حين تبدأ، بلا بصمة` : `${row.minutes} min you chose (Art. 101) — we tell you when it starts, no punch`,
       value: `${row.start}–${row.end}`,
     }));
   }

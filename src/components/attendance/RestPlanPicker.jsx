@@ -42,13 +42,15 @@ function SourceTag({ kind, children }) {
 
 /**
  * «تركيب دوامك» — the day read as its parts, each with where it comes from: actual work from the Labour Law
- * (Art. 98), the rest hour from the company's operational decision, the duty as their sum. Derived from the shift.
+ * (Art. 98), the rest from the Labour Law too (Arts. 101–102: owed, not counted as work), the duty as their sum. Derived from the shift.
  */
 export function DutyComposition({ ar = true, flex, onDate, minClock, maxClock }) {
   const work = flex.span - flex.minutes;
   const daily = citeRule("hours.shift.ordinaryHours", onDate);
   const weekly = citeRule("hours.week.ordinaryMaxHours", onDate);
   const dailyMax = Number(daily?.value || 8) * 60;
+  const restLaw = citeRule("hours.rest.duringShiftMinutes", onDate);
+  const notWorkLaw = citeRule("hours.rest.notWorkingHours.cite", onDate);
   const twelve = flex.span === 720;
   const workSource = twelve
     ? (ar ? `نظام العمل · ${weekly?.labelAr || "المادة 98"} · أسبوعي` : `Labour Law · ${weekly?.labelEn || "Art. 98"} · weekly`)
@@ -57,7 +59,7 @@ export function DutyComposition({ ar = true, flex, onDate, minClock, maxClock })
       : (ar ? `فوق ${daily?.value || 8} ساعات — عمل إضافي` : `Past ${daily?.value || 8} h — overtime`);
   const rows = [
     { key: "work", label: ar ? "العمل الفعلي" : "Actual work", value: ar ? hoursAr(Math.round(work / 60)) : `${Math.round(work / 60)} h`, tag: <SourceTag kind="law">{workSource}</SourceTag> },
-    { key: "rest", label: ar ? "الراحة" : "Rest", value: minutesAr(flex.minutes), tag: <SourceTag kind="company">{ar ? "قرار تشغيلي من المنشأة" : "Company operational decision"}</SourceTag> },
+    { key: "rest", label: ar ? "الراحة" : "Rest", value: minutesAr(flex.minutes), tag: <SourceTag kind="law">{ar ? `نظام العمل · المادتان ${restLaw?.article || "101"} و${notWorkLaw?.article || "102"}` : `Labour Law · Arts. ${restLaw?.article || "101"} & ${notWorkLaw?.article || "102"}`}</SourceTag> },
   ];
   const cell = { padding: "7px 10px", fontSize: 12, borderTop: "1px solid var(--nv-line)" };
   return (
@@ -186,7 +188,7 @@ export default function RestPlanPicker({ ar = true, shift, onDate, continuous103
         ) : null}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={label}>{split ? (ar ? `الجزء الأول · ${minutesAr(half)}` : `Part 1 · ${half} min`) : (ar ? `من · ${minutesAr(flex.minutes)}` : `From · ${flex.minutes} min`)}</span>
+            <span style={label}>{split ? (ar ? `الجزء الأول · ${minutesAr(half)}` : `Part 1 · ${half} min`) : (ar ? `تبدأ راحتك · ${minutesAr(flex.minutes)}` : `Your break starts · ${flex.minutes} min`)}</span>
             <TimeField ar={ar} dataKey="rest-first" value={first} min={minClock} max={maxClock} step={5} onChange={setFirst} />
           </label>
           {split ? (

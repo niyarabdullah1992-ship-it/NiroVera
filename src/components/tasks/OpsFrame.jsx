@@ -31,10 +31,10 @@ export default function OpsFrame({ ar = true, lane = "mine", section = null, tit
   );
 }
 
-/** Page switch on the green head (light on dark). An option may carry a `count` (mono, ink-on-white when on); wraps on a phone. */
+/** Page switch in the white strip under the band (the «طلباتي» identity). An option may carry a `count` (mono); wraps on a phone. */
 export function HeroSwitch({ options = [], value, onChange, label }) {
   return (
-    <div role="tablist" aria-label={label} data-hero-switch="1" style={{ display: "inline-flex", flexWrap: "wrap", maxWidth: "100%", boxSizing: "border-box", gap: 4, padding: 3, borderRadius: 9, background: "rgba(255,255,255,.10)", border: "1px solid rgba(255,255,255,.22)" }}>
+    <div role="tablist" aria-label={label} data-hero-switch="1" style={{ display: "inline-flex", flexWrap: "wrap", maxWidth: "100%", boxSizing: "border-box", gap: 4, padding: 3, borderRadius: 9, background: "var(--nv-soft, #F5F7F6)", border: "1px solid var(--nv-line, #E4E9E6)" }}>
       {options.map((o) => {
         const on = o.value === value;
         return (
@@ -58,8 +58,8 @@ export function HeroSwitch({ options = [], value, onChange, label }) {
               cursor: "pointer",
               fontSize: 12,
               fontWeight: on ? 700 : 500,
-              background: on ? "#fff" : "transparent",
-              color: on ? "#0B3D27" : "#fff",
+              background: on ? "var(--nv-navy, #0B3D27)" : "transparent",
+              color: on ? "#fff" : "var(--nv-ink, #111418)",
             }}
           >
             {o.label}

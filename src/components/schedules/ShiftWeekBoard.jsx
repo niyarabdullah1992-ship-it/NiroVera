@@ -76,6 +76,7 @@ import {
   SUN_OFFICE,
   shiftTouchesHeatWindow,
   weekSunExposureCounts,
+  publishedViewSchedule,
 } from "@/lib/shiftWeek";
 import { checkSubmitOtherRequestGate } from "@/lib/otherRequestDerivations";
 import { heatBanWindow, isHeatBanDate } from "@/lib/contractLawDerivations";
@@ -162,7 +163,7 @@ function countAr(n, one, two, few, many) {
 }
 
 export default function ShiftWeekBoard({
-  schedule,
+  schedule: liveSchedule,
   employees = [],
   stationId,
   stationName = "",
@@ -201,6 +202,12 @@ export default function ShiftWeekBoard({
       ? defaultWeekStartForMonth(new Date().getFullYear(), new Date().getMonth())
       : weekStartDate(new Date())
   ));
+  // The employee lane reads the PUBLISHED copy of a week: a manager's unpublished edit stays his draft
+  // until he publishes it (the snapshot is taken at publish). The management lane edits the live roster.
+  const schedule = useMemo(
+    () => (mode === "mine" ? publishedViewSchedule(liveSchedule, weekStart) : liveSchedule),
+    [mode, liveSchedule, weekStart],
+  );
   const [brush, setBrush] = useState(null);
   const [restJumpNote, setRestJumpNote] = useState("");
   const [histFrom, setHistFrom] = useState(() => calendarDateKey(new Date(Date.now() - 18 * 86400000)));
@@ -320,8 +327,16 @@ export default function ShiftWeekBoard({
     [schedule, employees, stationId, histFrom, histTo, histQuery, histMode, ar, laborCalendar],
   );
 
-  const published = pub.kind === "published" || pub.kind === "implicit";
-  const blockers = gates.blockers.length;
+  const published = pub.kind === "published" || pub.kind === "implicit" || (mode === "mine" && !!pub.snap?.assignments);
+  // Counted per person per rule (two night workers missing 18632 = two), not per rule — read from
+  // the same cell marks the grid paints; a rule with no cell (a station gate) still counts once.
+  const blockerPairs = new Set(
+    Object.entries(gates?.cellMarks || {})
+      .filter(([, mark]) => mark?.level === "block")
+      .map(([cellKey, mark]) => `${String(cellKey).split(":")[0]}|${mark.id}`),
+  );
+  const blockedIds = new Set([...blockerPairs].map((pair) => pair.split("|")[1]));
+  const blockers = blockerPairs.size + gates.blockers.filter((row) => !blockedIds.has(row.id)).length;
   // A published week that now fails a gate is not «before publish» — it is live and breaks a rule.
   const publishBlockerLabel = blockers
     ? (published
@@ -435,8 +450,14 @@ export default function ShiftWeekBoard({
     return employeeShiftOnDay(schedule, employee.id, day.key);
   };
 
+  const todayCellKey = calendarDateKey(new Date());
   const cycleCell = (employee, day) => {
     if (!canEdit || !companyId || !stationId) return;
+    // A day that has passed is history — attendance, payroll and the 18632 count already read it.
+    if (day.key < todayCellKey) {
+      toast({ description: ar ? "يوم مضى — لا يُعدَّل جدوله. التصحيح يكون بطلب بصمة يدوية أو قرار في حضور الفريق." : "A past day — its roster is not edited. Correct it with a manual punch request or a decision on Team attendance.", variant: "destructive" });
+      return;
+    }
     const current = shiftOn(employee, day);
     const ordinaryOnly = employeeNeedsNightRotateChoice(employee, schedule, day.key);
     let nextId = cycleShiftId(types, current?.id || null, brush, {
@@ -552,6 +573,7 @@ export default function ShiftWeekBoard({
     }
     decideNightRemedy(companyId, employee.id, "rotate", {
       actorId: currentUser?.id,
+      weekStart,
       ordinaryKind: kind,
       applyRoster: false,
     });
@@ -562,8 +584,8 @@ export default function ShiftWeekBoard({
       setRestJumpNote("");
       toast({
         description: kind === "evening"
-          ? (ar ? "دُوِّر هذا الموظف إلى مسائي لتجاوز ثلاثة أشهر دون موافقة. وردية الليل بقيت على الجدول." : "This person was rotated to evening after three months without consent. The night shift stayed on the roster.")
-          : (ar ? "دُوِّر هذا الموظف إلى صباحي لتجاوز ثلاثة أشهر دون موافقة. وردية الليل بقيت على الجدول." : "This person was rotated to morning after three months without consent. The night shift stayed on the roster."),
+          ? (ar ? "دُوِّر هذا الموظف إلى مسائي لتجاوز ثلاثة أشهر دون موافقة. وردية الليل بقيت على الجدول." : "This person's nights this week were moved to evening.")
+          : (ar ? "دُوِّر هذا الموظف إلى صباحي لتجاوز ثلاثة أشهر دون موافقة. وردية الليل بقيت على الجدول." : "This person's nights this week were moved to morning."),
       });
     }
     refresh?.();
@@ -575,6 +597,7 @@ export default function ShiftWeekBoard({
     if (kind === "morning" || kind === "evening") {
       const result = decideNightRemedy(companyId, employee.id, "rotate", {
         actorId: currentUser?.id,
+        weekStart,
         ordinaryKind: kind,
       });
       if (!result.ok) {
@@ -590,7 +613,7 @@ export default function ShiftWeekBoard({
       return result;
     }
     if (kind === "withdraw") {
-      const result = withdrawNightRemedy(companyId, employee.id, { actorId: currentUser?.id });
+      const result = withdrawNightRemedy(companyId, employee.id, { actorId: currentUser?.id, weekStart });
       if (!result.ok) {
         toast({ description: ar ? result.reason : result.reasonEn, variant: "destructive" });
         return result;
@@ -605,6 +628,7 @@ export default function ShiftWeekBoard({
     }
     const result = decideNightRemedy(companyId, employee.id, kind, {
       actorId: currentUser?.id,
+      weekStart,
       cutHours: extra.cutHours,
       amount: extra.amount,
       allowanceKind: extra.allowanceKind,
@@ -1403,7 +1427,7 @@ export default function ShiftWeekBoard({
                             style={{ fontSize: 10, lineHeight: 1.45, color: "var(--nv-warn-ink, #7A4E0B)", textAlign: "start" }}
                           >
                             {ar
-                              ? <>الملف: {restWord(rc.fileRest)} · الجدول: {restWord(rc.rosterRest)} — <span dir="ltr" style={mono}>{rc.extra}</span> {rc.extra === 1 ? "يوم" : "أيام"} إضافي{art ? <span style={{ whiteSpace: "nowrap" }}> (م <span dir="ltr" style={mono}>{art}</span>)</span> : null}</>
+                              ? <>الملف: {restWord(rc.fileRest)} · الجدول: {restWord(rc.rosterRest)} — {rc.extra === 1 ? "يوم واحد" : rc.extra === 2 ? "يومان" : <><span dir="ltr" style={mono}>{rc.extra}</span> أيام</>} إضافي{art ? <span style={{ whiteSpace: "nowrap" }}> (م <span dir="ltr" style={mono}>{art}</span>)</span> : null}</>
                               : <>File: {rc.fileRest} rest · roster: {rc.rosterRest} — <span dir="ltr" style={mono}>{rc.extra}</span> day(s) OT{art ? ` (Art. ${art})` : ""}</>}
                           </span>
                         );
@@ -1428,7 +1452,8 @@ export default function ShiftWeekBoard({
                       const leave = leaveOnDayView(employee, day.key, ar, laborCalendar);
                       const shift = leave ? null : shiftOn(employee, day);
                       const style = leave ? leave.style : (shift ? shiftTypeStyle(shift, types.findIndex((row) => row.id === shift.id)) : REST_STYLE);
-                      const locked = !!leave;
+                      const pastDay = day.key < todayCellKey;
+                      const locked = !!leave || pastDay;
                       const cellAlert = weekCellAlert(gates, employee.id, day.key);
                       const cellTone = weekCellAlertTone(cellAlert);
                       const cellReason = cellAlert?.hint
@@ -1440,8 +1465,10 @@ export default function ShiftWeekBoard({
                         : (ar ? "اعتُمدت في طلباتي · مقفلة" : "approved in My Requests · locked");
                       const unpublishedCell = !published && !canEdit && !shift && !leave;
                       const restLabel = unpublishedCell ? (ar ? "بلا جدول" : "No roster") : (ar ? "راحة" : "Rest");
-                      const baseTitle = locked
+                      const baseTitle = leave
                         ? `${employee.name} — ${day.key} — ${leave.type}${leave.article ? ` · ${leave.article}` : ""} · ${leaveLockNote}`
+                        : pastDay
+                        ? `${employee.name} — ${day.key} — ${shift ? shift.label : restLabel} · ${ar ? "يوم مضى — مقفل" : "past day — locked"}`
                         : `${employee.name} — ${day.key} — ${shift ? `${shift.label} ${shiftHoursLine(shift, lang, timeFormat)}` : restLabel}`;
                       const sun = !leave && shift ? sunExposureCellState(schedule, employee.id, day.key, { shift }) : null;
                       const sunAsk = !!sun?.asks;
@@ -1481,7 +1508,7 @@ export default function ShiftWeekBoard({
                             {leave?.articleId ? <StatutoryItem article={leave.articleId} ar={ar} entitlement compact surface="leave" /> : null}
                           </TileBody>
                         </button>
-                        {leave?.source === "official_holiday" && canEdit && !isJuvenileOn(employee, day.key) ? (
+                        {leave?.source === "official_holiday" && canEdit && !pastDay && !isJuvenileOn(employee, day.key) ? (
                           <button
                             type="button"
                             data-holiday-work={holidayArm === `${employee.id}:${day.key}` ? "armed" : "1"}
@@ -1534,7 +1561,7 @@ export default function ShiftWeekBoard({
                                   aria-checked={on}
                                   title={on ? (ar ? "اضغط للإلغاء وإعادة الخيارين" : "Click to clear and show both") : undefined}
                                   data-sun-answer={opt}
-                                  disabled={!canEdit}
+                                  disabled={!canEdit || pastDay}
                                   onClick={(e) => { e.stopPropagation(); setSunPrompt(null); pickSunMark(employee, day, sun.mark, opt); }}
                                   style={{
                                     fontFamily: "inherit",

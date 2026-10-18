@@ -387,12 +387,17 @@ export default function DutyStripAlertCard({
                   {ar ? `−${hours}س` : `−${hours}h`}
                 </button>
               )) : null}
-              <button type="button" onClick={() => onNightRemedy("morning")} style={dutyAlertActionStyle()}>
-                {ar ? "غيّر إلى صباحي" : "Change to morning"}
-              </button>
-              <button type="button" onClick={() => onNightRemedy("evening")} style={dutyAlertActionStyle()}>
-                {ar ? "غيّر إلى مسائي" : "Change to evening"}
-              </button>
+              {/* One «change to ordinary hours» pair per card: when «صباحي / مسائي» already sits above, not twice. */}
+              {ordinaryApply ? null : (
+                <>
+                  <button type="button" onClick={() => onNightRemedy("morning")} style={dutyAlertActionStyle()}>
+                    {ar ? "غيّر إلى صباحي" : "Change to morning"}
+                  </button>
+                  <button type="button" onClick={() => onNightRemedy("evening")} style={dutyAlertActionStyle()}>
+                    {ar ? "غيّر إلى مسائي" : "Change to evening"}
+                  </button>
+                </>
+              )}
             </>
           ) : null}
         </div>

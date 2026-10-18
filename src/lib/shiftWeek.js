@@ -1664,6 +1664,26 @@ export function remapEmployeeNightWorkerDays(schedule, employeeId, weekStart, mo
   return { ok: true, moved, shiftId: target?.id || null, mode, cutHours: cut || null };
 }
 
+/**
+ * Undo a «−Nس» cut for one week: every cut night (a shift type carrying cutHours) goes back to the
+ * full night it was cut from — the plain night type with the same start.
+ */
+export function restoreCutNightDays(schedule, employeeId, weekStart) {
+  const start = weekStartDate(weekStart instanceof Date ? weekStart : (parseDateKey(weekStart) || new Date()));
+  let moved = 0;
+  for (const day of weekDays(start)) {
+    const shift = employeeShiftOnDay(schedule, employeeId, day.key);
+    if (!shift || !nightReduceCutHours(shift.cutHours)) continue;
+    const base = (schedule.shiftTypes || []).find((row) => (
+      !nightReduceCutHours(row.cutHours) && row.start === shift.start && isNightShift(row, day.key)
+    ));
+    if (!base) continue;
+    assignEmployeeDayOnSchedule(schedule, day.key, employeeId, base.id);
+    moved += 1;
+  }
+  return { ok: true, moved };
+}
+
 /** Count dated night-worker weeks. Reset only after ≥1 month (~4 weeks) of ordinary hours. */
 export function nightStreakWeeks(schedule, employeeId, weekStart, lookback = 40) {
   const start = weekStart instanceof Date ? weekStartDate(weekStart) : weekStartDate(parseDateKey(weekStart) || new Date());
@@ -2088,6 +2108,35 @@ export function weekPublishState(schedule, weekStart, today = new Date()) {
   if ((snap || past) && dirty) return { kind: "edited", key, snap };
   if (past) return { kind: "implicit", key, snap: null };
   return { kind: "draft", key, snap: null };
+}
+
+/** The seven days of a week as published: assignments + 3337 marks, deep-copied at publish time. */
+export function publishedWeekSnapshot(schedule, weekStart) {
+  const keys = weekDateKeys(weekStart);
+  const assignments = {};
+  const sunExposure = {};
+  for (const key of keys) {
+    const day = schedule?.assignments?.[key];
+    assignments[key] = day ? JSON.parse(JSON.stringify(day)) : {};
+    if (schedule?.sunExposure?.[key]) sunExposure[key] = { ...schedule.sunExposure[key] };
+  }
+  return { assignments, sunExposure };
+}
+
+/**
+ * What an employee sees for a week: the live roster, except a published week the manager has since
+ * edited («تعديل غير منشور») reads its published snapshot until the edit is published.
+ */
+export function publishedViewSchedule(schedule, weekStart) {
+  if (!schedule) return schedule;
+  const state = weekPublishState(schedule, weekStart);
+  const snap = state.snap;
+  if (state.kind !== "edited" || !snap?.assignments) return schedule;
+  return {
+    ...schedule,
+    assignments: { ...(schedule.assignments || {}), ...snap.assignments },
+    sunExposure: { ...(schedule.sunExposure || {}), ...(snap.sunExposure || {}) },
+  };
 }
 
 export function isWeekDayPublished(schedule, dateKey, today = new Date()) {

@@ -19,7 +19,7 @@ import { reconcileStationReferences } from "./stationConsistency";
 import { clearStationScope } from "./stationScopeStore";
 import { planDuplicateShiftMerge, shiftWindowKey } from "./shiftDerivations";
 import { employeeWageSplit } from "./employeeFileView";
-import { applyCopyMonthAssignments, checkShiftChangeApplyGate, checkWeekPublishGates, clearRosterLeaveGhostAssignments, cloneDayMap, employeeShiftOnDay, isNightWorker, monthDateKeys, nightAllowanceAmount, nightAllowanceKind, nightAllowancePayLabel, nightCutHoursLabel, nightReduceCutHours, payableNightAllowance, planCopyMonthAssignments, repairNightRestAssignments, resolveNightRestAssignTarget, shiftHours, weekDateKeys, weekKeyFromDate, weekStartDate, weekStartsInMonth } from "./shiftWeek";
+import { applyCopyMonthAssignments, publishedWeekSnapshot, restoreCutNightDays, checkShiftChangeApplyGate, checkWeekPublishGates, clearRosterLeaveGhostAssignments, cloneDayMap, employeeShiftOnDay, isNightWorker, monthDateKeys, nightAllowanceAmount, nightAllowanceKind, nightAllowancePayLabel, nightCutHoursLabel, nightReduceCutHours, payableNightAllowance, planCopyMonthAssignments, repairNightRestAssignments, resolveNightRestAssignTarget, shiftHours, weekDateKeys, weekKeyFromDate, weekStartDate, weekStartsInMonth } from "./shiftWeek";
 import {
   applyNightWorkerDecision,
   checkDecideNightRemedyGate,
@@ -2334,7 +2334,7 @@ function nightActorIsHead(companyId, actorId) {
   return !!actor && isCompanyHeadPerson(actor, data);
 }
 
-export function decideNightRemedy(companyId, employeeId, kind, { actorId, ordinaryKind, applyRoster = true, cutHours, amount, allowanceKind } = {}) {
+export function decideNightRemedy(companyId, employeeId, kind, { actorId, ordinaryKind, applyRoster = true, cutHours, amount, allowanceKind, weekStart: viewedWeek } = {}) {
   const gate = checkDecideNightRemedyGate({ kind, employeeId, actorId, actorIsHead: nightActorIsHead(companyId, actorId), cutHours, amount, allowanceKind });
   if (!gate.ok) return gate;
   const data = getCompanyData(companyId);
@@ -2343,7 +2343,8 @@ export function decideNightRemedy(companyId, employeeId, kind, { actorId, ordina
     return { ok: false, error: "EMPLOYEE_REQUIRED", reason: "الموظف غير موجود.", reasonEn: "That employee was not found." };
   }
   const now = new Date().toISOString();
-  const weekStart = weekStartDate(new Date());
+  // The week the manager is looking at — never silently the current week.
+  const weekStart = weekStartDate(viewedWeek || new Date());
   let applied = { moved: 0 };
   const cut = nightReduceCutHours(cutHours);
   const pay = nightAllowanceAmount(amount);
@@ -2366,6 +2367,8 @@ export function decideNightRemedy(companyId, employeeId, kind, { actorId, ordina
     if (kind === "allowance") syncNightAllowanceOnPayrollDraft(draft, employee);
     if (!applyRoster || kind === "allowance") return;
     applied = applyNightWorkerDecision(schedule, employee.id, kind === "reduce" ? "reduce" : "rotate", weekStart, { ordinaryKind, cutHours: cut });
+    // Remember the week the cut was applied to, so «سحب» can put the full night back there.
+    if (kind === "reduce" && employee.profile?.nightRemedy) employee.profile.nightRemedy.weekKey = weekKeyFromDate(weekStart);
     const key = weekKeyFromDate(weekStart);
     schedule.weekDirty = schedule.weekDirty || {};
     schedule.weekDirty[key] = true;
@@ -2385,7 +2388,7 @@ export function decideNightRemedy(companyId, employeeId, kind, { actorId, ordina
 }
 
 /** Withdraw a recorded reduction or allowance and start the 18632 choice over. */
-export function withdrawNightRemedy(companyId, employeeId, { actorId } = {}) {
+export function withdrawNightRemedy(companyId, employeeId, { actorId, weekStart: viewedWeek } = {}) {
   const data = getCompanyData(companyId);
   const emp = data?.employees.find((row) => row.id === employeeId);
   const gate = checkWithdrawNightRemedyGate({ employee: emp, employeeId, actorId, actorIsHead: nightActorIsHead(companyId, actorId) });
@@ -2403,6 +2406,19 @@ export function withdrawNightRemedy(companyId, employeeId, { actorId } = {}) {
     employee.profile.nightHoursCut = undefined;
     employee.profile.nightAllowance = undefined;
     syncNightAllowanceOnPayrollDraft(draft, employee);
+    // A withdrawn cut puts the full night back on the roster (the week it was cut, and the viewed week).
+    if (previous === "reduce") {
+      const held = nightScheduleFor(draft, employee, viewedWeek || new Date());
+      const schedule = (draft.schedules || []).includes(held) ? held : getOrCreateSchedule(draft, employee.stationId);
+      const weeks = new Set([emp?.profile?.nightRemedy?.weekKey, weekKeyFromDate(weekStartDate(viewedWeek || new Date()))].filter(Boolean));
+      for (const key of weeks) {
+        const restored = restoreCutNightDays(schedule, employee.id, key);
+        if (restored.moved) {
+          schedule.weekDirty = schedule.weekDirty || {};
+          schedule.weekDirty[key] = true;
+        }
+      }
+    }
   });
   const fresh = getCompanyData(companyId);
   const person = fresh?.employees.find((row) => row.id === employeeId);
@@ -5534,6 +5550,8 @@ export function publishWeek(companyId, stationId, weekStartKey, { by } = {}) {
       by: by || "",
       validity,
       validUntil,
+      // What employees see until the next publish (publishedViewSchedule).
+      ...publishedWeekSnapshot(entry, weekStartKey || new Date()),
     };
     entry.weekDirty = entry.weekDirty || {};
     delete entry.weekDirty[weekKey];

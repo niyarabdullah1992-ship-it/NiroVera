@@ -385,7 +385,10 @@ export default function MyScheduleView({
                 </span>
               )}
               <div style={{ padding: "10px 18px", marginTop: 6, borderTop: "1px solid rgba(255,255,255,.1)", fontSize: 10.5, color: "#A9CDB8" }}>
-                {ar ? "من الجدول المنشور. تغيير الوردية يُطلب من «طلباتي ← طلبات الدوام»." : "From the published roster. Ask for a shift change in My requests → Duty requests."}
+                {ar ? "من الجدول المنشور. " : "From the published roster. "}
+                <Link to="/app/requests?kind=shift_change" data-ask-shift-change style={{ color: "#fff", fontWeight: 700 }}>
+                  {ar ? "اطلب تغيير وردية ›" : "Request a shift change ›"}
+                </Link>
               </div>
             </section>
 

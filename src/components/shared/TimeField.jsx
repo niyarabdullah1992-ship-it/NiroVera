@@ -11,6 +11,7 @@ const toMin = (hm) => {
 /**
  * The platform's own time field — 24-hour, mono digits, the طلباتي frame: a quiet field that opens a small
  * card with the hours of the window and the minutes, the chosen one in the dark green. No browser picker.
+ * Clicks preventDefault: inside a <label> the closing minute chip would otherwise re-click the toggle and reopen it.
  * min / max are "HH:MM" (a window that passes midnight is read in order); step is in minutes.
  */
 export default function TimeField({ ar = true, value = "", onChange, min = "00:00", max = "23:59", step = 5, placeholder = "--:--", dataKey }) {
@@ -63,7 +64,7 @@ export default function TimeField({ ar = true, value = "", onChange, min = "00:0
     <span ref={ref} data-time-field={dataKey || "1"} style={{ position: "relative", display: "inline-block" }}>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={(event) => { event.preventDefault(); setOpen((v) => !v); }}
         aria-haspopup="dialog"
         aria-expanded={open}
         style={{ fontFamily: "inherit", height: 32, minWidth: 104, display: "inline-flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "0 10px", border: `1px solid ${open ? "#3C7D50" : "var(--nv-line)"}`, borderRadius: 8, background: "var(--nv-card)", color: value ? "var(--nv-ink)" : "var(--nv-muted)", cursor: "pointer", boxShadow: open ? "0 0 0 3px rgba(60,125,80,.14)" : "none" }}
@@ -80,7 +81,7 @@ export default function TimeField({ ar = true, value = "", onChange, min = "00:0
           <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
             <div dir="ltr" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 5 }}>
               {hours.map((h) => (
-                <button key={`h${h}`} type="button" onClick={() => pick(h)} style={chip(chosenH === h)}>{pad(h)}</button>
+                <button key={`h${h}`} type="button" onClick={(event) => { event.preventDefault(); pick(h); }} style={chip(chosenH === h)}>{pad(h)}</button>
               ))}
             </div>
             <span style={{ fontSize: 11, fontWeight: 700, color: "var(--nv-muted)" }}>{ar ? "الدقيقة" : "Minute"}</span>
@@ -88,7 +89,7 @@ export default function TimeField({ ar = true, value = "", onChange, min = "00:0
               {minutes.map((m) => {
                 const enabled = chosenH == null || inside(chosenH, m);
                 return (
-                  <button key={`m${m}`} type="button" disabled={!enabled} onClick={() => { pick(chosenH ?? hours[0], m); setOpen(false); }} style={chip(chosenM === m && chosenH != null, enabled)}>{pad(m)}</button>
+                  <button key={`m${m}`} type="button" disabled={!enabled} onClick={(event) => { event.preventDefault(); pick(chosenH ?? hours[0], m); setOpen(false); }} style={chip(chosenM === m && chosenH != null, enabled)}>{pad(m)}</button>
                 );
               })}
             </div>

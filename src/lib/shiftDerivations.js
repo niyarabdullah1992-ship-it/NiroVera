@@ -475,7 +475,7 @@ export function checkRestPlanGate({ shift, onDate, parts = [], continuous103 = f
       const hours = Math.round(((row.startMin - from) / 60) * 10) / 10;
       return fail(
         "REST_PLAN_CONSECUTIVE",
-        `بهذا الوقت تعمل ${hours} ساعات متواصلة من ${hmOfClock(from)} إلى ${hmOfClock(row.startMin)} — الحد ${maxMin / 60} ساعات (${art}).`,
+        `بهذا الوقت تعمل ${Math.floor((row.startMin - from) / 60)}:${String((row.startMin - from) % 60).padStart(2, "0")} ساعة متواصلة من ${hmOfClock(from)} إلى ${hmOfClock(row.startMin)} — الحد ${maxMin / 60} ساعات (${art}).`,
         `That puts ${hours} hours of work in a row from ${hmOfClock(from)} to ${hmOfClock(row.startMin)} — the limit is ${maxMin / 60} hours (${artEn}).`,
       );
     }

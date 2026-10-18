@@ -29,8 +29,8 @@ const nine = longShiftRestPatch({ start: "07:00", end: "16:00" }, DAY);
 assert.equal(nine.breakMode, "flex");
 assert.equal(nine.flexBreak.minutes, 60);
 assert.equal(nine.flexBreak.split, true);
-assert.equal(nine.flexBreak.from, "07:30");
-assert.equal(nine.flexBreak.to, "15:30");
+assert.equal(nine.flexBreak.from, "07:00", "the window is the whole duty");
+assert.equal(nine.flexBreak.to, "16:00");
 assert.equal(longShiftRestPatch({ start: "07:00", end: "15:00" }, DAY), null, "8 hours: no change");
 assert.equal(longShiftRestPatch({ start: "07:00", end: "16:00", breakMode: "fixed" }, DAY), null, "a fixed break chosen by the manager stays");
 assert.equal(longShiftRestPatch({ start: "19:00", end: "07:00" }, DAY).breakMode, "flex", "a 12-hour night opens it too");
@@ -45,3 +45,9 @@ assert.ok(withDhuhr.avoided > 0);
 const all = restPlanChoices({ shift, onDate: DAY, avoid: [{ from: 7 * 60, to: 16 * 60 }] });
 assert.ok(all.single.length > 0, "never leaves the worker with nothing to pick");
 console.log("PASS rest plan avoids the prayer");
+
+// Open time: any start inside the duty is accepted when Art. 101 holds; outside the duty is named.
+const openShift = { ...shift, flexBreak: { ...shift.flexBreak, from: "07:00", to: "16:00" } };
+assert.equal(checkRestPlanGate({ shift: openShift, onDate: DAY, parts: [{ start: "11:20", minutes: 60 }] }).ok, true);
+assert.equal(checkRestPlanGate({ shift: openShift, onDate: DAY, parts: [{ start: "15:30", minutes: 60 }] }).error, "REST_PLAN_OUTSIDE_WINDOW");
+console.log("PASS open rest time inside the duty");

@@ -894,6 +894,22 @@ export function migratePreviewFlexMorning(data) {
   return changed;
 }
 
+/** Preview: the 9-hour morning's break window opens to the whole duty (the worker writes his own time). */
+export function migratePreviewOpenRestWindow(data) {
+  if (!data || data.previewOpenRestWindow) return false;
+  let changed = false;
+  for (const schedule of data.schedules || []) {
+    for (const shift of schedule?.shiftTypes || []) {
+      const fb = shift?.breakMode === "flex" ? shift.flexBreak : null;
+      if (!fb || (fb.from === shift.start && fb.to === shift.end)) continue;
+      shift.flexBreak = { ...fb, from: shift.start, to: shift.end };
+      changed = true;
+    }
+  }
+  data.previewOpenRestWindow = true;
+  return changed;
+}
+
 export function migratePreviewGosiEstablishment(data) {
   const flexMorning = migratePreviewFlexMorning(data);
   const moved = migratePlatformFactHomes(data);

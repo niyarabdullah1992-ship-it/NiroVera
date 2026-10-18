@@ -1,119 +1,137 @@
-import React, { useMemo, useState } from "react";
-import { checkRestPlanGate, restPlanChoices } from "@/lib/shiftDerivations";
+import React, { useState } from "react";
+import { checkRestPlanGate, flexBreakOf } from "@/lib/shiftDerivations";
 import { minutesAr } from "@/lib/dutyAlerts";
 
 const MONO = { fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums" };
 const field = {
-  fontFamily: "inherit",
-  height: 30,
+  fontFamily: "'IBM Plex Mono', monospace",
+  height: 32,
   padding: "0 8px",
   border: "1px solid var(--nv-line)",
   borderRadius: 8,
   background: "var(--nv-card)",
   color: "var(--nv-ink)",
-  fontSize: 12,
+  fontSize: 13,
   minWidth: 0,
 };
 const label = { fontSize: 11, color: "var(--nv-muted)" };
+const toMin = (hm) => {
+  const m = String(hm || "").match(/^(\d{1,2}):(\d{2})$/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+const hmOf = (mins) => {
+  const m = ((Math.round(mins) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+};
+
+/** Card frame — the same as «سلسلة البصمة» beside it. */
+export function RestCard({ ar = true, children, note }) {
+  return (
+    <section data-rest-plan-card="1" className="nv-att-card" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: "var(--nv-radius, 12px)", padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+      <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <strong style={{ fontSize: 15, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? "وقت راحتك" : "Your break time"}</strong>
+        {note ? <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.6 }}>{note}</span> : null}
+      </span>
+      {children}
+    </section>
+  );
+}
 
 /**
- * «وقت راحتك» — on a flex shift the worker places his own break ahead of time, in a place he finds right.
- * Only lawful times are offered (checkRestPlanGate · Art. 101), so nothing he can pick breaks the five-hour
- * limit. The plan drives the day path and, when he forgets to punch, where the break is assumed.
+ * «وقت راحتك» — on a shift past 8 hours the worker writes his own break time, anywhere inside his duty
+ * hours. The time is open; it is checked as he types (Art. 101 — no more than five hours of work in a row,
+ * named), and a prayer or nursing hour it covers is said, not hidden.
  */
 export default function RestPlanPicker({ ar = true, shift, onDate, continuous103 = false, saved = null, locked = false, onSave, avoid = [], avoidNames = [] }) {
-  const avoidKey = JSON.stringify(avoid);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const choices = useMemo(() => restPlanChoices({ shift, onDate, continuous103, avoid }), [shift, onDate, continuous103, avoidKey]);
-  const flex = choices.flex;
+  const flex = flexBreakOf(shift, onDate);
   const savedParts = saved?.parts || null;
   const [editing, setEditing] = useState(!savedParts);
   const [split, setSplit] = useState(savedParts ? savedParts.length > 1 : false);
   const [first, setFirst] = useState(savedParts?.[0]?.start || "");
   const [second, setSecond] = useState(savedParts?.[1]?.start || "");
-  const [error, setError] = useState("");
-  if (!flex || (!choices.single.length && !choices.pairs.length)) return null;
+  if (!flex) return null;
 
+  const half = Math.floor(flex.minutes / 2);
+  const parts = split
+    ? [first && { start: first, minutes: half }, second && { start: second, minutes: flex.minutes - half }].filter(Boolean)
+    : (first ? [{ start: first, minutes: flex.minutes }] : []);
+  const complete = split ? parts.length === 2 : parts.length === 1;
+  const gate = complete ? checkRestPlanGate({ shift, onDate, parts, continuous103 }) : null;
+  // A prayer or nursing hour inside the chosen time is said — the choice stays his.
+  const lift = (m) => (m + 720 < flex.shiftStart ? m + 1440 : m);
+  const clashes = gate?.ok
+    ? avoid.map((row, i) => ({ ...row, name: avoidNames[i] })).filter((row) => gate.rows.some((r) => {
+      const from = lift(Number(row.from));
+      const to = Math.max(from + 1, lift(Number(row.to ?? row.from)));
+      return from < r.endMin && to > r.startMin;
+    })).map((row) => row.name).filter(Boolean)
+    : [];
   const savedGate = savedParts ? checkRestPlanGate({ shift, onDate, parts: savedParts, continuous103 }) : null;
-  const pair = choices.pairs.find((row) => row.first === first) || null;
+  const minClock = hmOf(flex.shiftStart);
+  const maxClock = hmOf(flex.shiftStart + flex.span);
+  const note = ar
+    ? `دوامك ${Math.round(flex.span / 60)} ساعات منها ${minutesAr(flex.minutes)} راحة لا تُحسب من عملك — تكتب وقتها بنفسك بين ${minClock} و${maxClock}.`
+    : `Your duty is ${Math.round(flex.span / 60)} hours with ${flex.minutes} min of rest not counted as work — write its time yourself between ${minClock} and ${maxClock}.`;
 
   if (savedGate?.ok && !editing) {
     return (
-      <div data-rest-plan="saved" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 12px", border: "1px solid var(--nv-ok-line)", background: "var(--nv-ok-soft)", borderRadius: 10, textAlign: "start" }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-ok-ink)" }}>{ar ? "راحتك المخطّطة" : "Your planned break"}</span>
-        <span dir="ltr" style={{ ...MONO, fontSize: 12.5, fontWeight: 700, color: "var(--nv-ink)" }}>
-          {savedGate.rows.map((row) => `${row.start}–${row.end}`).join("  ·  ")}
-        </span>
-        <span style={{ fontSize: 10.5, color: "var(--nv-muted)", flex: "1 1 100%" }}>
-          {ar ? "اضغط «بدأت راحتي» عند بدايتها — وإن نسيت تُحتسب في هذا الوقت." : "Tap “I started my break” when it starts — if you forget, it is counted at this time."}
-        </span>
-        {!locked ? (
-          <button type="button" onClick={() => setEditing(true)} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 700, color: "var(--nv-ok-ink)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-            {ar ? "غيّر" : "Change"}
-          </button>
-        ) : null}
-      </div>
+      <RestCard ar={ar} note={ar ? "اضغط «بدأت راحتي» عند بدايتها — وإن نسيت تُحتسب في هذا الوقت." : "Tap “I started my break” when it starts — if you forget, it is counted at this time."}>
+        <div data-rest-plan="saved" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 12px", border: "1px solid var(--nv-ok-line)", background: "var(--nv-ok-soft)", borderRadius: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-ok-ink)" }}>{ar ? "راحتك المخطّطة" : "Planned"}</span>
+          <span dir="ltr" style={{ ...MONO, fontSize: 13, fontWeight: 700, color: "var(--nv-ink)" }}>{savedGate.rows.map((row) => `${row.start}–${row.end}`).join("  ·  ")}</span>
+          {!locked ? (
+            <button type="button" onClick={() => setEditing(true)} style={{ marginInlineStart: "auto", fontFamily: "inherit", fontSize: 12, fontWeight: 700, color: "var(--nv-ok-ink)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+              {ar ? "غيّر" : "Change"}
+            </button>
+          ) : null}
+        </div>
+      </RestCard>
     );
   }
   if (locked) return null;
 
-  const save = () => {
-    const parts = split && pair
-      ? [{ start: first, minutes: pair.firstMinutes }, { start: second, minutes: pair.secondMinutes }]
-      : [{ start: first, minutes: flex.minutes }];
-    const gate = checkRestPlanGate({ shift, onDate, parts, continuous103 });
-    if (!gate.ok) { setError(ar ? gate.reason : gate.reasonEn); return; }
-    setError("");
-    onSave?.(parts);
-    setEditing(false);
-  };
-  const firstOptions = split ? choices.pairs.map((row) => row.first) : choices.single;
-  const ready = split ? !!(first && second && pair?.seconds.includes(second)) : !!(first && choices.single.includes(first));
-
+  const ready = !!gate?.ok;
+  const endOf = (start, minutes) => (toMin(start) == null ? "" : hmOf(toMin(start) + minutes));
   return (
-    <div data-rest-plan="edit" style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", border: "1px solid var(--nv-line)", background: "var(--nv-card)", borderRadius: 10, textAlign: "start" }}>
-      <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <strong style={{ fontSize: 12.5, color: "var(--nv-ink)" }}>{ar ? "حدّد وقت راحتك" : "Set your break time"}</strong>
-        <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.6 }}>
-          {ar
-            ? `دوامك ${Math.round(flex.span / 60)} ساعات منها ${minutesAr(flex.minutes)} راحة تختار مكانها${avoidNames.length ? ` — بعيداً عن ${avoidNames.join(" و")}` : ""}.`
-            : `Your duty is ${Math.round(flex.span / 60)} hours with ${flex.minutes} min of rest not counted as work — place it where it suits you${avoidNames.length ? `. ${avoidNames.join(" and ")} times are left out` : ""}.`}
-        </span>
-      </span>
-      {choices.pairs.length && choices.single.length ? (
-        <span style={{ display: "inline-flex", gap: 6 }}>
-          {[[false, ar ? "مرة واحدة" : "One block"], [true, ar ? "جزءان" : "Two parts"]].map(([value, text]) => (
-            <button key={String(value)} type="button" onClick={() => { setSplit(value); setFirst(""); setSecond(""); setError(""); }} style={{ fontFamily: "inherit", height: 26, padding: "0 10px", borderRadius: 999, border: split === value ? "none" : "1px solid var(--nv-line)", background: split === value ? "#0B3D27" : "var(--nv-card)", color: split === value ? "#fff" : "var(--nv-ink)", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>
-              {text}
-            </button>
-          ))}
-        </span>
-      ) : null}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={label}>{split ? (ar ? `الجزء الأول · ${minutesAr(pair?.firstMinutes || Math.floor(flex.minutes / 2))}` : "First part") : (ar ? `تبدأ راحتك · ${minutesAr(flex.minutes)}` : "Your break starts")}</span>
-          <select data-rest-plan-first value={first} onChange={(event) => { setFirst(event.target.value); setSecond(""); setError(""); }} dir="ltr" style={{ ...field, ...MONO }}>
-            <option value="">—</option>
-            {firstOptions.map((start) => <option key={start} value={start}>{start}</option>)}
-          </select>
-        </label>
-        {split ? (
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={label}>{ar ? `الجزء الثاني · ${minutesAr(pair?.secondMinutes || Math.ceil(flex.minutes / 2))}` : "Second part"}</span>
-            <select data-rest-plan-second value={second} disabled={!pair} onChange={(event) => { setSecond(event.target.value); setError(""); }} dir="ltr" style={{ ...field, ...MONO }}>
-              <option value="">—</option>
-              {(pair?.seconds || []).map((start) => <option key={start} value={start}>{start}</option>)}
-            </select>
-          </label>
+    <RestCard ar={ar} note={note}>
+      <div data-rest-plan="edit" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {flex.splitEffective ? (
+          <span style={{ display: "inline-flex", gap: 6 }}>
+            {[[false, ar ? "مرة واحدة" : "One block"], [true, ar ? "جزءان" : "Two parts"]].map(([value, text]) => (
+              <button key={String(value)} type="button" onClick={() => { setSplit(value); setSecond(""); }} style={{ fontFamily: "inherit", height: 26, padding: "0 10px", borderRadius: 999, border: split === value ? "none" : "1px solid var(--nv-line)", background: split === value ? "#0B3D27" : "var(--nv-card)", color: split === value ? "#fff" : "var(--nv-ink)", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>
+                {text}
+              </button>
+            ))}
+          </span>
         ) : null}
-        <button type="button" data-rest-plan-save disabled={!ready} onClick={save} style={{ fontFamily: "inherit", height: 30, padding: "0 12px", borderRadius: 8, border: "none", background: ready ? "#0B3D27" : "var(--nv-line)", color: ready ? "#fff" : "var(--nv-muted)", fontSize: 12, fontWeight: 700, cursor: ready ? "pointer" : "default" }}>
-          {ar ? "احفظ" : "Save"}
-        </button>
-        {savedGate?.ok ? (
-          <button type="button" onClick={() => setEditing(false)} style={{ fontFamily: "inherit", fontSize: 12, color: "var(--nv-muted)", background: "none", border: "none", cursor: "pointer" }}>{ar ? "إلغاء" : "Cancel"}</button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={label}>{split ? (ar ? `الجزء الأول · ${minutesAr(half)}` : `Part 1 · ${half} min`) : (ar ? `من · ${minutesAr(flex.minutes)}` : `From · ${flex.minutes} min`)}</span>
+            <input type="time" data-rest-plan-first value={first} min={minClock} max={maxClock} step={300} onChange={(event) => setFirst(event.target.value)} dir="ltr" style={field} />
+          </label>
+          {split ? (
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span style={label}>{ar ? `الجزء الثاني · ${minutesAr(flex.minutes - half)}` : `Part 2 · ${flex.minutes - half} min`}</span>
+              <input type="time" data-rest-plan-second value={second} min={minClock} max={maxClock} step={300} onChange={(event) => setSecond(event.target.value)} dir="ltr" style={field} />
+            </label>
+          ) : null}
+          <button type="button" data-rest-plan-save disabled={!ready} onClick={() => { onSave?.(parts); setEditing(false); }} style={{ fontFamily: "inherit", height: 32, padding: "0 14px", borderRadius: 8, border: "none", background: ready ? "#0B3D27" : "var(--nv-line)", color: ready ? "#fff" : "var(--nv-muted)", fontSize: 12, fontWeight: 700, cursor: ready ? "pointer" : "default" }}>
+            {ar ? "احفظ" : "Save"}
+          </button>
+          {savedGate?.ok ? (
+            <button type="button" onClick={() => setEditing(false)} style={{ fontFamily: "inherit", fontSize: 12, color: "var(--nv-muted)", background: "none", border: "none", cursor: "pointer" }}>{ar ? "إلغاء" : "Cancel"}</button>
+          ) : null}
+        </div>
+        {complete && gate && !gate.ok ? (
+          <span role="alert" data-rest-plan-reason={gate.error} style={{ fontSize: 11.5, color: "var(--nv-bad-ink)", lineHeight: 1.6 }}>{ar ? gate.reason : gate.reasonEn}</span>
+        ) : gate?.ok ? (
+          <span data-rest-plan-preview style={{ fontSize: 11.5, color: "var(--nv-ok-ink)", lineHeight: 1.6 }}>
+            {ar ? "راحتك: " : "Your break: "}
+            <span dir="ltr" style={MONO}>{parts.map((row) => `${row.start}–${endOf(row.start, row.minutes)}`).join("  ·  ")}</span>
+            {clashes.length ? <span style={{ color: "var(--nv-warn-ink)" }}>{ar ? ` — يقع فيها وقت ${clashes.join(" و")}` : ` — covers ${clashes.join(" and ")}`}</span> : null}
+          </span>
         ) : null}
       </div>
-      {error ? <span role="alert" style={{ fontSize: 11.5, color: "var(--nv-bad-ink)" }}>{error}</span> : null}
-    </div>
+    </RestCard>
   );
 }

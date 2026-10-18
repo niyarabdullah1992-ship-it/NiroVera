@@ -412,10 +412,11 @@ export function longShiftRestPatch(shift, onDate) {
   return {
     breakMode: "flex",
     restMinutes: LONG_SHIFT_REST_MINUTES,
+    // The window is the whole duty: the worker writes his break time anywhere inside it.
     flexBreak: {
       minutes: LONG_SHIFT_REST_MINUTES,
-      from: hmOfClock(start + minPart),
-      to: hmOfClock(start + span - minPart),
+      from: hmOfClock(start),
+      to: hmOfClock(start + span),
       split: LONG_SHIFT_REST_MINUTES >= minPart * 2,
       earlyEnd: false,
     },
@@ -451,8 +452,10 @@ export function checkRestPlanGate({ shift, onDate, parts = [], continuous103 = f
   }
   const total = rows.reduce((sum, row) => sum + row.minutes, 0);
   if (total !== flex.minutes) return fail("REST_PLAN_TOTAL", `مجموع الراحة ${total} دقيقة — المطلوب ${flex.minutes}.`, `The parts add up to ${total} min — the break is ${flex.minutes}.`);
-  if (flex.fromMin != null && flex.toMin != null && rows.some((row) => row.startMin < flex.fromMin || row.endMin > flex.toMin)) {
-    return fail("REST_PLAN_OUTSIDE_WINDOW", `الراحة داخل نافذتها ⁦${flex.from}–${flex.to}⁩.`, `The break sits inside its ${flex.from}–${flex.to} window.`);
+  // The time is open across the duty hours — he writes it himself; only the shift's own edges bound it.
+  const dutyEnd = flex.shiftStart + flex.span;
+  if (rows.some((row) => row.startMin < flex.shiftStart || row.endMin > dutyEnd)) {
+    return fail("REST_PLAN_OUTSIDE_WINDOW", `الراحة داخل ساعات دوامك ⁦${hmOfClock(flex.shiftStart)}–${hmOfClock(dutyEnd)}⁩.`, `The break sits inside your duty hours ${hmOfClock(flex.shiftStart)}–${hmOfClock(dutyEnd)}.`);
   }
   for (let i = 1; i < rows.length; i += 1) {
     if (rows[i].startMin < rows[i - 1].endMin) return fail("REST_PLAN_OVERLAP", "الجزءان متداخلان — اجعل الثاني بعد نهاية الأول.", "The parts overlap — start the second after the first ends.");

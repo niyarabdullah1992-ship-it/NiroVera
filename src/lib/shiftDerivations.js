@@ -264,6 +264,7 @@ export function readDayBreaks(list, { shiftStart = null, until = null } = {}) {
         minutes: endMin == null ? 0 : endMin - s,
         open,
         source: row?.source === "assumed" ? "assumed" : "punch",
+        ...(row?.fromPlan === true ? { fromPlan: true } : {}),
         short: row?.short === true,
         review: row?.review || null,
         startAt: row?.start || null,
@@ -358,6 +359,7 @@ export function resolveFlexDayBreaks({ shift, breaks, checkIn, checkOut, now, on
   out.overMinutes = Math.max(0, taken + running - flex.minutes);
   out.shortCount = punched.filter((row) => !row.open && row.minutes < flex.minPart).length;
   let assumed = null;
+  let assumedList = [];
   out.planned = null;
   out.assumedRunning = false;
   if (!punched.length) {
@@ -368,25 +370,42 @@ export function resolveFlexDayBreaks({ shift, breaks, checkIn, checkOut, now, on
     // Decided at check-in, so the notice can fire the minute it begins: never later than the 5h mark.
     // The worker's own plan (one lawful block) is where an unpunched break is assumed — his choice first.
     const ownPlan = ownParts ? checkRestPlanGate({ shift, onDate, parts: ownParts, continuous103 }) : null;
-    const ownBlock = ownPlan?.ok && ownPlan.rows.length === 1 ? { ...ownPlan.rows[0], source: "assumed", fromPlan: true } : null;
-    const placed = ownBlock || (inM < flex.toMin
-      ? placeAssumedFlexBreak({ flex, prayers, inMin: inM, latestStart: inM + consecMax, earliestStart: flex.shiftStart + flex.span - consecMax - flex.minutes })
-      : null);
-    const plan = placed && placed.startMin >= inM ? placed : null;
-    out.planned = plan;
-    if (stored) {
-      assumed = { ...stored, source: "assumed" };
-    } else if (plan && endM != null && endM >= plan.startMin && (outM == null || plan.startMin < outM)) {
-      assumed = outM != null && plan.endMin > outM
-        ? { ...plan, end: hmOfClock(outM), endMin: outM, minutes: outM - plan.startMin, closedAtCheckout: true }
-        : plan;
-      out.assumedRunning = outM == null && endM < plan.endMin;
-    } else if (touches && outM != null && outM - inM > consecMax) {
-      assumed = placeAssumedFlexBreak({ flex, prayers, inMin: inM, outMin: outM });
+    const ownRows = ownPlan?.ok ? ownPlan.rows.map((row) => ({ ...row, source: "assumed", fromPlan: true })) : null;
+    const storedRows = rows.filter((row) => row.source === "assumed");
+    if (ownRows) {
+      // The worker's own plan (one block or two parts) is where his break is counted — no punch needed.
+      out.planned = ownRows.find((row) => endM == null || row.startMin > endM) || ownRows[0];
+      if (storedRows.length) {
+        assumedList = storedRows.map((row) => ({ ...row, source: "assumed", fromPlan: true }));
+      } else {
+        assumedList = ownRows
+          .filter((row) => endM != null && endM >= row.startMin && (outM == null || row.startMin < outM))
+          .map((row) => (outM != null && row.endMin > outM ? { ...row, end: hmOfClock(outM), endMin: outM, minutes: outM - row.startMin, closedAtCheckout: true } : row));
+      }
+      assumed = assumedList.length ? assumedList[assumedList.length - 1] : null;
+      out.assumedRunning = !!assumed && outM == null && endM < assumed.endMin;
+    } else {
+      const placed = inM < flex.toMin
+        ? placeAssumedFlexBreak({ flex, prayers, inMin: inM, latestStart: inM + consecMax, earliestStart: flex.shiftStart + flex.span - consecMax - flex.minutes })
+        : null;
+      const plan = placed && placed.startMin >= inM ? placed : null;
+      out.planned = plan;
+      if (storedRows.length) {
+        assumed = { ...storedRows[0], source: "assumed" };
+      } else if (plan && endM != null && endM >= plan.startMin && (outM == null || plan.startMin < outM)) {
+        assumed = outM != null && plan.endMin > outM
+          ? { ...plan, end: hmOfClock(outM), endMin: outM, minutes: outM - plan.startMin, closedAtCheckout: true }
+          : plan;
+        out.assumedRunning = outM == null && endM < plan.endMin;
+      } else if (touches && outM != null && outM - inM > consecMax) {
+        assumed = placeAssumedFlexBreak({ flex, prayers, inMin: inM, outMin: outM });
+      }
+      assumedList = assumed ? [assumed] : [];
     }
   }
   out.assumed = assumed;
-  out.rows = [...punched, ...(assumed ? [assumed] : [])].sort((a, b) => a.startMin - b.startMin);
+  out.assumedList = assumedList;
+  out.rows = [...punched, ...assumedList].sort((a, b) => a.startMin - b.startMin);
   out.forDuty = out.rows.filter((row) => row.endMin != null && row.endMin > row.startMin).map((row) => ({ start: row.start, end: row.end }));
   // Art. 101: an assumed break is a rest like a fixed one — the 5h check reads it too (no breach).
   out.forConsec = out.forDuty.slice();

@@ -278,15 +278,19 @@ export function deriveDutyAlerts({
       // The worker's own break: he chooses when, inside the window, and proves it by punch.
       alerts.push(alert("flex_break_yours", "info", "hours.rest.duringShiftMinutes", onDate, {
         atMinutes: flex.fromMin,
-        textAr: `راحتك ${minutesAr(flex.minutes)} (المادة 101) — ترتاح متى شئت وتبصم لها${flex.splitEffective ? "، ويمكن أن تكون جزأين" : ""}، قبل أن تكمل ${consecMax / 60} ساعات عمل متصلة.`,
-        textEn: `Your ${flex.minutes}-min break (Art. 101) — rest when you choose and punch it${flex.splitEffective ? ", in up to two parts" : ""}, before ${consecMax / 60} hours of work in a row.`,
+        textAr: `راحتك ${minutesAr(flex.minutes)} (المادة 101) — حدّد وقتها في «وقت راحتك»${flex.splitEffective ? "، مرة واحدة أو على جزأين" : ""}، قبل أن تكمل ${consecMax / 60} ساعات عمل متصلة. لا تحتاج بصمة.`,
+        textEn: `Your ${flex.minutes}-min break (Art. 101) — set its time in «Your break time»${flex.splitEffective ? ", in one block or two" : ""}, before ${consecMax / 60} hours of work in a row. No punch needed.`,
         hint: { kind: "rest", item: { date: onDate } },
       }));
     } else if (flexDay.assumed) {
       alerts.push(alert("flex_break_assumed", "info", "hours.rest.notWorkingHours.cite", onDate, {
         atMinutes: flexDay.assumed.startMin,
-        textAr: `لم تُثبت راحتك ببصمة — افتُرضت \u2066${flexDay.assumed.start}–${flexDay.assumed.end}\u2069 وتُخصم من ساعاتك (المادة 102).`,
-        textEn: `Your break was not punched — it is assumed at ${flexDay.assumed.start}–${flexDay.assumed.end} and deducted (Art. 102).`,
+        textAr: flexDay.assumed.fromPlan
+          ? `راحتك كما حددتها \u2066${(flexDay.assumedList || [flexDay.assumed]).map((r) => `${r.start}–${r.end}`).join(" · ")}\u2069 — لا تُحسب من ساعات عملك (المادة 102).`
+          : `لم تحدد وقت راحتك — افتُرضت \u2066${flexDay.assumed.start}–${flexDay.assumed.end}\u2069 ولا تُحسب من ساعات عملك (المادة 102).`,
+        textEn: flexDay.assumed.fromPlan
+          ? `Your break as you set it, ${(flexDay.assumedList || [flexDay.assumed]).map((r) => `${r.start}–${r.end}`).join(" · ")} — not counted as work (Art. 102).`
+          : `You did not set your break — it is assumed at ${flexDay.assumed.start}–${flexDay.assumed.end} and not counted as work (Art. 102).`,
         hint: { kind: "rest", item: { date: onDate } },
       }));
     } else if (flexDay.punched.length && flex.splitEffective && flexDay.windowState === "open" && allowed >= flex.minPart) {

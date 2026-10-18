@@ -97,15 +97,19 @@ export function closeDayBreaks({ shift, breaks, checkIn, checkOut, onDate, praye
   for (const row of list) {
     if (row && row.source !== "assumed" && row.start && !row.end) row.end = checkOut;
   }
-  if (day.assumed && !list.some((row) => row?.source === "assumed")) {
+  const assumedRows = day.assumedList?.length ? day.assumedList : (day.assumed ? [day.assumed] : []);
+  if (assumedRows.length && !list.some((row) => row?.source === "assumed")) {
     const inMs = new Date(checkIn).getTime();
     const inM = day.flex.shiftStart != null ? liftTo(riyadhClockOf(checkIn), day.flex.shiftStart) : null;
-    if (Number.isFinite(inMs) && inM != null) {
-      const base = inMs - (inMs % 60000);
-      const iso = (m) => new Date(base + (m - inM) * 60000).toISOString();
-      list.push({ start: iso(day.assumed.startMin), end: iso(day.assumed.endMin), source: "assumed" });
-    } else {
-      list.push({ start: day.assumed.start, end: day.assumed.end, source: "assumed" });
+    for (const a of assumedRows) {
+      const tag = a.fromPlan ? { fromPlan: true } : {};
+      if (Number.isFinite(inMs) && inM != null) {
+        const base = inMs - (inMs % 60000);
+        const iso = (m) => new Date(base + (m - inM) * 60000).toISOString();
+        list.push({ start: iso(a.startMin), end: iso(a.endMin), source: "assumed", ...tag });
+      } else {
+        list.push({ start: a.start, end: a.end, source: "assumed", ...tag });
+      }
     }
   }
   return list;

@@ -1456,9 +1456,11 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
               {flexOn
                 ? (flexDay.rows.length
                   ? (flexDay.assumed
-                    ? (ar ? "الجزء المخطّط راحة مفترضة — لم تُثبت ببصمة، ولا تُحسب من ساعات عملك (المادة 102)." : "The hatched part is an assumed break — not punched, still excluded (Art. 102).")
+                    ? (flexDay.assumed.fromPlan
+                      ? (ar ? "الجزء المخطّط راحتك كما حددتها — لا تُحسب من ساعات عملك (المادة 102)." : "The hatched part is your break as you set it — not counted as work (Art. 102).")
+                      : (ar ? "الجزء المخطّط راحة مفترضة — لم تحدد وقتها، ولا تُحسب من ساعات عملك (المادة 102)." : "The hatched part is an assumed break — you did not set it; not counted as work (Art. 102)."))
                     : (ar ? "الجزء المخطّط راحتك كما بصمتها — لا تُحتسب ساعات عمل." : "The hatched part is your break as punched — not counted as work."))
-                  : (ar ? "راحتك المرنة تُخصم حين تبصمها — لا تُحتسب ساعات عمل." : "Your flex break is excluded once you punch it."))
+                  : (ar ? "راحتك في الوقت الذي تحدده — لا تُحتسب ساعات عمل." : "Your break, at the time you set — not counted as work."))
                 : band?.label
                   ? (ar ? "الجزء المخطّط هو الراحة — لا تُحتسب ساعات عمل." : "The hatched part is the break — not counted as work.")
                   : (ar ? "راحة الوردية لا تُحسب من ساعات عملك" : "Shift rest is not counted as working time")}
@@ -1636,8 +1638,10 @@ export function flexSteps(day, { ar = true, hint = null, plan = null } = {}) {
   const steps = [];
   const parts = day.rows.filter((row) => row.source === "punch");
   // His own plan, before he punches it: «راحتك المخطّطة» in time order (one row per part).
-  if (!parts.length && plan?.ok && !day.rows.some((row) => row.source === "assumed")) {
-    plan.rows.forEach((row, i) => steps.push({
+  if (!parts.length && plan?.ok) {
+    // A part already under way is shown by its assumed row below; the parts still ahead stay as planned.
+    const begun = new Set(day.rows.filter((row) => row.source === "assumed").map((row) => row.startMin));
+    plan.rows.forEach((row, i) => !begun.has(row.startMin) && steps.push({
       key: `brk-plan-${i}`,
       kind: "plan",
       at: row.startMin,
@@ -1649,14 +1653,14 @@ export function flexSteps(day, { ar = true, hint = null, plan = null } = {}) {
   day.rows.forEach((row, i) => {
     if (row.source === "assumed") {
       steps.push({
-        key: "brk-assumed",
+        key: `brk-assumed-${i}`,
         kind: "plan",
         assumed: !row.fromPlan,
         at: row.startMin,
         label: row.fromPlan ? (ar ? "راحتك" : "Your break") : (ar ? "راحة مفترضة" : "Assumed break"),
         note: row.fromPlan
           ? (ar ? "في الوقت الذي حددته — تُحتسب بلا بصمة، ولا تُحسب من عملك" : "At the time you set — counted without a punch, not as work")
-          : (ar ? "مفترضة — لم تُثبت ببصمة · تُخصم (المادة 102)" : "Assumed — not proven by a punch · deducted (Art. 102)"),
+          : (ar ? "لم تحدد وقتها فافتُرضت — لا تُحسب من عملك (المادة 102)" : "Not set by you, so assumed — not counted as work (Art. 102)"),
         value: `${row.start}–${row.end}`,
       });
       return;

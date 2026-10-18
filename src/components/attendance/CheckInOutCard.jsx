@@ -595,20 +595,12 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       if (localMode || isLocalPreviewActive()) {
         att = localBreakPunch(company.id, { employeeId: currentUser.id, action: breakAction });
       } else {
-        // The break follows the check-in's location rule — lighter: no station radius, a rest may be off site.
-        let coords = null;
-        if (isLocationRequired(settings)) {
-          coords = await getAccuratePosition();
-          if (!coords) {
-            setBreakError(t("locationDenied"));
-            return;
-          }
-        }
+        // Art. 102: in his rest the worker is not under the employer's authority and may not be held at the
+        // workplace — so the break asks for no location and records none, on site or off.
         const res = await base44.functions.invoke("supabaseAttendance", {
           action: breakAction === "start" ? "breakStart" : "breakEnd",
           companyId: company.id,
           employeeId: currentUser.id,
-          ...(coords ? { lat: coords.lat, lng: coords.lng, accuracy: coords.accuracy } : {}),
         });
         att = res?.data?.attendance || null;
       }

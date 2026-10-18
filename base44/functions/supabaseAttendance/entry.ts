@@ -716,15 +716,11 @@ Deno.serve(async (req) => {
     // a lawful rest may be taken off site (prayer, meal).
 
     if (action === "breakStart" || action === "breakEnd") {
-      const { employeeId, lat, lng, accuracy } = body;
+      // Art. 102: during the rest the worker is not under the employer's authority and may not be held at the
+      // workplace — a break punch takes no location and stores none (any lat/lng sent is ignored).
+      const { employeeId } = body;
       if (!employeeId) return Response.json({ error: "Missing employeeId" }, { status: 400 });
       if (!auth?.admin && employeeId !== auth?.userId) return Response.json({ error: "Forbidden" }, { status: 403 });
-      const emergency = await getEmergencyWindow(auth.companyId);
-      const settingsRes = await fetch(`${SUPABASE_URL}/rest/v1/attendance_settings?company_id=eq.${encodeURIComponent(auth.companyId)}`, { headers });
-      const settingsRows = await settingsRes.json();
-      const settings = (Array.isArray(settingsRows) && settingsRows[0]) || { gps_enabled: false, gps_required: false };
-      const locationRequired = settings.gps_enabled === true && settings.gps_required === true && !emergency?.active;
-      if (locationRequired && (lat == null || lng == null)) return Response.json({ error: "GPS_REQUIRED" }, { status: 400 });
       // The duty day's row — an overnight break after midnight writes onto yesterday's open row.
       const duty = await dutyRowOf(auth.companyId, employeeId);
       const date = duty.date;
@@ -735,15 +731,13 @@ Deno.serve(async (req) => {
       const gate = checkFlexBreakPunchGate({ action: kind, shift, breaks: row?.breaks, checkIn: row?.check_in_at, checkOut: row?.check_out_at, now: nowIso, onDate: date });
       if (!gate.ok) return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn }, { status: 400 });
       const breaks = Array.isArray(row?.breaks) ? row.breaks.map((item: any) => ({ ...item })) : [];
-      const where = lat != null && lng != null ? { lat, lng, accuracy: accuracy ?? null } : {};
       if (kind === "start") {
-        breaks.push({ start: nowIso, end: null, source: "punch", ...(Object.keys(where).length ? { startAt: where } : {}) });
+        breaks.push({ start: nowIso, end: null, source: "punch" });
       } else {
         const open = [...breaks].reverse().find((item: any) => item?.source !== "assumed" && item?.start && !item?.end);
         if (open) {
           open.end = nowIso;
           if (gate.short) open.short = true;
-          if (Object.keys(where).length) open.endAt = where;
         }
       }
       const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/attendance?id=eq.${encodeURIComponent(row.id)}`, {

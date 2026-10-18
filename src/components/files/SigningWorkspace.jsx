@@ -754,6 +754,7 @@ export default function SigningWorkspace({
       local: !!body.local,
       requestId: body.requestId || "",
       createdAt: new Date().toLocaleString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", { timeZone: "Asia/Riyadh" }),
+      createdAtIso: new Date().toISOString(),
     };
     setReceipt(receiptBody);
     onSigned?.(receiptBody);

@@ -64,18 +64,21 @@ export function DutyComposition({ ar = true, flex, onDate, minClock, maxClock })
   const notWorkLaw = citeRule("hours.rest.notWorkingHours.cite", onDate);
   const twelve = flex.span === 720;
   const workSource = twelve
-    ? (ar ? `نظام العمل · ${weekly?.labelAr || "المادة 98"} · أسبوعي` : `Labour Law · ${weekly?.labelEn || "Art. 98"} · weekly`)
+    ? (ar ? `${weekly?.labelAr || "المادة 98"} · أسبوعي` : `${weekly?.labelEn || "Art. 98"} · weekly`)
     : work <= dailyMax
-      ? (ar ? `نظام العمل · ${daily?.labelAr || "المادة 98"}` : `Labour Law · ${daily?.labelEn || "Art. 98"}`)
+      ? (ar ? (daily?.labelAr || "المادة 98") : (daily?.labelEn || "Art. 98"))
       : (ar ? `فوق ${daily?.value || 8} ساعات — عمل إضافي` : `Past ${daily?.value || 8} h — overtime`);
   const rows = [
     { key: "work", label: ar ? "العمل الفعلي" : "Actual work", value: ar ? spanAr(work) : spanEn(work), tag: <SourceTag kind="law">{workSource}</SourceTag> },
-    { key: "rest", label: ar ? "الراحة" : "Rest", value: minutesAr(flex.minutes), tag: <SourceTag kind="law">{ar ? `نظام العمل · المادتان ${restLaw?.article || "101"} و${notWorkLaw?.article || "102"}` : `Labour Law · Arts. ${restLaw?.article || "101"} & ${notWorkLaw?.article || "102"}`}</SourceTag> },
+    { key: "rest", label: ar ? "الراحة" : "Rest", value: minutesAr(flex.minutes), tag: <SourceTag kind="law">{ar ? `المادتان ${restLaw?.article || "101"} و${notWorkLaw?.article || "102"}` : `Arts. ${restLaw?.article || "101"} & ${notWorkLaw?.article || "102"}`}</SourceTag> },
   ];
   const cell = { padding: "7px 10px", fontSize: 12, borderTop: "1px solid var(--nv-line)" };
   return (
     <div data-duty-composition="1" style={{ border: "1px solid var(--nv-line)", borderRadius: 10, overflow: "hidden" }}>
-      <div style={{ padding: "6px 10px", fontSize: 11, fontWeight: 700, color: "var(--nv-muted)", background: "var(--nv-soft, #F7F9F8)" }}>{ar ? "تركيب دوامك" : "Your duty, in parts"}</div>
+      <div style={{ padding: "6px 10px", fontSize: 11, fontWeight: 700, color: "var(--nv-muted)", background: "var(--nv-soft, #F7F9F8)", display: "flex", justifyContent: "space-between", gap: 8 }}>
+        <span>{ar ? "تركيب دوامك" : "Your duty, in parts"}</span>
+        <span style={{ fontWeight: 500 }}>{ar ? "المصدر: نظام العمل" : "Source: Labour Law"}</span>
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "auto auto minmax(0, 1fr)", alignItems: "center" }}>
         {rows.map((row) => (
           <React.Fragment key={row.key}>
@@ -91,8 +94,8 @@ export function DutyComposition({ ar = true, flex, onDate, minClock, maxClock })
       <div data-rest-length-source="1" style={{ padding: "6px 10px", borderTop: "1px solid var(--nv-line)", fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.6 }}>
         {flex.minutes > Number(restLaw?.value || 30)
           ? (ar
-            ? `الحد النظامي للراحة ${restLaw?.value || 30} دقيقة في المرة الواحدة، تجمع الراحة والصلاة والطعام. ومدة ${minutesAr(flex.minutes)} حددتها إدارتك في جدول الورديات.`
-            : `The statutory minimum is ${restLaw?.value || 30} min at a time, for rest, prayer and food together. ${flex.minutes} min was set by your management on the roster.`)
+            ? `الحد النظامي للراحة ${restLaw?.value || 30} دقيقة في المرة الواحدة، تجمع الراحة والصلاة والطعام. وما فوقه تنظيم من إدارتك.`
+            : `The statutory minimum is ${restLaw?.value || 30} min at a time, for rest, prayer and food together; anything above it is your management's arrangement.`)
           : (ar
             ? `راحتك هي الحد النظامي: ${restLaw?.value || 30} دقيقة في المرة الواحدة، تجمع الراحة والصلاة والطعام.`
             : `Your break is the statutory minimum: ${restLaw?.value || 30} min at a time, for rest, prayer and food together.`)}
@@ -114,8 +117,8 @@ function RestRules({ ar = true, onDate, prayerLine }) {
     [prayerLine, null],
   ];
   return (
-    <div data-rest-rule="1" style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      <span style={{ fontSize: 11, fontWeight: 700, color: "var(--nv-muted)" }}>{ar ? "الضوابط النظامية" : "Statutory bounds"}</span>
+    <details data-rest-rule="1" style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <summary style={{ fontSize: 11.5, fontWeight: 700, color: "var(--nv-ok-ink)", cursor: "pointer", listStylePosition: "inside" }}>{ar ? "الضوابط النظامية للراحة" : "Statutory bounds on the rest"}</summary>
       {lines.map(([text, art], i) => (
         <span key={i} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.6 }}>
           <span aria-hidden style={{ width: 4, height: 4, borderRadius: 999, background: "var(--nv-muted)", flex: "none", transform: "translateY(-2px)" }} />
@@ -123,7 +126,7 @@ function RestRules({ ar = true, onDate, prayerLine }) {
           {art ? <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--nv-ok-ink)", whiteSpace: "nowrap" }}>{art}</span> : null}
         </span>
       ))}
-    </div>
+    </details>
   );
 }
 
@@ -161,8 +164,8 @@ export default function RestPlanPicker({ ar = true, shift, onDate, continuous103
   const minClock = hmOf(flex.shiftStart);
   const maxClock = hmOf(flex.shiftStart + flex.span);
   const note = ar
-    ? `تحدد وقت راحتك بنفسك بين ${minClock} و${maxClock}، مرة واحدة أو على جزأين.`
-    : `You set your own break between ${minClock} and ${maxClock}, in one block or two.`;
+    ? `مدة راحتك ${minutesAr(flex.minutes)} حددتها إدارتك في جدول الورديات. أنت تختار متى تبدأ فقط، بين ${minClock} و${maxClock}${flex.splitEffective ? "، مرة واحدة أو على جزأين" : ""}.`
+    : `Your break is ${flex.minutes} min, set by your management on the roster. You only choose when it starts, between ${minClock} and ${maxClock}${flex.splitEffective ? ", in one block or two" : ""}.`;
   const composition = <DutyComposition ar={ar} flex={flex} onDate={onDate} minClock={minClock} maxClock={maxClock} />;
 
   if (savedGate?.ok && !editing) {
@@ -188,15 +191,6 @@ export default function RestPlanPicker({ ar = true, shift, onDate, continuous103
   return (
     <RestCard ar={ar} note={note}>
       <div data-rest-plan="edit" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {composition}
-        {flex.span === 720 ? (
-          <span data-rest-twelve="1" style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.6 }}>
-            {ar
-              ? "نظام 4 أيام عمل و4 أيام راحة: يُقاس العمل فيه أسبوعياً لا يومياً — 11 ساعة × 4 أيام = 44 ساعة، ضمن حد 48 ساعة في الأسبوع."
-              : "Four days on, four off: work is measured weekly, not daily — 11 h × 4 days = 44 h a week, within the cap."}
-          </span>
-        ) : null}
-        <RestRules ar={ar} onDate={onDate} prayerLine={ar ? "صلاتك أثناء العمل خارج الراحة لا تُستقطع ولا تطيل دوامك." : "A prayer during work, outside the rest, is not deducted and does not lengthen your day."} />
         {flex.splitEffective ? (
           <span style={{ display: "inline-flex", gap: 6 }}>
             {[[false, ar ? "مرة واحدة" : "One block"], [true, ar ? "جزءان" : "Two parts"]].map(([value, text]) => (
@@ -208,7 +202,7 @@ export default function RestPlanPicker({ ar = true, shift, onDate, continuous103
         ) : null}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={label}>{split ? (ar ? `الجزء الأول · ${minutesAr(half)}` : `Part 1 · ${half} min`) : (ar ? `تبدأ راحتك · ${minutesAr(flex.minutes)}` : `Your break starts · ${flex.minutes} min`)}</span>
+            <span style={label}>{split ? (ar ? `الجزء الأول · ${minutesAr(half)}` : `Part 1 · ${half} min`) : (ar ? "متى تبدأ راحتك؟" : "When does your break start?")}</span>
             <TimeField ar={ar} dataKey="rest-first" value={first} min={minClock} max={maxClock} step={5} onChange={setFirst} />
           </label>
           {split ? (
@@ -233,6 +227,15 @@ export default function RestPlanPicker({ ar = true, shift, onDate, continuous103
             {clashes.length ? <span style={{ color: "var(--nv-warn-ink)" }}>{ar ? ` — يقع فيها وقت ${clashes.join(" و")}` : ` — covers ${clashes.join(" and ")}`}</span> : null}
           </span>
         ) : null}
+        {composition}
+        {flex.span === 720 ? (
+          <span data-rest-twelve="1" style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.6 }}>
+            {ar
+              ? "نظام 4 أيام عمل و4 أيام راحة: يُقاس العمل فيه أسبوعياً لا يومياً — 11 ساعة × 4 أيام = 44 ساعة، ضمن حد 48 ساعة في الأسبوع."
+              : "Four days on, four off: work is measured weekly, not daily — 11 h × 4 days = 44 h a week, within the cap."}
+          </span>
+        ) : null}
+        <RestRules ar={ar} onDate={onDate} prayerLine={ar ? "صلاتك أثناء العمل خارج الراحة لا تُستقطع ولا تطيل دوامك." : "A prayer during work, outside the rest, is not deducted and does not lengthen your day."} />
       </div>
     </RestCard>
   );

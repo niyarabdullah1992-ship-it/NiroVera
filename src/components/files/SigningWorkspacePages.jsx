@@ -4,6 +4,7 @@ import { looksLikePdf } from "@/lib/pdfBytes";
 import { BORDER, BRAND, CARD, MUTED } from "@/lib/platformStyles";
 import { MARK_GLYPHS, isMarkField } from "@/lib/signPdf";
 import SignMarkGlyph from "@/components/files/SignMarkGlyph";
+import { renderStampDataUrl, stampConfigFromSigner } from "@/lib/stampStudio";
 import {
   STAMP_CANVAS_HEIGHT,
   STAMP_CANVAS_WIDTH,
@@ -178,6 +179,33 @@ export function PdfPageCanvas({ pdf, pageNumber, width, onSize }) {
   return <canvas ref={canvasRef} style={{ display: "block", width, height: Math.round(width * 1.414) }} />;
 }
 
+/**
+ * The seal each signer will leave, previewed where his signature field sits — his name, role, the date and the
+ * verification frame, exactly as the finished page will carry it (the code is filled in at signing).
+ * One render per signer (name · role · design), cached across re-renders.
+ */
+function useSignerStampPreviews(signers) {
+  const [previews, setPreviews] = useState({});
+  const key = (signers || []).map((s) => `${s?.name || ""}|${s?.role || ""}|${s?.stampConfig?.design || s?.stampTheme || ""}`).join("§");
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const out = {};
+      for (let i = 0; i < (signers || []).length; i += 1) {
+        try {
+          out[i] = await renderStampDataUrl(stampConfigFromSigner(signers[i]), {});
+        } catch {
+          out[i] = "";
+        }
+      }
+      if (alive) setPreviews(out);
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return previews;
+}
+
 function fieldBox(field, size, stampRatio = STAMP_RATIO) {
   const scale = (field.scale || 100) / 100;
   if (field.type === "signature") {
@@ -212,6 +240,7 @@ export default function SigningWorkspacePages({
   meIndex = 0,
 }) {
   const sizesRef = useRef({});
+  const stampPreviews = useSignerStampPreviews(signers);
   const pageRefs = useRef({});
   const movedRef = useRef(false);
   const [, setTick] = useState(0);
@@ -465,7 +494,7 @@ export default function SigningWorkspacePages({
                     outline: "none",
                     background: yn
                       ? "var(--nv-card)"
-                      : gold
+                      : gold && field.type !== "signature"
                         ? `color-mix(in oklab, ${tint} 11%, #fff)`
                         : field.type === "signature"
                           ? "rgba(255,255,255,.92)"
@@ -492,9 +521,11 @@ export default function SigningWorkspacePages({
                     padding: yn ? "0 12px" : 0,
                     pointerEvents: editing ? "auto" : "none",
                   }}>
-                  {field.type === "signature" && !gold ? (
+                  {field.type === "signature" && (!gold || stampPreviews[field.signer] || (field.signer === meIndex && sealPreview)) ? (
                     field.signer === meIndex && sealPreview ? (
                       <img src={sealPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} />
+                    ) : stampPreviews[field.signer] ? (
+                      <img data-stamp-preview={field.signer} src={stampPreviews[field.signer]} alt={ar ? `ختم ${signer?.name || ""}` : `${signer?.name || ""}'s seal`} style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} />
                     ) : (
                       <span style={{ pointerEvents: "none", textAlign: "center", lineHeight: 1.4 }}>
                         <span style={{ display: "block", fontSize: 11, fontWeight: 600, color: signer?.color || BRAND }}>

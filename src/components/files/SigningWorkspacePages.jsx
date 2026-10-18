@@ -485,12 +485,14 @@ export default function SigningWorkspacePages({
                     height: box.height,
                     transform: "translate(-50%, -50%)",
                     border: active
-                      ? "2px solid #3C7D50"
+                      ? "1px solid #0B3D27"
                       : yn
                         ? "1px solid var(--nv-line, #DFE3EA)"
                         : gold
                           ? `1px solid ${gap ? "var(--nv-warn-line)" : `color-mix(in oklab, ${tint} 45%, #fff)`}`
-                          : `1.5px ${field.type === "signature" ? "solid" : "dashed"} ${gap ? "#B45309" : tint}`,
+                          : field.type === "signature"
+                            ? `1px solid ${gap ? "#B45309" : `color-mix(in oklab, ${tint} 45%, #fff)`}`
+                            : `1px dashed ${gap ? "#B45309" : tint}`,
                     outline: "none",
                     background: yn
                       ? "var(--nv-card)"
@@ -499,7 +501,7 @@ export default function SigningWorkspacePages({
                         : field.type === "signature"
                           ? "rgba(255,255,255,.92)"
                           : `color-mix(in oklab, ${gap ? "var(--nv-warn-ink)" : signer?.color || BRAND} 8%, #fff)`,
-                    borderRadius: yn || gold ? 10 : 4,
+                    borderRadius: yn || (gold && field.type !== "signature") ? 10 : 4,
                     boxSizing: "border-box",
                     cursor: editing ? "text" : "move",
                     display: "flex",
@@ -507,7 +509,7 @@ export default function SigningWorkspacePages({
                     justifyContent: "center",
                     overflow: "visible",
                     zIndex: active ? 3 : 1,
-                    boxShadow: active ? "0 0 0 3px rgba(60,125,80,.18)" : "none",
+                    boxShadow: active ? "0 0 0 3px #fff, 0 0 0 4px rgba(11,61,39,.22)" : "none",
                   }}
                 >
                   <div style={{
@@ -580,6 +582,50 @@ export default function SigningWorkspacePages({
 
                   {active ? (
                     <>
+                      {/* Institutional selection frame: corner marks, a labelled tab, a square remove key and a small handle. */}
+                      {[["top", "insetInlineStart"], ["top", "insetInlineEnd"], ["bottom", "insetInlineStart"], ["bottom", "insetInlineEnd"]].map(([v, h]) => (
+                        <span
+                          key={`${v}-${h}`}
+                          aria-hidden
+                          style={{
+                            position: "absolute",
+                            [v]: -5,
+                            [h]: -5,
+                            width: 9,
+                            height: 9,
+                            pointerEvents: "none",
+                            borderTop: v === "top" ? "2px solid #0B3D27" : "none",
+                            borderBottom: v === "bottom" ? "2px solid #0B3D27" : "none",
+                            borderInlineStart: h === "insetInlineStart" ? "2px solid #0B3D27" : "none",
+                            borderInlineEnd: h === "insetInlineEnd" ? "2px solid #0B3D27" : "none",
+                          }}
+                        />
+                      ))}
+                      <span
+                        data-field-tab={field.id}
+                        style={{
+                          position: "absolute",
+                          bottom: "100%",
+                          insetInlineStart: -1,
+                          marginBottom: 6,
+                          height: 20,
+                          padding: "0 8px",
+                          borderRadius: 4,
+                          background: "#0B3D27",
+                          color: "#fff",
+                          fontSize: 10.5,
+                          fontWeight: 600,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          whiteSpace: "nowrap",
+                          pointerEvents: "none",
+                          zIndex: 5,
+                        }}
+                      >
+                        <span aria-hidden style={{ width: 6, height: 6, borderRadius: "50%", background: tint, boxShadow: "0 0 0 1px rgba(255,255,255,.7)" }} />
+                        {(field.label || (field.type === "signature" ? (ar ? "توقيع" : "Signature") : "")) + (signer?.name ? ` · ${signer.name}` : "")}
+                      </span>
                       <button
                         type="button"
                         aria-label={ar ? "إلغاء الحقل" : "Remove field"}
@@ -587,15 +633,16 @@ export default function SigningWorkspacePages({
                         onClick={(event) => { event.stopPropagation(); onRemove?.(field.id); }}
                         style={{
                           position: "absolute",
-                          top: 0,
-                          insetInlineEnd: 0,
+                          bottom: "100%",
+                          insetInlineEnd: -1,
+                          marginBottom: 6,
                           width: 20,
                           height: 20,
-                          borderRadius: "50%",
-                          border: `1.5px solid ${CARD}`,
-                          background: "var(--nv-navy)",
-                          color: "#fff",
-                          fontSize: 15,
+                          borderRadius: 4,
+                          border: "1px solid var(--nv-line, #DFE3EA)",
+                          background: "#fff",
+                          color: "var(--nv-bad-ink, #9B2C2C)",
+                          fontSize: 14,
                           lineHeight: 1,
                           display: "flex",
                           alignItems: "center",
@@ -604,25 +651,24 @@ export default function SigningWorkspacePages({
                           cursor: "pointer",
                           fontFamily: "inherit",
                           zIndex: 5,
-                          boxShadow: "0 1px 4px rgba(20,40,75,.28)",
-                          transform: ar ? "translate(-100%, -50%)" : "translate(100%, -50%)",
                         }}
                       >
                         ×
                       </button>
                       <span
                         role="presentation"
+                        data-field-resize={field.id}
                         onPointerDown={(event) => startResize(event, field)}
                         style={{
                           position: "absolute",
-                          bottom: -7,
-                          insetInlineEnd: -7,
-                          width: 14,
-                          height: 14,
-                          borderRadius: 4,
-                          border: `2px solid ${CARD}`,
-                          background: "#3C7D50",
+                          bottom: -5,
+                          insetInlineEnd: -5,
+                          width: 9,
+                          height: 9,
+                          boxSizing: "border-box",
+                          background: "#0B3D27",
                           cursor: "ew-resize",
+                          zIndex: 6,
                         }}
                       />
                     </>

@@ -260,13 +260,14 @@ export default function EnvelopeSetup({
         onDragStart={() => !isMe && setDragKey(row.key)}
         onDragOver={(event) => { if (!isMe && dragKey) event.preventDefault(); }}
         onDrop={() => !isMe && dropOn(row.key)}
-        style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", border: `1px solid ${BORDER}`, borderInlineStart: `3px solid ${row.color || RECIPIENT_COLORS[0]}`, borderRadius: 8, background: dragKey === row.key ? "var(--nv-soft, #F6F8F7)" : CARD, minWidth: 0, flexWrap: "wrap" }}
+        style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", border: `1px solid ${BORDER}`, borderRadius: 10, background: dragKey === row.key ? "var(--nv-soft, #F6F8F7)" : CARD, minWidth: 0, flexWrap: "wrap" }}
       >
         {sequential ? (
           <span data-step={step} dir="ltr" style={{ ...mono, width: 22, height: 22, borderRadius: "50%", border: "1px solid var(--nv-line)", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none", color: "var(--nv-ink)" }}>{step}</span>
         ) : null}
         {!isMe && sequential ? <GripVertical aria-hidden size={14} style={{ color: MUTED, cursor: "grab", flex: "none" }} /> : null}
-        <span className="nv-req-kind-mark" aria-hidden style={{ width: 30, height: 30, fontSize: 12, flex: "none" }}>{initialsOf(row.name || row.email)}</span>
+        {/* The recipient's colour (the same one his fields carry on the page) lives in his initials — no side bar. */}
+        <span aria-hidden data-recipient-mark={row.color || RECIPIENT_COLORS[0]} style={{ width: 30, height: 30, flex: "none", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: row.color || RECIPIENT_COLORS[0], background: `color-mix(in oklab, ${row.color || RECIPIENT_COLORS[0]} 12%, var(--nv-card))`, border: `1px solid color-mix(in oklab, ${row.color || RECIPIENT_COLORS[0]} 35%, var(--nv-card))` }}>{initialsOf(row.name || row.email)}</span>
         <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0, flex: "1 1 160px" }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--nv-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {row.name || "—"}{isMe ? <span style={{ fontWeight: 500, color: MUTED }}>{ar ? " · أنت" : " · you"}</span> : null}

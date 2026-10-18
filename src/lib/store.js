@@ -27,6 +27,7 @@ import {
   checkNightEmployeeActorGate,
   checkWithdrawNightConsentGate,
   checkWithdrawNightRemedyGate,
+  nightScheduleFor,
   applyLapsedNightConsents,
   collectDueNightRotates,
   nightCycleKey,
@@ -41,7 +42,7 @@ import { planNecessityNotices } from "./consentEffects";
 import { moveCompCreditsOutOfAnnual, planCompLeaveNotices, checkTakeCompLeaveGate, COMP_LEAVE_TYPE } from "./compLeave";
 import { hoursAr as otHoursAr, otOffer, sar as otSar } from "./otOffer";
 import { regulationDate } from "./workRegulation";
-import { checkSelfDecideRequestGate, nightDueAdminAudience, requestNoticeAudience } from "./dutyScope";
+import { checkSelfDecideRequestGate, isCompanyHeadPerson, nightDueAdminAudience, requestNoticeAudience } from "./dutyScope";
 import {
   annualEntitlementNoticeText,
   collectDueAnnualLeaveNotices,
@@ -2327,8 +2328,14 @@ function syncNightAllowanceOnPayrollDraft(draft, employee) {
 }
 
 /** Establishment chooses reduce, allowance, or a change of night work. */
+function nightActorIsHead(companyId, actorId) {
+  const data = getCompanyData(companyId);
+  const actor = (data?.employees || []).find((row) => String(row.id) === String(actorId)) || (actorId ? { id: actorId } : null);
+  return !!actor && isCompanyHeadPerson(actor, data);
+}
+
 export function decideNightRemedy(companyId, employeeId, kind, { actorId, ordinaryKind, applyRoster = true, cutHours, amount, allowanceKind } = {}) {
-  const gate = checkDecideNightRemedyGate({ kind, employeeId, actorId, cutHours, amount, allowanceKind });
+  const gate = checkDecideNightRemedyGate({ kind, employeeId, actorId, actorIsHead: nightActorIsHead(companyId, actorId), cutHours, amount, allowanceKind });
   if (!gate.ok) return gate;
   const data = getCompanyData(companyId);
   const emp = data?.employees.find((row) => row.id === employeeId);
@@ -2344,7 +2351,9 @@ export function decideNightRemedy(companyId, employeeId, kind, { actorId, ordina
   updateCompany(companyId, (draft) => {
     const employee = draft.employees.find((row) => row.id === employeeId);
     if (!employee) return;
-    const schedule = getOrCreateSchedule(draft, employee.stationId);
+    // The roster that holds his nights (own station, else a covered one) — the same one the 18632 row reads.
+    const held = nightScheduleFor(draft, employee, weekStart);
+    const schedule = (draft.schedules || []).includes(held) ? held : getOrCreateSchedule(draft, employee.stationId);
     const fromHours = kind === "reduce" ? firstNightDutyHours(schedule, employee.id, weekStart) : null;
     employee.profile = stampNightRemedy(employee.profile || {}, kind, {
       at: now,
@@ -2379,7 +2388,7 @@ export function decideNightRemedy(companyId, employeeId, kind, { actorId, ordina
 export function withdrawNightRemedy(companyId, employeeId, { actorId } = {}) {
   const data = getCompanyData(companyId);
   const emp = data?.employees.find((row) => row.id === employeeId);
-  const gate = checkWithdrawNightRemedyGate({ employee: emp, employeeId, actorId });
+  const gate = checkWithdrawNightRemedyGate({ employee: emp, employeeId, actorId, actorIsHead: nightActorIsHead(companyId, actorId) });
   if (!gate.ok) return gate;
   const now = new Date().toISOString();
   const previous = emp?.profile?.nightRemedy?.kind;

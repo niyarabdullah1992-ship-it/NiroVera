@@ -23,7 +23,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { RAIL_SIDE_COLOR, railBadgeTone, railFooter } from "@/lib/suiteRailFrame";
-import { railFaceHref, routeRailSide, useExplicitRailSide, useSetRailSide } from "@/lib/railSide";
+import { railSwitchHref, routeRailSide, useExplicitRailSide, useSetRailSide } from "@/lib/railSide";
 import NvIcon from "@/components/shared/NvIcon";
 
 const LINE = "var(--nv-line)";
@@ -286,7 +286,7 @@ export default function SuiteRail({
                 onClick={() => {
                   if (item.id === sideId) return;
                   setRailSide(item.id);
-                  const next = railFaceHref(location.pathname, location.search, item.id);
+                  const next = railSwitchHref({ pathname: location.pathname, search: location.search, targetSide: item.id, sides, activeKey });
                   const here = `${location.pathname}${location.search}`;
                   if (next && next !== here) navigate(next);
                 }}

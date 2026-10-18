@@ -7,7 +7,7 @@ import { deriveSaudiStatus } from "./complianceDerivations.js";
 import { contractAllowanceSplit, employeeWageSplit } from "./employeeFileView.js";
 import { readGosiRegisteredAt } from "./facts/people.js";
 import { gosiLine } from "./payrollDerivations.js";
-import { detentionMonth, detentionRefund, holidayOvertimeHours, unpaidLeaveMonth } from "./payrollLaw.js";
+import { detentionMonth, detentionRefund, holidayOvertimeHours, lateMonth, unpaidLeaveMonth } from "./payrollLaw.js";
 import { isOfficialHoliday, laborCalendarOf } from "./ummAlQuraCalendar.js";
 import { readPersonalAttendance } from "./facts/attendance.js";
 import { expenseRefundsForMonth } from "./modelRequests.js";
@@ -94,6 +94,9 @@ export function derivePayrollWagePatch(item, employee, { otDecisions, month, com
   const injSkip = [...(unpaidPart?.dayKeys || []), ...(detPart?.dayKeys || [])];
   const injPart = employee && month ? injuryMonth({ employee, company, month, monthlyWage, skipDays: injSkip }) : null;
   const sickPart = employee && month ? sickMonth({ employee, month, monthlyWage, skipDays: [...injSkip, ...(injPart?.dayKeys || [])] }) : null;
+  const latePart = employee && month && company
+    ? lateMonth({ employeeId: item.employeeId, month, attendance: readPersonalAttendance(company), monthlyWage, skipDays: [...injSkip, ...(injPart?.dayKeys || []), ...(sickPart?.dayKeys || [])] })
+    : null;
 
   const fields = {
     base,
@@ -122,6 +125,11 @@ export function derivePayrollWagePatch(item, employee, { otDecisions, month, com
       const unpaid = unpaidPart;
       return { unpaidLeaveDays: unpaid.days, unpaidLeaveCut: unpaid.cut };
     })(),
+    // Lateness minutes (model regulation «حسم أجر دقائق التأخر»): wage not due for time not worked —
+    // not a penalty and not an Art. 92 line, so the sanction itself stays the regulation's percentage.
+    lateMinutes: latePart ? latePart.minutes : 0,
+    lateDays: latePart ? latePart.days : 0,
+    lateCut: latePart ? latePart.cut : 0,
     // Art. 97: detained in a work-related case — half the wage up to 180 days; refund on acquittal.
     ...(() => {
       if (!employee || !month || !detention?.from) return { detentionDays: 0, detentionCut: 0, refunds: 0 };

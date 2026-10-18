@@ -122,6 +122,7 @@ export default function DisciplineRaiseForm({
   clauseId = "",
   onClause,
   clauseStep = null,
+  lateHint = null,
 }) {
   const person = employees.find((row) => String(row.id) === String(employeeId)) || null;
   const kindSpec = listedPenaltyKind(penaltyKind) || DISCIPLINE_PENALTY_KINDS[0];
@@ -194,6 +195,20 @@ export default function DisciplineRaiseForm({
                 options={clauseOptions}
                 onChange={onClause}
               />
+              {lateHint ? (
+                <span data-raise-late-hint={lateHint.mismatch ? "mismatch" : "ok"} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, fontSize: 12, lineHeight: 1.7, padding: "8px 10px", borderRadius: 8, border: `1px solid ${lateHint.mismatch ? "var(--nv-warn-line)" : "var(--nv-line)"}`, background: lateHint.mismatch ? "var(--nv-warn-soft)" : "var(--nv-soft)", color: "var(--nv-ink2)" }}>
+                  <span style={{ flex: "1 1 240px" }}>
+                    {ar
+                      ? <>بصمة ذلك اليوم: تأخر <strong dir="ltr" style={{ fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)", color: "var(--nv-ink)" }}>{lateHint.actual}</strong> دقيقة من بداية الدوام{lateHint.grace ? ` (${lateHint.recorded} بعد سماح ${lateHint.grace} د)` : ""}. {lateHint.clauseLabel ? <>البند المطابق: <strong style={{ color: "var(--nv-ink)" }}>{lateHint.clauseLabel}</strong>.</> : null}{lateHint.mismatch ? " البند المختار لا يطابق مدة التأخير." : ""}</>
+                      : <>The punch that day: <strong dir="ltr">{lateHint.actual}</strong> min late from the start of work{lateHint.grace ? ` (${lateHint.recorded} after a ${lateHint.grace}-min grace)` : ""}. {lateHint.clauseLabel ? <>Matching clause: <strong>{lateHint.clauseLabel}</strong>.</> : null}{lateHint.mismatch ? " The chosen clause does not match the lateness." : ""}</>}
+                  </span>
+                  {lateHint.suggestedId && lateHint.suggestedId !== clauseId ? (
+                    <button type="button" data-raise-late-apply={lateHint.suggestedId} onClick={(event) => { event.preventDefault(); onClause?.(lateHint.suggestedId); }} style={{ fontFamily: "inherit", height: 28, padding: "0 10px", borderRadius: 7, border: "1px solid var(--nv-navy, #0B3D27)", background: "var(--nv-navy, #0B3D27)", color: "#fff", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+                      {ar ? "اختر البند المطابق" : "Use the matching clause"}
+                    </button>
+                  ) : null}
+                </span>
+              ) : null}
               {clauseStep ? (
                 <span data-raise-clause-step="" style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.7 }}>
                   {ar

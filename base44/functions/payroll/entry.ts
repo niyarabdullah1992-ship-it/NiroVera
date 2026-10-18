@@ -34,7 +34,7 @@ function uid(prefix: string) {
  */
 const LAW_FIELDS = [
   "sickReduction", "sickUnpaid", "injuryReduction", "injuryUnpaid", "injuryWageStop",
-  "unpaidLeaveDays", "unpaidLeaveCut", "detentionDays", "detentionCut", "refunds", "damageRefunds",
+  "unpaidLeaveDays", "unpaidLeaveCut", "detentionDays", "detentionCut", "lateMinutes", "lateDays", "lateCut", "refunds", "damageRefunds",
   "holidayOvertimeHours", "overtimeHoursYtd", "gosiRegisteredAt", "gosiAsOf", "housingAllowance", "commissionAmount",
 ] as const;
 

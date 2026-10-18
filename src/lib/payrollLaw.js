@@ -383,6 +383,34 @@ export function unpaidLeaveMonth({ employee, month, monthlyWage = 0 } = {}) {
   return { days: days.size, cut: r2(days.size * dailyWage(monthlyWage)), dayKeys: [...days].sort() };
 }
 
+/**
+ * Lateness: the minutes the worker was not at work are wage not due (the model regulation's
+ * «حسم أجر دقائق التأخر») — not an Art. 92 deduction and not a penalty. Minutes are those recorded
+ * on the punch, i.e. after the establishment's grace and any approved permission or nursing minutes.
+ * Hourly wage = the actual daily wage ÷ ordinary daily hours (Art. 98). Days the line already cuts
+ * (unpaid leave, sick, injury, detention) are skipped so no minute is cut twice.
+ */
+export function lateMonth({ employeeId, month, attendance = [], monthlyWage = 0, skipDays = [] } = {}) {
+  const id = String(employeeId || "");
+  const prefix = `${month}-`;
+  const skip = new Set(skipDays || []);
+  let minutes = 0;
+  let days = 0;
+  for (const row of attendance || []) {
+    if (String(row?.employeeId || row?.employee_id || "") !== id) continue;
+    const day = String(row?.date || row?.attendanceDate || row?.day || "").slice(0, 10);
+    if (!day.startsWith(prefix) || skip.has(day)) continue;
+    if (String(row?.status || "").toLowerCase() === "absent" || row?.excusedLate) continue;
+    const m = Math.max(0, Math.round(Number(row?.lateMinutes) || 0));
+    if (!m) continue;
+    minutes += m;
+    days += 1;
+  }
+  const hours = Number(ruleValue("hours.shift.ordinaryHours")) || 8;
+  const perMinute = dailyWage(monthlyWage) / hours / 60;
+  return { minutes, days, cut: r2(minutes * perMinute), perMinute };
+}
+
 // ─── Art. 107(3) — holiday hours are overtime ─────────────────────────────────────────────────
 
 function punchHours(row) {
@@ -611,7 +639,7 @@ export function wageSheetCsv(items = [], { month = "", nameOf, ar = true } = {})
       r2(c.base), r2(c.allowances), r2(c.bonus),
       c.overtimeHours, c.holidayOvertimeHours, r2(c.overtimePay), r2(c.refunds),
       r2(c.deductions), r2(c.gosiEmployee),
-      r2(c.injuryCut + c.sickCut + c.unpaidLeaveCut + c.detentionCut),
+      r2(c.injuryCut + c.sickCut + c.unpaidLeaveCut + c.detentionCut + (c.lateCut || 0)),
       r2(c.net), r2(c.paidAhead), lineTransferDue(line),
       String(line.currency || WAGE_CURRENCY).toUpperCase(),
       line.paid ? (ar ? "مدفوع" : "Paid") : (ar ? "غير مدفوع" : "Unpaid"),

@@ -32,7 +32,9 @@ export function generateDisciplineDeduction(companyId, employeeId, caseRow, acto
   const refId = disciplineDeductionRef(caseRow?.id);
   if (!refId || refId === "DSC-") return "REFERENCE_REQUIRED";
   if (deductionLines(item).some((line) => line.sourceRefId === refId)) return "ALREADY_GENERATED";
-  const daily = (Number(item.base) || 0) / 30;
+  // Art. 2: the wage a fine is measured on is the actual wage (basic + allowances) — the same figure
+  // the fines register (Art. 73) records, so the register and the payslip carry one amount.
+  const daily = ((Number(item.base) || 0) + (Number(item.allowances) || 0)) / 30;
   return addDeductionLine(companyId, month, item, {
     amount: Math.round(daily * days * 100) / 100,
     source: "discipline",

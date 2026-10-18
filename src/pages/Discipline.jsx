@@ -47,7 +47,8 @@ import { canManageDiscipline, disciplineManageCases, scopeEqualOrWider } from "@
 import { requestMayDecideOnLane } from "@/lib/dutyScope";
 import { isOfficialHoliday, laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { useRailSide, useSetRailSide } from "@/lib/railSide";
-import { checkPublishRegulationGate, planRegulationAck, regulationDate, regulationNextStep, regulationOf, regulationRef, regulationStepFor } from "@/lib/workRegulation";
+import { checkPublishRegulationGate, lateClauseHint, planRegulationAck, regulationDate, regulationNextStep, regulationOf, regulationRef, regulationStepFor } from "@/lib/workRegulation";
+import { readPersonalAttendance } from "@/lib/facts/attendance";
 import { disciplineDeadlines } from "@/lib/disciplineDeadlines";
 import { ruleValue } from "@/lib/laborRules";
 import { isPastArchiveDue } from "@/lib/archiveRule";
@@ -141,6 +142,11 @@ export default function Discipline() {
     setEmployeeId(raiseTargets[0]?.id || "");
   }, [employeeId, raiseTargets]);
 
+  // The punch on the incident day names the lateness clause (actual minutes from the start of work).
+  const lateHint = useMemo(
+    () => lateClauseHint({ regulation, attendance: readPersonalAttendance(data), employeeId, dateKey: discoveredAt, graceMinutes: Number(ruleValue("hours.grace.minutes")) || 0, chosenClauseId: clauseId, ar }),
+    [regulation, data, employeeId, discoveredAt, clauseId, ar],
+  );
   const clauseStep = useMemo(
     () => (clauseId && employeeId
       ? regulationStepFor({ regulation, clauseId, cases, employeeId, today: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date()), cooloffDays: Number(ruleValue("discipline.repeat.cooloffDays")) || 180, ar })
@@ -1057,6 +1063,7 @@ export default function Discipline() {
                     regulation={regulation}
                     clauseId={clauseId}
                     clauseStep={clauseStep}
+                    lateHint={lateHint}
                     onClause={(next) => {
                       setClauseId(next || "");
                       const clause = regulation.clauses.find((c) => c.id === next);

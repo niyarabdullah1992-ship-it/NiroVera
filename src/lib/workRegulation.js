@@ -421,3 +421,49 @@ export function newClauseId() {
   seq += 1;
   return `cl_${Date.now().toString(36)}${seq}`;
 }
+
+/**
+ * The lateness clauses of the model regulation (time 1–7) by actual minutes late and whether other
+ * workers were held up. «Actual» is the punch's recorded minutes plus the establishment's grace —
+ * the regulation counts from the start of work, not from the end of a house grace.
+ */
+const LATE_BANDS = [
+  { upTo: 15, alone: "late15", others: "time_2" },
+  { upTo: 30, alone: "late30", others: "time_4" },
+  { upTo: 60, alone: "time_5", others: "time_6" },
+  { upTo: Infinity, alone: "time_7", others: "time_7" },
+];
+export const LATE_CLAUSE_IDS = new Set(LATE_BANDS.flatMap((b) => [b.alone, b.others]));
+
+export function lateClauseFor(actualMinutes, { heldUpOthers = false } = {}) {
+  const m = Number(actualMinutes);
+  if (!Number.isFinite(m) || m <= 0) return "";
+  const band = LATE_BANDS.find((b) => m <= b.upTo);
+  return heldUpOthers ? band.others : band.alone;
+}
+
+/**
+ * What the punch says for this person on this day, and the clause it points to.
+ * Returns null when the day has no lateness on the punch.
+ */
+export function lateClauseHint({ regulation, attendance = [], employeeId, dateKey, graceMinutes = 0, heldUpOthers = false, chosenClauseId = "", ar = true } = {}) {
+  const id = String(employeeId || "");
+  const day = String(dateKey || "").slice(0, 10);
+  if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const row = (attendance || []).find((r) => String(r?.employeeId || r?.employee_id || "") === id && String(r?.date || r?.attendanceDate || r?.day || "").slice(0, 10) === day);
+  const recorded = Math.max(0, Math.round(Number(row?.lateMinutes) || 0));
+  if (!row || !recorded) return null;
+  const actual = recorded + Math.max(0, Number(graceMinutes) || 0);
+  const suggestedId = lateClauseFor(actual, { heldUpOthers });
+  const clause = (regulation?.clauses || []).find((c) => c.id === suggestedId) || null;
+  const chosenIsLate = LATE_CLAUSE_IDS.has(chosenClauseId);
+  const mismatch = Boolean(clause && chosenIsLate && chosenClauseId !== suggestedId && chosenClauseId !== lateClauseFor(actual, { heldUpOthers: !heldUpOthers }));
+  return {
+    recorded,
+    actual,
+    grace: Math.max(0, Number(graceMinutes) || 0),
+    suggestedId: clause ? suggestedId : "",
+    clauseLabel: clause ? (ar ? clause.ar || clause.en : clause.en || clause.ar) : "",
+    mismatch,
+  };
+}

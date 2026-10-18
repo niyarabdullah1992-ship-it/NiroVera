@@ -161,7 +161,7 @@ export function lineNet(line) {
  * unpaid half while detained in a work-related case (97).
  */
 export function lineWageNotDue(line) {
-  const sum = lineInjuryCut(line) + lineSickCut(line) + lineUnpaidLeaveCut(line) + lineDetentionCut(line);
+  const sum = lineInjuryCut(line) + lineSickCut(line) + lineUnpaidLeaveCut(line) + lineDetentionCut(line) + lineLateCut(line);
   // Days are counted once across reasons upstream (payrollWageSync); whatever the inputs, the wage not
   // due can never exceed the month's contractual wage.
   const wage = Math.max(0, (Number(line?.base) || 0) + (Number(line?.allowances) || 0));
@@ -175,6 +175,12 @@ export function lineUnpaidLeaveCut(line) {
 }
 
 /** Art. 97: half the wage while detained in a work-related case (up to 180 days), nothing beyond. */
+/** Lateness minutes — wage not due for time not worked (recorded minutes, after grace and permission). */
+export function lineLateCut(line: any) {
+  if (line?.settledNet != null) return Number(line.settledLateCut) || 0;
+  return Math.max(0, Number(line?.lateCut) || 0);
+}
+
 export function lineDetentionCut(line) {
   if (line?.settledNet != null) return Number(line.settledDetentionCut) || 0;
   return Math.max(0, Number(line?.detentionCut) || 0);
@@ -214,6 +220,7 @@ export function lineComponents(line) {
     sickCut: lineSickCut(line),
     unpaidLeaveCut: lineUnpaidLeaveCut(line),
     detentionCut: lineDetentionCut(line),
+    lateCut: lineLateCut(line),
     // Art. 109 / Art. 90: what already left ahead of the month-end transfer (annual leave paid in
     // advance, weekly instalments). Part of the same net — the transfer carries only the rest.
     paidAhead: linePaidAhead(line),
@@ -244,6 +251,7 @@ export function settlementStamp(line) {
     settledSickCut: lineSickCut(open),
     settledUnpaidLeaveCut: lineUnpaidLeaveCut(open),
     settledDetentionCut: lineDetentionCut(open),
+    settledLateCut: lineLateCut(open),
     settledAt: new Date().toISOString(),
   };
 }
@@ -251,7 +259,7 @@ export function settlementStamp(line) {
 /** Every settlement field — cleared together when a paid mark is taken back. */
 export const SETTLEMENT_FIELDS = [
   "settledNet", "settledOvertimeHours", "settledOvertimePay", "settledGosiEmployee",
-  "settledInjuryCut", "settledSickCut", "settledUnpaidLeaveCut", "settledDetentionCut", "settledAt",
+  "settledInjuryCut", "settledSickCut", "settledUnpaidLeaveCut", "settledDetentionCut", "settledLateCut", "settledAt",
 ];
 
 /**

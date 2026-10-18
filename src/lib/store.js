@@ -40,7 +40,7 @@ import { nightLapseAdminNotifyText, nightLapseNotifyText, planNightDueAdminNotif
 import { planHeatBanNotices } from "./heatBanNotify";
 import { planDisciplineDeadlineNotices } from "./disciplineDeadlines";
 import { planNecessityNotices } from "./consentEffects";
-import { moveCompCreditsOutOfAnnual, planCompLeaveNotices, checkTakeCompLeaveGate, COMP_LEAVE_TYPE } from "./compLeave";
+import { planCompLeaveNotices, checkTakeCompLeaveGate, COMP_LEAVE_TYPE } from "./compLeave";
 import { hoursAr as otHoursAr, otOffer, sar as otSar } from "./otOffer";
 import { regulationDate } from "./workRegulation";
 import { checkSelfDecideRequestGate, isCompanyHeadPerson, nightDueAdminAudience, requestNoticeAudience } from "./dutyScope";
@@ -57,7 +57,7 @@ import { doaApproverIds } from "./orgDesign";
 import { isWorkplaceStation } from "./stationTree";
 import { appendOrgStructureEvent } from "./orgStructureLog";
 import { annualCarryAlerts, anniversaryYearWindow, leaveCoverRange, leaveTypeLabel, remainingLeaveDays, statutoryLeaveFloor, unpaidSuspensionPlan } from "./leaveTypes";
-import { EXAM_NOTICE_KIND, EXAM_SAT_KIND, LEAVE_ROSTER_BLOB, voidLegacyHolidayRequestsIn, chargeableLeaveDays, checkAlterApprovedLeaveGate, checkApproveLeaveGate, checkAttachExamSatGate, checkRejectLeaveGate, checkSeeLeaveDecisionGate, checkSubmitLeaveGate, computeLeaveDays, leaveDecisionNoticeKey, leaveRosterFromEmployees, planAnnualPauseForSick, checkIddahBirthGate, checkMaternityBirthGate, checkLeaveBreachGate } from "./leaveDerivations";
+import { EXAM_NOTICE_KIND, EXAM_SAT_KIND, LEAVE_ROSTER_BLOB, chargeableLeaveDays, checkAlterApprovedLeaveGate, checkApproveLeaveGate, checkAttachExamSatGate, checkRejectLeaveGate, checkSeeLeaveDecisionGate, checkSubmitLeaveGate, computeLeaveDays, leaveDecisionNoticeKey, leaveRosterFromEmployees, planAnnualPauseForSick, checkIddahBirthGate, checkMaternityBirthGate, checkLeaveBreachGate } from "./leaveDerivations";
 import { mergeEmployeeRequestBags, projectDirectoryEmployee, rosterEmployeeById } from "./employeeRequestBags";
 import { LEAVE_TOPUP_TYPE, NIGHT_FITNESS_TYPE, STUDY_CONSENT_TYPE, appendRequestAudit, appendRequestRefuseAudit, buildRequestAudit, buildRequestRefuseAudit, checkAdminLeaveCreditGate, checkApproveOtherRequestGate, checkApproveStudyConsentGate, checkLeaveGrantGate, checkRefuseRequestReasonGate, checkRejectNightFitnessGate, checkRejectStudyConsentGate, checkRevokeStudyConsentGate, checkSubmitOtherRequestGate, composeStudyConsentReason, otherRequestTypeLabel, requestAuditFileLog, leaveGrantRecord, requestRefuseFileLog, stampLeaveTopupOnEmployee, stampNightFitnessOnEmployee } from "./otherRequestDerivations";
 import {
@@ -101,13 +101,13 @@ function officialHolidayTest(data) {
 }
 import { dashboardSubscription, platformOwnerGate, persistHolidayRulings, persistRamadanRuling, persistSubscriptionPlans } from "./ownerBoard";
 import { addLaborDays, ruleValue } from "./laborRules";
-import { art55FilePatch, laborFilePatch } from "./contractLawDerivations";
-import { migratePreviewOpenRestWindow, migratePreviewRotaClock, migratePreviewWeekRota, migratePreviewOwnerMorningRota, migratePreviewCompanyHeadWorkplace, migratePreviewVoiceBranchManager, migratePreviewSigningNotices, migratePreviewEmployeeGenders, migratePreviewOwnerGosiIdentity, migratePreviewGosiEstablishment, migratePreviewFieldTasks, seedPreviewOwnerNightStreak, seedPreviewAttendanceHistory, seedPreviewProofCycle, seedPreviewWrittenConsent, seedPreviewDiscipline, seedPreviewVoice, seedPreviewPerformance, seedPreviewOrgDesign } from "./previewMigrations";
+import { laborFilePatch } from "./contractLawDerivations";
 import { readCompanyEstablishment } from "./facts/company.js";
 import { canonicalizePlatformFacts } from "./facts/migrate.js";
-import { assignEmployeeNumber, ensureEmployeeNumbers } from "./employeeNumber";
-import { migratePreviewStationPins } from "./previewStationPins";
-import { attachSharedGradesToTitles, ensureProductLadder } from "./jobGradeTitles";
+import { runCompanyMigrations } from "./data/companyMigrations";
+import { COMPANY_DATED_INVARIANTS, runCompanyInvariants } from "./data/companyInvariants";
+import { runPreviewUpkeep } from "./preview/previewUpkeep";
+import { assignEmployeeNumber } from "./employeeNumber";
 import { assertWritableCategory, isDoNotWrite, isServerActionCategory, normalizeBlobPayload, pushableBlobCategories } from "./canonicalStore";
 import { applyEmployerDutyRoster, employerDutyRosterFromEmployees } from "./syncLaw.js";
 import { applyPendingStages, readOutbox as readDisciplineOutbox } from "./disciplineOutbox.js";
@@ -594,128 +594,18 @@ function normalizeCompanyData(data) {
   return data;
 }
 
-const PRESET_GRADE_TITLES = new Set(["مبتدئ", "متوسط", "أول", "مشرف", "مدير"]);
-
-function purgePresetLadders(data) {
-  const removed = new Set();
-  const next = (data.jobGrades || []).filter((grade) => {
-    const presetCode = PRESET_GRADE_TITLES.has(String(grade?.title || "").trim())
-      && /^(TC|EN|HR|HS|FN|BM|LD|GR)\d+$/i.test(String(grade?.gradeNumber || "").trim());
-    const legacy = /^grade_tc[1-5]$/i.test(String(grade?.id || ""));
-    if (!presetCode && !legacy) return true;
-    removed.add(grade.id);
-    return false;
-  });
-  if (!removed.size) return false;
-  data.jobGrades = next;
-  (data.orgSeats || []).forEach((seat) => {
-    if (removed.has(seat.gradeId)) seat.gradeId = "";
-  });
-  (data.employees || []).forEach((employee) => {
-    if (employee?.profile && removed.has(employee.profile.gradeId)) employee.profile.gradeId = null;
-  });
-  return true;
-}
-
 /* ----------------------------- company data ----------------------------- */
-/** Every shift type past five hours carries the rest the worker places himself (longShiftRestPatch) — no roster break settings. */
-/** Art. 103 continuous work was removed from the platform by the owner — a stored flag is cleared on load,
- *  so every shift keeps its rest (Art. 101). The library still reads the flag; nothing can set it. */
-function clearContinuous103(data) {
-  let changed = false;
-  for (const bag of [data?.hoursPolicy, data?.attendanceSettings?.hoursPolicy]) {
-    if (bag && bag.continuousWork103) { bag.continuousWork103 = false; changed = true; }
-  }
-  return changed;
-}
-
-function openLongShiftRests(data) {
-  let changed = false;
-  for (const schedule of data?.schedules || []) {
-    for (const shift of schedule?.shiftTypes || []) {
-      const patch = longShiftRestPatch(shift);
-      if (patch) { Object.assign(shift, patch); changed = true; }
-    }
-  }
-  return changed;
-}
-
 export function getCompanyData(id) {
   const data = normalizeCompanyData(read(companyKey(id), null));
   if (!data) return data;
+  // One read, three named passes (lib/data, lib/preview): one-time migrations above the blob's
+  // schemaVersion; the invariants every read keeps true; the preview seeds, preview only; then the
+  // dated invariants that read the clock. Written back only when a pass changed something.
   let persist = false;
-  if (Object.prototype.hasOwnProperty.call(data, "cameras")) {
-    delete data.cameras;
-    persist = true;
-  }
-  if (purgePresetLadders(data)) persist = true;
-  if (attachSharedGradesToTitles(data)) persist = true;
-  if (ensureProductLadder(data)) persist = true;
-  if (ensureEmployeeNumbers(data)) persist = true;
-  if (canonicalizePlatformFacts(data)) persist = true;
-  // Comp leave is its own balance (regs 22 bis) — undo old credits that went into annual leave.
-  if (moveCompCreditsOutOfAnnual(data)) persist = true;
-  // Art. 112: official holidays apply from the calendar — old pending «eid» requests need no decision.
-  if (voidLegacyHolidayRequestsIn(data)) persist = true;
-  // The platform rule: a shift longer than 8 hours opens a one-hour rest the worker places in بصمتي.
-  if (openLongShiftRests(data)) persist = true;
-  if (clearContinuous103(data)) persist = true;
-  // Rest plans were removed (owner's rule) — a stored plan no longer places anyone's rest.
-  if (data.restPlans && Object.keys(data.restPlans).length) { data.restPlans = {}; persist = true; }
-  // Local preview used to seed compass names (شمال/شرق) — those were labels only,
-  // not a forced region layer. Rewrite once so the org tree shows free branch names.
-  if (isLocalPreviewWorkspace(id) && Array.isArray(data.stations)) {
-    const renames = {
-      "الفرع الشمالية": "فرع الخفجي",
-      "الفرع الشرقية": "فرع رابغ",
-    };
-    let changed = false;
-    data.stations = data.stations.map((st) => {
-      const next = renames[st.name];
-      if (!next) return st;
-      changed = true;
-      return { ...st, name: next };
-    });
-    if (changed) {
-      data.tasks = (data.tasks || []).map((t) => {
-        let title = t.title || "";
-        for (const [from, to] of Object.entries(renames)) {
-          if (title.includes(from)) title = title.split(from).join(to);
-        }
-        return title === t.title ? t : { ...t, title };
-      });
-      persist = true;
-    }
-    if (migratePreviewRotaClock(data)) persist = true;
-    if (migratePreviewWeekRota(data)) persist = true;
-    if (migratePreviewCompanyHeadWorkplace(data)) persist = true;
-    if (migratePreviewVoiceBranchManager(data)) persist = true;
-    if (migratePreviewEmployeeGenders(data)) persist = true;
-    if (migratePreviewOwnerGosiIdentity(data)) persist = true;
-    if (migratePreviewGosiEstablishment(data)) persist = true;
-    if (migratePreviewOwnerMorningRota(data)) persist = true;
-    if (seedPreviewOwnerNightStreak(data)) persist = true;
-    if (seedPreviewAttendanceHistory(data)) persist = true;
-    if (migratePreviewSigningNotices(data)) persist = true;
-    if (migratePreviewStationPins(data)) persist = true;
-    if (seedPreviewProofCycle(data)) persist = true;
-    if (seedPreviewWrittenConsent(data)) persist = true;
-    if (applyLapsedNightConsents(data)) persist = true;
-    if (seedPreviewDiscipline(data)) persist = true;
-    if (seedPreviewVoice(data)) persist = true;
-    if (seedPreviewPerformance(data)) persist = true;
-    if (migratePreviewFieldTasks(data)) persist = true;
-    if (seedPreviewOrgDesign(data)) persist = true;
-    // Preview shifts stretched above may now be long — open their one-hour rest in the same load.
-    if (openLongShiftRests(data)) persist = true;
-    if (migratePreviewOpenRestWindow(data)) persist = true;
-  }
-  (data.employees || []).forEach((emp) => {
-    const { patch } = art55FilePatch(emp);
-    if (!Object.keys(patch).length) return;
-    emp.profile = { ...(emp.profile || {}), ...patch };
-    persist = true;
-  });
+  if (runCompanyMigrations(data)) persist = true;
+  if (runCompanyInvariants(data)) persist = true;
+  if (isLocalPreviewWorkspace(id) && runPreviewUpkeep(data)) persist = true;
+  if (runCompanyInvariants(data, COMPANY_DATED_INVARIANTS)) persist = true;
   if (persist) localStorage.setItem(companyKey(id), JSON.stringify(data));
   return data;
 }

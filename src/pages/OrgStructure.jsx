@@ -5,14 +5,18 @@ import { useAuth } from "@/lib/PowerCareAuth";
 import { useRailSide } from "@/lib/railSide";
 import { hrSectionAccessFor } from "@/lib/navVisibility";
 import { orgRedirectTarget } from "@/lib/hrSection";
+import { pageKicker } from "@/lib/moduleMeta";
 import PageErrorBoundary from "@/components/PageErrorBoundary";
 import OpsFrame from "@/components/tasks/OpsFrame";
-import OrgChartEntry from "@/components/hr/orgdesign/OrgChartEntry";
+import OrgTreeChart from "@/components/hr/orgdesign/OrgTreeChart";
+import { OrgChartUpkeep } from "@/components/hr/OrgTemplateBoard";
 import { MUTED } from "@/lib/platformStyles";
 
 /**
- * /app/org — «مكاني في الهيكل», the employee's own place in the structure (read-only: chain,
- * peers, team; the full chart at /app/org/chart). The management content that lived here
+ * /app/org — «الهيكل» on the employee side: a section like any other (band, then the content),
+ * holding the whole company tree read-only — every branch and every person — opening on the
+ * viewer's card. The tree's «شاشة كاملة» opens /app/org/chart?lane=employee, whose «خروج»
+ * returns here. The management content that lived here
  * («المحطات التي أديرها» — chart, seats, health, authority, changes, branches) moved into
  * «الموارد البشرية» (/app/hr): an admin link redirects to the matching pane with its parameters
  * (lib/hrSection orgRedirectTarget). The employee side never sees an HR pane.
@@ -39,18 +43,27 @@ export default function OrgStructure() {
     <OpsFrame
       ar={ar}
       lane="mine"
-      section={ar ? "ملفي" : "My file"}
-      title={ar ? "مكاني في الهيكل" : "My place in the structure"}
+      section={pageKicker("/app/org", lang).split("·").slice(1).join("·").trim() || (ar ? "القوى العاملة" : "Workforce")}
+      title={ar ? "الهيكل" : "Structure"}
       hint={ar
-        ? "للاطلاع — الشركة كلها: كل الفروع وكل الموظفين، والمخطط يفتح على بطاقتك. التغيير في الهيكل عبر الموارد البشرية."
-        : "Read-only — the whole company: every branch and every person; the chart opens on your card. Structural changes go through HR."}
+        ? "الشركة كلها للاطلاع: كل الفروع وكل الموظفين، والمخطط يفتح على بطاقتك. التغيير في الهيكل عبر الموارد البشرية."
+        : "The whole company, read-only: every branch and every person; the chart opens on your card. Structural changes go through HR."}
     >
       {!data || !currentUser || !company ? (
         <p style={{ margin: 0, fontSize: 13, color: MUTED }}>{ar ? "جارٍ تحميل الهيكل…" : "Loading org structure…"}</p>
       ) : (
-        <div className="nv-org-page" data-org-pane="mine">
+        <div className="nv-org-page" data-org-pane="mine" data-org-employee-tree="1">
           <PageErrorBoundary resetKey="mine">
-            <OrgChartEntry ar={ar} data={data} user={currentUser} scope="all" />
+            <OrgChartUpkeep lang={lang} />
+            <OrgTreeChart
+              ar={ar}
+              data={data}
+              user={currentUser}
+              companyId={company?.id || ""}
+              scope="all"
+              canWrite={false}
+              variant="embedded"
+            />
           </PageErrorBoundary>
         </div>
       )}

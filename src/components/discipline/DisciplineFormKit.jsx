@@ -76,14 +76,15 @@ export function GateLine({ gate, ar, dataAttr }) {
   );
 }
 
-export function SendButton({ ready, onClick, children, dataAttr }) {
+export function SendButton({ ready, onClick, children, dataAttr, tone = "ok" }) {
+  const fill = tone === "danger" ? "var(--nv-bad-ink, #9B1C1C)" : tone === "navy" ? "var(--nv-navy, #0B3D27)" : "var(--nv-ok-fill, #3C7D50)";
   return (
     <button
       type="button"
       {...dataAttr}
       disabled={!ready}
       onClick={() => ready && onClick?.()}
-      style={{ fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", height: 40, width: "100%", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, background: ready ? "var(--nv-ok-fill, #3C7D50)" : "var(--nv-soft, #E4E9E6)", color: ready ? "#fff" : "var(--nv-muted)", cursor: ready ? "pointer" : "default" }}
+      style={{ fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", height: 40, width: "100%", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, background: ready ? fill : "var(--nv-soft, #E4E9E6)", color: ready ? "#fff" : "var(--nv-muted)", cursor: ready ? "pointer" : "default" }}
     >
       {children}
     </button>

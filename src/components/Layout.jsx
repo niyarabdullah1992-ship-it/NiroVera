@@ -372,8 +372,8 @@ export default function Layout({ children }) {
         : `${(data.employees || []).length} employees · ${(data.stations || []).length} stations`,
     },
     "/app/org": {
-      title: lang === "ar" ? "مكاني في الهيكل" : "My place in the structure",
-      sub: lang === "ar" ? "سلسلة إدارتك وزملاؤك وفريقك — للاطلاع" : "Your chain, peers and team — read only",
+      title: lang === "ar" ? "الهيكل" : "Structure",
+      sub: lang === "ar" ? "الشركة كلها: كل الفروع وكل الموظفين — للاطلاع" : "The whole company: every branch and person — read only",
     },
     "/app/settings": {
       title: lang === "ar" ? "إعدادات الشركة" : "Company Settings",

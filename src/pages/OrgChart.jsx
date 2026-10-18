@@ -45,7 +45,7 @@ export default function OrgChart() {
     // «خروج»: back to where the person came from on the same side; else HR (manage) or the employee's first section
     const sameSide = from && !from.startsWith("/app/org/chart") && (lane === "manage") === /lane=manage|tab=manage|view=manage|\/manage(?:$|[/?])|\/app\/hr|^\/app(?:$|\?)/.test(from);
     // the HR default is the structure section itself (its embedded chart), not the HR overview
-    navigate(sameSide ? from : (lane === "manage" ? "/app/hr?tab=org" : "/app/attendance"));
+    navigate(sameSide ? from : (lane === "manage" ? "/app/hr?tab=org" : "/app/org"));
   }, [navigate, from, lane]);
 
   const onHire = useCallback((detail = {}) => {

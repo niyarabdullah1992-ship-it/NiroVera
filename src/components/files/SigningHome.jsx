@@ -10,6 +10,8 @@ import CollapsibleItemCard, { useCollapsibleItems } from "@/components/shared/Co
 import AttachDropzone from "@/components/shared/AttachDropzone";
 import SubTypeOption, { SubTypeGrid } from "@/components/requests/SubTypeOption";
 import SectionBackLink from "@/components/shared/SectionBackLink";
+import Nv7Dialog, { DialogBackButton } from "@/components/shared/Nv7Dialog";
+import { FieldLabel, GateLine, SendButton, textareaStyle } from "@/components/discipline/DisciplineFormKit";
 import { SearchWrap } from "@/components/shared/NvIcon";
 import { chip, mono, SectionHead, slab } from "@/components/schedules/scheduleChrome";
 import { formatUiNumber } from "@/lib/dateFormat";
@@ -656,26 +658,34 @@ export default function SigningHome({
   return (
     <div className="nv-sign-home" data-signing-lane={lane} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <TwoPaneWorkspace dataKey="signing" raise={raise} summary={summary} list={list} />
-      {voidFor ? (
-        <div role="dialog" aria-modal="true" data-void-dialog="1" onClick={(event) => { if (event.target === event.currentTarget && !rowBusy) setVoidFor(null); }} style={{ position: "fixed", inset: 0, background: "rgba(11,30,20,.40)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 90 }}>
-          <div dir={ar ? "rtl" : "ltr"} style={{ ...slab, width: "min(440px, 100%)", padding: 0, overflow: "hidden" }}>
-            <SectionHead title={ar ? "إلغاء المظروف" : "Void the envelope"} note={docTitle(voidFor.fileName)} />
-            <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{ar ? "سبب الإلغاء — يُحفظ في سجل التدقيق ويصل للأطراف" : "Reason — kept in the audit trail and sent to the parties"}</span>
-                <textarea data-void-reason="1" rows={3} value={voidReason} onChange={(event) => setVoidReason(event.target.value)} style={{ fontFamily: "inherit", fontSize: 12.5, padding: "10px 12px", border: "1px solid var(--nv-line)", borderRadius: 8, background: "var(--nv-card)", color: "var(--nv-ink)", resize: "vertical" }} />
+      <Nv7Dialog
+        open={Boolean(voidFor)}
+        onClose={() => { if (!rowBusy) setVoidFor(null); }}
+        busy={Boolean(rowBusy)}
+        kicker={ar ? "التوقيع الرقمي" : "Digital signing"}
+        num="02"
+        title={ar ? "إلغاء المظروف" : "Void the envelope"}
+        hint={voidFor ? docTitle(voidFor.fileName) : ""}
+        dataKey="void"
+      >
+        {voidFor ? (() => {
+          const ready = voidReason.trim().length >= 3;
+          const gate = ready ? { ok: true } : { ok: false, reason: "يبقى: اكتب سبب الإلغاء", reasonEn: "Still needed: write the reason" };
+          return (
+            <>
+              <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <FieldLabel note={ar ? "يُحفظ في سجل التدقيق ويصل للأطراف" : "Kept in the audit trail and sent to the parties"}>{ar ? "سبب الإلغاء" : "Reason"}</FieldLabel>
+                <textarea data-void-reason="1" rows={3} value={voidReason} onChange={(event) => setVoidReason(event.target.value)} placeholder={ar ? "مثال: تغيّرت بنود العقد ويُرسَل مظروف جديد" : "e.g. the terms changed; a new envelope follows"} style={textareaStyle} />
               </label>
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: voidReason.trim().length >= 3 ? "#2F6B43" : "var(--nv-warn-ink)" }}>
-                {voidReason.trim().length >= 3 ? (ar ? "✓ جاهز — تُغلق روابط التوقيع المفتوحة" : "✓ Ready — open signing links close") : (ar ? "يبقى: اكتب سبب الإلغاء" : "Still needed: write the reason")}
-              </span>
-              <button type="button" data-void-confirm="1" disabled={voidReason.trim().length < 3 || Boolean(rowBusy)} onClick={voidRow} style={{ fontFamily: "inherit", fontSize: 13, fontWeight: 700, height: 42, border: "none", borderRadius: 8, background: voidReason.trim().length >= 3 ? "var(--nv-navy, #0B3D27)" : "var(--nv-line)", color: voidReason.trim().length >= 3 ? "#fff" : "var(--nv-muted)", cursor: "pointer" }}>
-                {ar ? "ألغِ المظروف" : "Void envelope"}
-              </button>
-              <button type="button" onClick={() => setVoidFor(null)} style={{ ...lineBtn, justifyContent: "center", height: 34 }}>{ar ? "تراجع" : "Back"}</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+              {ready
+                ? <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ok-ink, #2F6B43)", lineHeight: 1.7 }}>{ar ? "جاهز — تُغلق روابط التوقيع المفتوحة ويبلَّغ الأطراف." : "Ready — open signing links close and the parties are told."}</span>
+                : <GateLine gate={gate} ar={ar} />}
+              <SendButton ready={ready && !rowBusy} tone="danger" dataAttr={{ "data-void-confirm": "1" }} onClick={voidRow}>{ar ? "ألغِ المظروف" : "Void envelope"}</SendButton>
+              <DialogBackButton onClick={() => setVoidFor(null)} disabled={Boolean(rowBusy)}>{ar ? "تراجع" : "Back"}</DialogBackButton>
+            </>
+          );
+        })() : null}
+      </Nv7Dialog>
     </div>
   );
 }

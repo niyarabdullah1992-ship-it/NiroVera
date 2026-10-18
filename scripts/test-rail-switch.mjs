@@ -10,7 +10,7 @@ assert.equal(railFaceHref("/app/signing", "", "manage"), "/app/signing?lane=mana
 
 const side = (id, keys) => ({ id, groups: [{ items: keys.map(([key, to]) => ({ key, to })) }] });
 const sides = [
-  side("employee", [["duty:employee", "/app/attendance"], ["compliance:employee", "/app/safety"], ["payslip:employee", "/app/payroll?view=self&tab=payslip"], ["org:employee", "/app/org/chart?lane=employee"]]),
+  side("employee", [["duty:employee", "/app/attendance"], ["compliance:employee", "/app/safety"], ["payslip:employee", "/app/payroll?view=self&tab=payslip"], ["org:employee", "/app/org"]]),
   side("manage", [["duty:manage", "/app/attendance?lane=manage"], ["hse:manage", "/app/safety?lane=manage"], ["money:manage", "/app/payroll?view=manage"], ["hr:manage", "/app/hr"]]),
 ];
 // السلامة (موظف) → السلامة (إدارة): different section names on each side, one twin.

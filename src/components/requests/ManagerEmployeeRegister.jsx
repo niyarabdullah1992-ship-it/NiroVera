@@ -53,7 +53,7 @@ export default function ManagerEmployeeRegister({
     >
       <div style={{ padding: "14px 18px", borderBottom: `1px solid ${DK.line}`, display: "flex", flexDirection: "column", gap: 4 }}>
         <span className="nv-req-title" style={{ fontSize: 14, color: DK.ink }}>{ar ? "بانتظار القرار" : "Awaiting a decision"}</span>
-        <span style={{ fontSize: 12, fontWeight: 600, color: DK.ink, lineHeight: 1.6 }}>{rail.standing}</span>
+        {/* The branch is named once, in «نطاقك» at the top — not repeated here. */}
         <span style={{ fontSize: 11, color: DK.soft, lineHeight: 1.75 }}>{rail.note}</span>
         {rail.others ? (
           <span style={{ fontSize: 11, color: DK.soft, lineHeight: 1.65 }}>{rail.others}</span>

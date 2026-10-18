@@ -7,7 +7,7 @@ import { useRailSide } from "@/lib/railSide";
 import useStationSwitcher, { OPEN_STATION_SWITCH_EVENT } from "@/hooks/useStationSwitcher";
 import StationQuickSwitch from "@/components/navigation/StationQuickSwitch";
 import NotificationPanel from "@/components/notifications/NotificationPanel";
-import BranchNoticePanel from "@/components/notifications/BranchNoticePanel";
+import ManageNoticePanel from "@/components/notifications/ManageNoticePanel";
 import { Bell, ChevronDown, MapPin } from "lucide-react";
 import { isUrgentNotification } from "@/lib/notificationKind";
 import { isManagerUnit } from "@/lib/stationTree";
@@ -104,7 +104,7 @@ export function NotificationBell({
       const node = notifBtnRef.current;
       if (!node) return;
       const rect = node.getBoundingClientRect();
-      const width = Math.min(manage ? 460 : 360, window.innerWidth - 16);
+      const width = Math.min(manage ? 460 : 400, window.innerWidth - 16);
       let left = rect.right - width;
       if (left < 8) left = 8;
       if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8);
@@ -131,7 +131,8 @@ export function NotificationBell({
     ? branchNotices.filter((item) => item.band === "urgent").reduce((total, item) => total + item.count, 0)
     : notifItems.filter((item) => !item.read && isUrgentNotification(item.text)).length;
   const personalUnread = notifItems.filter((item) => !item.read).length;
-  const badgeCount = manage ? urgent : personalUnread;
+  // Management side: the branches' urgent items plus the manager's own unread — both live in the panel.
+  const badgeCount = manage ? urgent + personalUnread : personalUnread;
   const badgeTone = manage || urgent > 0 ? "bad" : "ok";
   const name = manage ? (ar ? "الإشعارات" : "Notifications") : (ar ? "إشعاراتي" : "My notifications");
 
@@ -170,22 +171,27 @@ export function NotificationBell({
               left: notifBox.left,
               width: notifBox.width,
               zIndex: 82,
-              borderRadius: 8,
+              borderRadius: 14,
               overflow: "hidden",
-              boxShadow: "0 18px 44px rgba(12,20,16,.18)",
             }}
           >
             {manage ? (
-              <BranchNoticePanel
-                items={branchNotices}
+              <ManageNoticePanel
+                branchItems={branchNotices}
+                personalItems={notifItems}
+                personalUnread={personalUnread}
                 lang={lang}
+                t={t}
                 companyId={company?.id}
                 userId={currentUser?.id}
-                onOpen={openBranchNotice}
+                onOpenBranch={openBranchNotice}
                 onPickBranch={(id) => {
                   setStationScope(id);
                   onCloseNotif?.();
                 }}
+                onOpenPersonal={onOpenNotif}
+                onDismissPersonal={onDismissNotif}
+                onMarkAllPersonal={onMarkAllNotifs}
               />
             ) : (
               <NotificationPanel

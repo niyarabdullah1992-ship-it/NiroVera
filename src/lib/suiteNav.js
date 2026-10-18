@@ -206,8 +206,8 @@ export function buildSuiteRailGroups(visibleItems, lang = "ar", role = "") {
   }).filter(Boolean);
 }
 
+// «لوحة القيادة» retired — the bottom bar starts with the day's work.
 const MOBILE_TAB_IDS = [
-  "command",
   "attendance",
   "tasks",
   "work-proof",

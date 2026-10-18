@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { X } from "lucide-react";
 import SwipeToDeleteItem from "@/components/notifications/SwipeToDeleteItem";
 import {
@@ -7,11 +7,33 @@ import {
   notificationEscalated,
   relativeNotificationTime,
 } from "@/lib/notificationKind";
-import { BORDER, CARD, MUTED, NAVY, NAVY_FILL, PAPER_SHADOW, PILL_RADIUS, RADIUS, SURFACE, ui } from "@/lib/platformStyles";
-
-const NASKH = "'Noto Naskh Arabic', 'Amiri', serif";
+import { MUTED } from "@/lib/platformStyles";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
+import { bandAction, DayHeading, KindTile, NoticeFoot, NoticeHead, NoticeShell, rowChip } from "@/components/notifications/noticeChrome";
 const MONO = "'IBM Plex Mono', monospace";
 
+/** «اليوم» · «أمس» · «أقدم» — by the notice's own date. */
+function dayBucket(iso) {
+  const then = new Date(iso || 0);
+  if (Number.isNaN(then.getTime())) return "older";
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (then.getTime() >= start) return "today";
+  if (then.getTime() >= start - 86400000) return "yesterday";
+  return "older";
+}
+
+const BUCKETS = [
+  ["today", "اليوم", "Today"],
+  ["yesterday", "أمس", "Yesterday"],
+  ["older", "أقدم", "Earlier"],
+];
+
+/**
+ * «إشعاراتي» — the person's own notices in the طلباتي frame: green head with the unread count and
+ * «تحديد الكل كمقروء», pills by state and kind (counted from the list itself), rows as cards grouped
+ * by day. `embedded` drops the head when the panel sits inside «الإشعارات» of the management side.
+ */
 export default function NotificationPanel({
   items = [],
   unread = 0,
@@ -21,170 +43,120 @@ export default function NotificationPanel({
   onDismiss,
   onMarkAll,
   title,
+  embedded = false,
 }) {
   const ar = lang === "ar";
-  const rows = groupedNotices(items, lang);
+  const [filter, setFilter] = useState("all");
+  const rowsAll = groupedNotices(items, lang);
+  const kindsPresent = [];
+  for (const row of rowsAll) {
+    const kind = kindForNotification(row.text);
+    if (!kindsPresent.some((k) => k.id === kind.id)) kindsPresent.push(kind);
+  }
+  const pills = [
+    { id: "all", label: ar ? "الكل" : "All", n: rowsAll.length },
+    { id: "unread", label: ar ? "غير مقروءة" : "Unread", n: rowsAll.filter((row) => !row.read).length },
+    ...kindsPresent.map((kind) => ({ id: `k:${kind.id}`, label: ar ? kind.ar : kind.en, n: rowsAll.filter((row) => kindForNotification(row.text).id === kind.id).length })),
+  ];
+  const rows = rowsAll.filter((row) => (
+    filter === "all"
+      ? true
+      : filter === "unread"
+        ? !row.read
+        : kindForNotification(row.text).id === filter.slice(2)
+  ));
+  const buckets = BUCKETS.map(([id, labelAr, labelEn]) => ({
+    id,
+    label: ar ? labelAr : labelEn,
+    rows: rows.filter((row) => dayBucket(row.createdAt) === id),
+  })).filter((bucket) => bucket.rows.length);
 
-  return (
-    <div
-      dir={ar ? "rtl" : "ltr"}
-      style={{
-        width: 360,
-        maxWidth: "92vw",
-        background: CARD,
-        border: `1px solid ${BORDER}`,
-        borderRadius: RADIUS,
-        boxShadow: PAPER_SHADOW,
-        overflow: "hidden",
-        color: NAVY,
-      }}
-    >
-      <header
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 12,
-          padding: "16px 20px",
-          background: CARD,
-          borderBottom: "1px solid var(--nv-line)",
-        }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-          <span style={{ fontSize: 10, letterSpacing: "0.14em", fontWeight: 600, color: MUTED, fontFamily: MONO }}>
-            NIROVERA
-          </span>
-          <h2 style={{ margin: 0, fontFamily: NASKH, fontSize: 18, fontWeight: 600, lineHeight: 1.35, color: NAVY }}>
-            {title || t("notifications")}
-          </h2>
+  const list = (
+    <div data-notice-list style={{ overflowY: "auto", flex: 1, minHeight: 0, padding: "4px 10px 10px", display: "grid", alignContent: "start", gridAutoRows: "max-content", gap: 6 }}>
+      {rowsAll.length ? (
+        <div style={{ padding: "8px 2px 2px" }}>
+          <StatusFilterPills bare size="sm" dataKey="my-notices" value={filter} onChange={setFilter} items={pills} />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, paddingTop: 2 }}>
-          {unread > 0 ? (
-            <span
-              dir="ltr"
-              style={{
-                minWidth: 20,
-                height: 20,
-                padding: "0 6px",
-                borderRadius: PILL_RADIUS,
-                background: NAVY_FILL,
-                color: "#fff",
-                fontSize: 10,
-                fontWeight: 700,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontFamily: MONO,
-              }}
-            >
-              {unread > 9 ? "9+" : unread}
-            </span>
-          ) : null}
-          {unread > 0 ? (
-            <button type="button" onClick={onMarkAll} style={ui.btnMiniQuiet}>
-              {t("markRead")}
-            </button>
-          ) : null}
-        </div>
-      </header>
-
-      <div style={{ maxHeight: 380, overflowY: "auto" }}>
-        {rows.length === 0 ? (
-          <div style={{ padding: "18px 20px 22px", fontSize: 12, color: MUTED, lineHeight: 1.85, textAlign: "start" }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: NAVY, marginBottom: 6 }}>{t("noNotifications")}</div>
-            {ar
-              ? "عندما يحدث أمر يستحق المتابعة سيظهر هنا — بنفس أثره وموضعه في المنصة."
-              : "When something needs attention, it will appear here — with its effect and place in the platform."}
+      ) : null}
+      {rows.length === 0 ? (
+        <div style={{ margin: "8px 2px", padding: "16px 14px", background: "var(--nv-card)", border: "1px solid var(--nv-line2)", borderRadius: 10, fontSize: 12, color: MUTED, lineHeight: 1.85 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--nv-ink)", marginBottom: 4 }}>
+            {rowsAll.length ? (ar ? "لا شيء في هذا الفلتر" : "Nothing in this filter") : t("noNotifications")}
           </div>
-        ) : (
-          rows.map((item) => {
+          {ar
+            ? "عندما يحدث أمر يخصك يظهر هنا — ومعه المكان الذي يُتابَع فيه."
+            : "When something concerns you it appears here — with the place to follow it."}
+        </div>
+      ) : buckets.map((bucket) => (
+        <React.Fragment key={bucket.id}>
+          <DayHeading>{bucket.label}</DayHeading>
+          {bucket.rows.map((item) => {
             const kind = kindForNotification(item.text);
-            const title = formatNotificationText(item, lang) || (ar ? kind.ar : kind.en);
+            const text = formatNotificationText(item, lang) || (ar ? kind.ar : kind.en);
             const unreadRow = !item.read;
             const dismiss = () => (item.ids || [item.id]).forEach((id) => onDismiss(id));
             return (
               <SwipeToDeleteItem key={item.ids?.[0] || item.id} onDelete={dismiss}>
                 <div
+                  data-notice-row={unreadRow ? "unread" : "read"}
                   style={{
                     display: "flex",
                     alignItems: "flex-start",
-                    gap: 8,
-                    padding: "12px 16px 12px 12px",
-                    borderBottom: "1px solid var(--nv-line)",
-                    background: unreadRow ? SURFACE : CARD,
-                    borderInlineStart: unreadRow ? `3px solid ${NAVY_FILL}` : "3px solid transparent",
+                    gap: 10,
+                    padding: "10px 10px 10px 8px",
+                    background: unreadRow ? "var(--nv-card)" : "var(--nv-card)",
+                    border: `1px solid ${unreadRow ? "var(--nv-ok-line)" : "var(--nv-line2)"}`,
+                    borderRadius: 10,
+                    boxShadow: unreadRow ? "inset 3px 0 0 var(--nv-ok-fill)" : "none",
                   }}
                 >
+                  <KindTile Icon={kind.icon} tone={item.escalated ? "bad" : kind.tone} />
                   <button
                     type="button"
                     onClick={() => onOpen(item)}
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 5,
-                      textAlign: "start",
-                      border: "none",
-                      background: "transparent",
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      padding: 0,
-                    }}
+                    style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6, textAlign: "start", border: "none", background: "transparent", cursor: "pointer", fontFamily: "inherit", padding: 0, color: "inherit" }}
                   >
-                    <span style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "baseline" }}>
-                      <span
-                        style={{
-                          fontSize: 12,
-                          fontWeight: unreadRow ? 700 : 500,
-                          color: unreadRow ? NAVY : MUTED,
-                          lineHeight: 1.55,
-                          minWidth: 0,
-                        }}
-                      >
-                        {title}
-                      </span>
-                      <span dir="ltr" style={{ fontFamily: MONO, fontSize: 10, color: MUTED, flexShrink: 0 }}>
-                        {relativeNotificationTime(item.createdAt, lang)}
-                      </span>
-                    </span>
-                    <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
-                      {ar ? kind.ar : kind.en}
-                      {item.count > 1 ? (
-                        <span dir="ltr" style={{ fontFamily: MONO, unicodeBidi: "isolate" }}>{` · ${item.count}`}</span>
-                      ) : null}
-                      {item.escalated ? (ar ? " · تصعيد" : " · Escalated") : null}
-                      {unreadRow ? (ar ? " · غير مقروء" : " · Unread") : (ar ? " · مقروء" : " · Read")}
+                    <span style={{ fontSize: 12.5, fontWeight: unreadRow ? 700 : 500, color: unreadRow ? "var(--nv-ink)" : "var(--nv-ink2)", lineHeight: 1.65 }}>{text}</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span style={rowChip(kind.tone)}>{ar ? kind.ar : kind.en}</span>
+                      {item.count > 1 ? <span dir="ltr" style={{ ...rowChip("navy"), fontFamily: MONO }}>{`×${item.count}`}</span> : null}
+                      {item.escalated ? <span style={rowChip("bad")}>{ar ? "تصعيد" : "Escalated"}</span> : null}
+                      <span dir="ltr" style={{ fontFamily: MONO, fontSize: 10.5, color: MUTED, unicodeBidi: "isolate" }}>{relativeNotificationTime(item.createdAt, lang)}</span>
+                      {unreadRow ? <span aria-label={ar ? "غير مقروء" : "Unread"} style={{ width: 7, height: 7, borderRadius: 999, background: "var(--nv-ok-fill)" }} /> : null}
                     </span>
                   </button>
                   <button
                     type="button"
                     onClick={dismiss}
                     aria-label={ar ? "إخفاء" : "Dismiss"}
-                    style={{
-                      width: 26,
-                      height: 26,
-                      border: `1px solid ${BORDER}`,
-                      borderRadius: 10,
-                      background: CARD,
-                      color: MUTED,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      cursor: "pointer",
-                      flexShrink: 0,
-                      marginTop: 1,
-                    }}
+                    style={{ width: 26, height: 26, border: "1px solid var(--nv-line2)", borderRadius: 8, background: "var(--nv-card)", color: MUTED, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
                   >
                     <X style={{ width: 13, height: 13 }} />
                   </button>
                 </div>
               </SwipeToDeleteItem>
             );
-          })
-        )}
-      </div>
+          })}
+        </React.Fragment>
+      ))}
     </div>
+  );
+
+  if (embedded) return list;
+  return (
+    <NoticeShell ar={ar} label={title || t("notifications")}>
+      <NoticeHead
+        title={title || t("notifications")}
+        sub={unread > 0
+          ? (ar ? `${unread > 9 ? "9+" : unread} غير مقروءة — الأهم أولاً` : `${unread} unread — most urgent first`)
+          : (ar ? "كلها مقروءة" : "All read")}
+        trailing={unread > 0 ? <button type="button" onClick={onMarkAll} style={bandAction()}>{t("markRead")}</button> : null}
+      />
+      {list}
+      <NoticeFoot>
+        {ar ? "اضغط الإشعار لفتح مكانه. اسحبه أو اضغط × لإخفائه. المتكرر يُجمع في سطر واحد." : "Press a notice to open its place. Swipe or press × to hide it. Repeats collapse into one row."}
+      </NoticeFoot>
+    </NoticeShell>
   );
 }
 
@@ -223,5 +195,5 @@ function groupedNotices(items, lang) {
       if (notificationEscalated(item)) row.escalated = true;
     }
   }
-  return groups.slice(0, 12);
+  return groups.slice(0, 30);
 }

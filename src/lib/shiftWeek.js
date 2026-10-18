@@ -648,7 +648,48 @@ export function rosterBreakWindows(shift, onDate) {
   const recorded = shiftRestMinutes(shift);
   const rest = recorded == null ? ruleValue("hours.rest.duringShiftMinutes", onDate) : recorded;
   if (!rest || rest >= span) return [];
-  return [row(Math.round((span - rest) / 2), rest, "centered")];
+  const minRest = ruleValue("hours.rest.duringShiftMinutes", onDate) || 30;
+  return distributeShiftRests({ span, rest, minRest, consecMax }).map((part) => row(part.from, part.minutes, part.placed));
+}
+
+/**
+ * Art. 101 laid out by the platform: the fewest rest periods, each at least the statutory minimum «في المرة
+ * الواحدة», so that no stretch of work runs past the consecutive-hours limit — spread evenly over the shift
+ * and rounded to 5 minutes. One period when it is enough (centred, as before); a 12-hour day gets two.
+ * The recorded rest is kept when it already covers the periods; otherwise it grows to n × the minimum.
+ * Returns [{ from, minutes, placed }] — `from` in minutes after the shift start.
+ */
+export function distributeShiftRests({ span, rest, minRest = 30, consecMax = 300 } = {}) {
+  const S = Number(span) || 0;
+  const R = Math.max(0, Number(rest) || 0);
+  const M = Math.max(1, Number(minRest) || 30);
+  const C = Math.max(1, Number(consecMax) || 300);
+  if (!S || !R || R >= S) return [];
+  if (S <= C) return [];
+  let n = 1;
+  let total = Math.max(R, M);
+  while (n < 6) {
+    total = Math.max(R, n * M);
+    if ((S - total) / (n + 1) <= C) break;
+    n += 1;
+  }
+  if (n === 1) return [{ from: Math.round((S - total) / 2), minutes: total, placed: "centered" }];
+  // Split the total into n parts, each ≥ M, in 5-minute steps; the remainder goes to the middle part.
+  const base = Math.max(M, Math.floor(total / n / 5) * 5);
+  const parts = Array.from({ length: n }, () => base);
+  let left = total - base * n;
+  for (let i = Math.floor(n / 2); left > 0; i = (i + 1) % n) { parts[i] += 5; left -= 5; }
+  const work = S - parts.reduce((a, b) => a + b, 0);
+  const block = work / (n + 1);
+  const out = [];
+  let at = 0;
+  for (let i = 0; i < n; i += 1) {
+    at += block;
+    const from = Math.round(at / 5) * 5;
+    out.push({ from, minutes: parts[i], placed: "distributed" });
+    at += parts[i];
+  }
+  return out;
 }
 
 /**

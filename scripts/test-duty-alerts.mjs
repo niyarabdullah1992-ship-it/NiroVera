@@ -160,7 +160,7 @@ assert.equal(covering.inside, true, "the 11:15–11:45 break already holds Dhuhr
 assert.equal(covering.textAr, `أقرب صلاة: الظهر ${prayers.times.dhuhr} — الراحة \u206611:15–11:45\u2069 تشملها.`);
 assert.ok(prayerBreakHint({ shift: EARLY, onDate: DAY, prayers, published: true }).textAr.endsWith("لا تُنقل الراحة المنشورة تلقائياً."), "published: says the break does not move");
 assert.equal(prayerBreakHint({ shift: { start: "07:00", end: "11:00" }, onDate: DAY, prayers }), null, "no break placed — no hint");
-const tight = { id: "t", start: "06:00", end: "17:30", restMinutes: 30 }; // a break at Dhuhr leaves > 5h after it
+const tight = { id: "t", start: "06:00", end: "16:00", restMinutes: 30 }; // one centred break suffices; moved to the prayer it would leave > 5h after it
 assert.equal(prayerBreakHint({ shift: tight, onDate: DAY, prayers: { ...prayers, minutes: { ...prayers.minutes, dhuhr: at("09:00"), asr: at("09:30") }, times: { ...prayers.times, dhuhr: "09:00", asr: "09:30" } } }), null, "a break at the prayer that breaks Art. 101 is not offered");
 assert.equal(prayerBreakHint({ shift: { id: "x", start: "06:00", end: "15:00", restMinutes: 30 }, onDate: DAY, prayers }), null, "06:00–15:00: a break at Dhuhr leaves 5h31 before it — not offered");
 console.log("PASS prayer break hint (non-binding, Art. 101)");

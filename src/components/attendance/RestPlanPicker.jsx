@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { checkRestPlanGate, flexBreakOf } from "@/lib/shiftDerivations";
+import { checkRestPlanGate, flexBreakOf, restPlanChoices } from "@/lib/shiftDerivations";
 import { minutesAr } from "@/lib/dutyAlerts";
 import TimeField from "@/components/shared/TimeField";
 
@@ -9,6 +9,8 @@ const toMin = (hm) => {
   const m = String(hm || "").match(/^(\d{1,2}):(\d{2})$/);
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 };
+/** Arabic count of hours: 3–10 «ساعات», 11 and up «ساعة», 1 «ساعة», 2 «ساعتان». */
+const hoursAr = (n) => (n === 1 ? "ساعة واحدة" : n === 2 ? "ساعتان" : n >= 3 && n <= 10 ? `${n} ساعات` : `${n} ساعة`);
 const hmOf = (mins) => {
   const m = ((Math.round(mins) % 1440) + 1440) % 1440;
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
@@ -36,7 +38,8 @@ export default function RestPlanPicker({ ar = true, shift, onDate, continuous103
   const flex = flexBreakOf(shift, onDate);
   const savedParts = saved?.parts || null;
   const [editing, setEditing] = useState(!savedParts);
-  const [split, setSplit] = useState(savedParts ? savedParts.length > 1 : false);
+  // A long day where one block cannot keep every stretch within five hours opens on «جزءان».
+  const [split, setSplit] = useState(() => (savedParts ? savedParts.length > 1 : (flex?.splitEffective && !restPlanChoices({ shift, onDate, continuous103 }).single.length)));
   const [first, setFirst] = useState(savedParts?.[0]?.start || "");
   const [second, setSecond] = useState(savedParts?.[1]?.start || "");
   if (!flex) return null;
@@ -60,7 +63,7 @@ export default function RestPlanPicker({ ar = true, shift, onDate, continuous103
   const minClock = hmOf(flex.shiftStart);
   const maxClock = hmOf(flex.shiftStart + flex.span);
   const note = ar
-    ? `قرار تشغيلي من المنشأة: ${Math.round((flex.span - flex.minutes) / 60)} ساعات عمل و${minutesAr(flex.minutes)} راحة، فدوامك ${Math.round(flex.span / 60)} ساعات. تكتب وقت راحتك بنفسك بين ${minClock} و${maxClock}.`
+    ? `قرار تشغيلي من المنشأة: ${hoursAr(Math.round((flex.span - flex.minutes) / 60))} عمل و${minutesAr(flex.minutes)} راحة، فدوامك ${hoursAr(Math.round(flex.span / 60))}. تكتب وقت راحتك بنفسك بين ${minClock} و${maxClock}.`
     : `An operational decision of the company: ${Math.round((flex.span - flex.minutes) / 60)} hours of work and ${flex.minutes} min of rest, so your duty is ${Math.round(flex.span / 60)} hours. Write your break time yourself between ${minClock} and ${maxClock}.`;
 
   if (savedGate?.ok && !editing) {

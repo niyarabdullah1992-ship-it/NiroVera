@@ -864,15 +864,21 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           hint: inn && isLate && lateMinutes ? attRightHint("lateness", { date: dutyDateKey, minutes: lateMinutes }, { view: "employee", ar }) : null,
         },
         ...(band?.label
-          ? [{ key: "rest", kind: "plan", at: band.start + band.offset, label: ar ? "الراحة" : "Break", note: (() => {
+          ? (band.windows?.length > 1 ? band.windows : [null]).map((win, wi, list) => ({ key: wi ? `rest-${wi}` : "rest", kind: "plan", at: band.start + (win ? win.from : band.offset), label: list.length > 1 ? (ar ? `الراحة ${wi + 1} من ${list.length}` : `Break ${wi + 1} of ${list.length}`) : (ar ? "الراحة" : "Break"), note: (() => {
+            if (list.length > 1 && wi > 0) return ar ? `${win.minutes} دقيقة — راحة ثانية حتى لا تعمل أكثر من 5 ساعات متواصلة` : `${win.minutes} min — a second rest so no stretch runs past 5 hours`;
             // Plain words: the rest is not working time (Art. 102), so the day's work is the shift minus it.
             const restMin = Number(band.rest) || 0;
             const hm = (m) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
             if (!restMin) return ar ? "لا تُحسب من ساعات عملك" : "Not counted as working time";
+            if (list.length > 1) {
+              return ar
+                ? `${win.minutes} دقيقة — راحتك ${list.length === 2 ? "فترتان" : `${list.length} فترات`} مجموعها ${restMin} دقيقة لا تُحسب من عملك، فعملك اليوم ${hm(band.targetMin - restMin)} من ${hm(band.targetMin)}`
+                : `${win.minutes} min — ${list.length} rests, ${restMin} min in all, not counted as work; your work today is ${hm(band.targetMin - restMin)} of ${hm(band.targetMin)}`;
+            }
             return ar
               ? `${restMin} دقيقة لا تُحسب من ساعات عملك — عملك اليوم ${hm(band.targetMin - restMin)} من ${hm(band.targetMin)}`
               : `${restMin} min not counted as work — your work today is ${hm(band.targetMin - restMin)} of ${hm(band.targetMin)}`;
-          })(), sub: breakHint ? (ar ? breakHint.textAr : breakHint.textEn) : "", value: band.label, hint: attRightHint("rest", {}, { view: "employee", ar }) }]
+          })(), sub: list.length === 1 && breakHint ? (ar ? breakHint.textAr : breakHint.textEn) : "", value: win ? `${win.start}–${win.end}` : band.label, hint: wi === 0 ? attRightHint("rest", {}, { view: "employee", ar }) : null }))
           : []),
         ...(flexOn ? flexSteps(flexDay, { ar, hint: attRightHint("rest", {}, { view: "employee", ar }), plan: restPlan?.parts ? checkRestPlanGate({ shift: dutyShift, onDate: dutyDay, parts: restPlan.parts, continuous103 }) : null }) : []),
         { key: "end", kind: "plan", at: (band?.start ?? 0) + (band?.targetMin ?? 0), label: ar ? "نهاية الوردية" : "Shift ends", note: ar ? "من الجدول المنشور" : "From the published rota", value: endClock },
@@ -1418,20 +1424,21 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                   }}
                 />
               )) : null}
-              {band?.label ? (
+              {band?.label ? (band.windows?.length ? band.windows : [band]).map((win, wi) => (
                 <span
-                  title={ar ? `راحة ${band.label}` : `Break ${band.label}`}
+                  key={`brk-bar-${wi}`}
+                  title={ar ? `راحة ${win.start ? `${win.start}–${win.end}` : band.label}` : `Break ${win.start ? `${win.start}–${win.end}` : band.label}`}
                   style={{
                     position: "absolute",
                     top: 0,
                     bottom: 0,
-                    insetInlineStart: `${band.leftPct}%`,
-                    width: `${band.widthPct}%`,
+                    insetInlineStart: `${win.leftPct}%`,
+                    width: `${win.widthPct}%`,
                     background: "repeating-linear-gradient(45deg,var(--nv-card, #fff) 0 3px,transparent 3px 6px)", // a break cut into the presence bar
                     opacity: 0.85,
                   }}
                 />
-              ) : null}
+              )) : null}
             </div>
             <span style={{ fontSize: 10.5, color: "var(--nv-ink3, var(--nv-muted))" }}>
               {flexOn
@@ -1562,17 +1569,21 @@ export function breakBand(shift, onDate) {
   let span = end - start;
   if (span <= 0) span += 1440;
   const targetLabel = `${Math.floor(span / 60)}:${String(span % 60).padStart(2, "0")}`;
-  const w = rosterBreakWindows(shift, onDate)[0];
-  if (!w) return { leftPct: 0, widthPct: 0, label: "", targetMin: span, targetLabel, start };
+  const all = rosterBreakWindows(shift, onDate);
+  const w = all[0];
+  if (!w) return { leftPct: 0, widthPct: 0, label: "", targetMin: span, targetLabel, start, windows: [] };
+  // Every rest period of the day (Art. 101 may need more than one) — the first keeps the old single fields.
+  const windows = all.map((row) => ({ from: row.from, minutes: row.minutes, start: row.start, end: row.end, leftPct: (row.from / span) * 100, widthPct: (row.minutes / span) * 100 }));
   return {
     leftPct: (w.from / span) * 100,
     widthPct: (w.minutes / span) * 100,
-    label: `${w.start}–${w.end}`,
-    rest: w.minutes,
+    label: windows.map((row) => `${row.start}–${row.end}`).join(" · "),
+    rest: windows.reduce((sum, row) => sum + row.minutes, 0),
     start,
     offset: w.from,
     targetMin: span,
     targetLabel,
+    windows,
   };
 }
 
@@ -1593,9 +1604,12 @@ export function workedClock(checkIn, checkOut, now, band, flexDay = null) {
     const inMin = riyadhMinutesOf(checkIn);
     const outDate = checkOut ? new Date(checkOut) : new Date(now);
     const outMin = riyadhMinutesOf(outDate) + (toRiyadhDateKey(outDate) !== toRiyadhDateKey(checkIn) ? 1440 : 0);
-    const breakStart = band.start + band.offset;
-    const breakEnd = breakStart + band.rest;
-    const overlap = Math.max(0, Math.min(outMin, breakEnd) - Math.max(inMin, breakStart));
+    const list = band.windows?.length ? band.windows : [{ from: band.offset, minutes: band.rest }];
+    const overlap = list.reduce((sum, row) => {
+      const breakStart = band.start + row.from;
+      const breakEnd = breakStart + row.minutes;
+      return sum + Math.max(0, Math.min(outMin, breakEnd) - Math.max(inMin, breakStart));
+    }, 0);
     minutes = Math.max(0, minutes - overlap);
   }
   return { label: `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`, minutes };

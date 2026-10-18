@@ -458,7 +458,7 @@ export function eventGroups(rec, ar, currentUser, { manage = true } = {}) {
         state: ar ? "إضافي" : "Overtime",
         stColor: OC.mid,
         time: "—",
-        to: dutyTo,
+        to: reqTo,
       });
     }
   }

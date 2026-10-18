@@ -7,6 +7,7 @@ import { DS_CONTROL_RADIUS, DS_RADIUS } from "@/lib/designSystem";
 import { cardAwaitsNightConsent, nightConsentWaitCopy } from "@/lib/shiftWeek";
 import LawGateStatusPill, { LawGateArticleBadge } from "@/components/shared/LawGateStatusPill";
 import NvIcon from "@/components/shared/NvIcon";
+import { sectionRoutesForCard } from "@/lib/sectionRoutes";
 
 export const DUTY_ALERT_DUE = "var(--nv-bad-fill)";
 export const DUTY_ALERT_BLOCK = "var(--nv-bad-ink)";
@@ -120,8 +121,16 @@ export default function DutyStripAlertCard({
   const statuteIds = items.length && card.ruleId
     ? [card.ruleId]
     : dutyStatuteIds(card, heat);
-  const requestsHref = dutyRequestsHref(card);
-  const fileHref = card.href && card.audience === "manager" && items.length ? card.href : "";
+  // The fixed rule: each alert opens in its own section (طلباتي · السلامة), never the employee file.
+  const sectionLinks = (() => {
+    const routes = sectionRoutesForCard(card);
+    const legacy = dutyRequestsHref(card);
+    if (legacy && !routes.some((row) => row.section === "requests")) routes.unshift({ section: "requests", href: legacy });
+    return routes.map((row) => {
+      const nightRequest = row.section === "requests" && (cardAwaitsNightConsent(card) || row.gateId === "night_medical" || card.gateId === "night_medical");
+      return { ...row, label: nightRequest || !row.ar ? dutyRequestsLabel(card, ar) : (ar ? row.ar : row.en) };
+    });
+  })();
   const awaitConsent = cardAwaitsNightConsent(card);
   const gates = cardGateIds(card);
   const ordinaryApply = card.audience !== "employee"
@@ -130,7 +139,7 @@ export default function DutyStripAlertCard({
   const remedyApply = card.audience !== "employee"
     && typeof onNightRemedy === "function"
     && (gates.includes("night_compensate") || gates.includes("night_performer_comp"));
-  const hasActions = hasStatute || children || requestsHref || fileHref || ordinaryApply || remedyApply;
+  const hasActions = hasStatute || children || sectionLinks.length || ordinaryApply || remedyApply;
   const personName = String(card.name || "").trim();
   const masthead = String(card.instrument || "").trim();
   const showName = Boolean(personName && card.audience === "manager");
@@ -292,16 +301,11 @@ export default function DutyStripAlertCard({
               {readOpen ? (ar ? "اختصر النص" : "Show less") : (ar ? "اقرأ النص" : "Read the text")}
             </button>
           ) : null}
-          {requestsHref ? (
-            <Link to={requestsHref} style={dutyAlertActionStyle()}>
-              {dutyRequestsLabel(card, ar)}
+          {sectionLinks.map((link) => (
+            <Link key={link.href} to={link.href} data-section-link={link.section} style={dutyAlertActionStyle()}>
+              {link.label}
             </Link>
-          ) : null}
-          {fileHref ? (
-            <Link to={fileHref} style={dutyAlertActionStyle()}>
-              {ar ? "افتح الملف" : "Open the file"}
-            </Link>
-          ) : null}
+          ))}
           {ordinaryApply ? (
             <>
               <button type="button" onClick={() => onApplyOrdinary("morning")} style={dutyAlertActionStyle()}>

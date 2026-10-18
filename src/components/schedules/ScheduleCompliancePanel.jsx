@@ -2,6 +2,10 @@ import { ruleValue } from "@/lib/laborRules";
 import React, { forwardRef, useMemo, useState } from "react";
 import { openLinkStyle } from "@/components/schedules/dutyLinks";
 import { Link } from "react-router-dom";
+import { sectionRouteFor } from "@/lib/sectionRoutes";
+import { NIGHT_FACILITY_FLAGS } from "@/lib/decision18632";
+
+const NIGHT_SITE_KEYS = new Set(NIGHT_FACILITY_FLAGS.map((flag) => flag.key));
 import { useAuth } from "@/lib/PowerCareAuth";
 import {
   attachNightDueStripCards,
@@ -131,7 +135,10 @@ function CheckRow({ item, ar, compact = false, prove }) {
   /* «أثبت» — managers / HR only, on an obligation that is not met (void rows stay for reference);
      a flag ticked before proofs existed can take its details. */
   const legacyFlag = item.reason === "flag" && item.status === "settled";
-  const canProve = !!(item.obligationKey && prove?.canProve && (item.status === "blocked" || item.status === "alert" || legacyFlag));
+  // The fixed rule: night first aid · transfer · food belong to السلامة — the roster links there, it does not prove them.
+  const section = item.obligationKey ? sectionRouteFor(NIGHT_SITE_KEYS.has(item.obligationKey) ? "night_facilities" : "", { audience: "manager" }) : sectionRouteFor(item.checkId, { audience: "manager" });
+  const sectionOpen = section && item.status !== "settled" && item.status !== "void";
+  const canProve = !section && !!(item.obligationKey && prove?.canProve && (item.status === "blocked" || item.status === "alert" || legacyFlag));
   return (
     <>
       <MinistryRow
@@ -146,7 +153,11 @@ function CheckRow({ item, ar, compact = false, prove }) {
         sub={whoLine}
         compact={compact}
         ar={ar}
-        action={canProve && !open ? (
+        action={sectionOpen ? (
+          <Link to={section.href} data-section-link={section.section} style={quietAction()}>
+            {ar ? section.ar : section.en}
+          </Link>
+        ) : canProve && !open ? (
           <button type="button" data-night-prove={item.obligationKey} onClick={() => setOpen(true)} style={quietAction()}>
             {legacyFlag ? (ar ? "أضف الإثبات" : "Add proof") : (ar ? "أثبت" : "Prove")}
           </button>
@@ -269,7 +280,8 @@ export function useComplianceSummary({ gates, company, onDate, weekStart, employ
  * «أنظمة الوزارة والتنبيهات» — one compliance surface for the management lane.
  * Replaces the alerts rail, the three law panels and the publish gate strip.
  * `source` / `onSource` let the page (tiles, side column, ?src=) drive the filter.
- * Each person row ends with «في الجدول ›» (that row on the grid) and «ملف الدوام ›» (the file duty tab).
+ * Each person row ends with «في الجدول ›» (that row on the grid) and, when the alert belongs to another
+ * section, that section's link (طلباتي · السلامة) — never the employee file (lib/sectionRoutes).
  */
 const ScheduleCompliancePanel = forwardRef(function ScheduleCompliancePanel({
   gates,
@@ -388,16 +400,11 @@ const ScheduleCompliancePanel = forwardRef(function ScheduleCompliancePanel({
                 }
                 : undefined}
             >
-              {person.employeeId ? (
+              {person.employeeId && onFocusPerson ? (
                 <span data-person-links="1" style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", paddingTop: 2 }}>
-                  {onFocusPerson ? (
-                    <button type="button" onClick={() => onFocusPerson(person.employeeId, person.onDate)} style={openLinkStyle()}>
-                      {ar ? "في الجدول ›" : "On the roster ›"}
-                    </button>
-                  ) : null}
-                  <Link to={`/app/employees/${encodeURIComponent(person.employeeId)}?tab=duty`} style={openLinkStyle()}>
-                    {ar ? "ملف الدوام ›" : "Duty file ›"}
-                  </Link>
+                  <button type="button" onClick={() => onFocusPerson(person.employeeId, person.onDate)} style={openLinkStyle()}>
+                    {ar ? "في الجدول ›" : "On the roster ›"}
+                  </button>
                 </span>
               ) : null}
             </DutyStripAlertCard>

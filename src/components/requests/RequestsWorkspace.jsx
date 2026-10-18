@@ -128,7 +128,7 @@ import { DUTY_REQUEST_META, DUTY_REQUEST_TYPES, checkDutyRequestFields, nursingR
 import { performsNightWork, pregnancyNightBan } from "@/lib/decision18632";
 import { checkResignationFields, checkPostponeResignationGate, EXIT_ROUTE_NOTICE75, RESIGNATION_REASON_HINT_AR, RESIGNATION_REASON_HINT_EN, resignationDetail, resignationFacts, resignationRouteFor, resignationState, RESIGNATION_TYPE } from "@/lib/exitRequests";
 import { sunExposureMark } from "@/lib/shiftWeek";
-import { fileDutyHref, rosterPersonHref } from "@/components/schedules/dutyLinks";
+import { rosterPersonHref } from "@/components/schedules/dutyLinks";
 import { leaveApprovalCardNote } from "@/lib/leaveEntitlementCycle";
 import { BORDER, CARD, CONTROL_RADIUS, MUTED, NAVY, PILL_RADIUS, SURFACE } from "@/lib/platformStyles";
 import { REQUESTS_LAW_FOOT_AR, REQUESTS_LAW_FOOT_EN, REQUESTS_LAW_LEDE_AR, REQUESTS_LAW_LEDE_EN } from "@/lib/platformJudgment";
@@ -267,7 +267,6 @@ function DutyRequestDecisionPanel({ row, data, ar }) {
       {employee.id ? (
         <span style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <Link to={rosterPersonHref(employee.id, week)} style={{ color: OK, fontWeight: 700, textDecoration: "none" }}>{ar ? "افتح الأسبوع في جدول الدوام ›" : "Open the week on the roster ›"}</Link>
-          <Link to={fileDutyHref(employee.id, { day: row.date || "" })} style={{ color: OK, fontWeight: 700, textDecoration: "none" }}>{ar ? "ملف الدوام ›" : "Duty file ›"}</Link>
         </span>
       ) : null}
     </div>

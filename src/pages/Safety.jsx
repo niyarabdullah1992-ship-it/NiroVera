@@ -10,6 +10,7 @@ import { updateSafetyRecord, recordSafetyIncident, closeSafetyHazard, approveSaf
 import { safetyApprovalIssues } from "@/lib/safetyLogic";
 import SafetyIncidentReportForm from "@/components/safety/SafetyIncidentReportForm";
 import StationSiteDutiesCard from "@/components/safety/StationSiteDutiesCard";
+import NightSiteDutiesCard from "@/components/safety/NightSiteDutiesCard";
 import { safetyMinistryFacts } from "@/lib/safetyMinistryRows";
 import SafetyOverviewTab from "@/components/safety/SafetyOverviewTab";
 import { SafetyComplyBoard, SafetyDashboard, SafetyInjuryTable } from "@/components/safety/SafetyManageViews";
@@ -407,6 +408,18 @@ export default function Safety() {
         <>
           <SafetyComplyBoard ar={ar} stations={stations} recFor={recFor} part="inspect" />
           <StationSiteDutiesCard ar={ar} stations={stations} recFor={recFor} canEdit={canEdit} today={todayKey} onSaveSite={handleSaveSite} onSaveCabinet={handleSaveCabinet} />
+          {/* Decision 18632 (III) — first aid · emergency transfer · food for night work live here, in السلامة. */}
+          <NightSiteDutiesCard
+            ar={ar}
+            stations={stations}
+            data={data}
+            companyId={company?.id}
+            canEdit={canEdit}
+            actor={currentUser}
+            today={todayKey}
+            focus={searchParams.get("focus") === "night"}
+            onSaved={() => toast({ description: ar ? "حُفظ الإثبات — يقرؤه جدول الدوام عند النشر." : "Proof saved — the duty roster reads it when publishing." })}
+          />
           {levelApproval}
         </>
       )}

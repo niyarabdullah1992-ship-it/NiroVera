@@ -730,7 +730,6 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                   <RightHint ar={ar} style={{ alignSelf: "flex-start" }} hint={attRightHint("lateness", { date: String(r.check_in_at || "").slice(0, 10), minutes: Number(r.late_minutes) }, { view: "manager", ar, employee: e })} />
                 ) : null}
                 <span data-queue-links="1" style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
-                  <Link to={fileDutyHref(e.id)} style={openLinkStyle()}>{lang === "ar" ? "ملف الدوام ›" : "Duty file ›"}</Link>
                   <Link to={rosterPersonHref(e.id)} style={openLinkStyle()}>{lang === "ar" ? "في جدول الدوام ›" : "On the roster ›"}</Link>
                 </span>
                 {rowErrorFor(e.id) ? <span role="alert" data-row-error="1" style={{ fontSize: 11.5, color: DANGER, lineHeight: 1.6 }}>{rowErrorFor(e.id)}</span> : null}

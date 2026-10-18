@@ -174,7 +174,11 @@ export default function Requests() {
       // No figures in the hero: pending/approved/refused already head the queue inside the section.
     >
       {/* Art. 107 / Regs Art. 22 — my overtime awaiting a decision, and the cap-consent request I answer. */}
-      {!manageLane && self?.id ? (
+      {/* Art. 107 / Regs Art. 22 — overtime and holiday-work decisions live in طلباتي: the worker's own in
+          طلباتي, the decisions on the team in إدارة الطلبات (no longer under الحضور). */}
+      {manageLane ? (
+        <OtDecisionsPanel data={data} companyId={company?.id} currentUser={currentUser} employees={scopedAdminEmployees} mode="manage" canEdit ar={ar} onSaved={refresh} />
+      ) : self?.id ? (
         <OtDecisionsPanel data={data} companyId={company?.id} currentUser={currentUser} employees={[self]} mode="mine" ar={ar} onSaved={refresh} />
       ) : null}
       <RequestsWorkspace

@@ -1527,7 +1527,7 @@ function flushOtPendingNotices(companyId) {
     const text = row.holiday || entry.holiday
       ? `عمل في العطلة لـ${emp?.name || "موظف"} يوم ${regulationDate(row.dayKey)} (${hours} ساعة) — ينتظر قرارك: أجر الساعة + 50% أو إجازة تعويضية بموافقته (المادة 107/3). من «حضور الفريق».`
       : `ساعات إضافية لـ${emp?.name || "موظف"} يوم ${regulationDate(row.dayKey)} (${hours} ساعة) — تنتظر قرارك: أجر الساعة + 50% أو إجازة تعويضية بموافقته (المادة 107). من «حضور الفريق».`;
-    notifyRequestManagers(companyId, row.employeeId, text, { key: `ot_pending:${row.employeeId}:${row.dayKey}`, to: "/app/attendance?tab=team", doa: { kind: "overtime", amount: hours } });
+    notifyRequestManagers(companyId, row.employeeId, text, { key: `ot_pending:${row.employeeId}:${row.dayKey}`, to: "/app/requests/manage", doa: { kind: "overtime", amount: hours } });
   }
 }
 function isOtDecisionOpenEntry(entry) {
@@ -5810,7 +5810,7 @@ export function setOtDecision(companyId, employeeId, dateKey, {
     d.otDecisions[plan.key] = { ...(d.otDecisions[plan.key] || {}), ...plan.entry };
   });
   if (plan.capConsentRequested) {
-    addNotification(companyId, employeeId, `طلب موافقتك على تجاوز سقف الإضافي السنوي ${plan.cap} ساعة (اللائحة م22) — ${day}.`, { kind: "ot_cap_consent", dateKey: day });
+    addNotification(companyId, employeeId, `طلب موافقتك على تجاوز سقف الإضافي السنوي ${plan.cap} ساعة (اللائحة م22) — ${day}.`, { kind: "ot_cap_consent", dateKey: day, to: "/app/requests" });
   }
   return plan.result;
 }

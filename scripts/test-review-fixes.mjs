@@ -34,7 +34,8 @@ const person = (id, extra = {}) => ({ id, name: id, stationId: "st", profile: {}
 
 /* ── 1. The OT board is mounted where decisions are made, and «mine» filters by the employee id ── */
 {
-  ok(/OtDecisionsPanel/.test(src("src/pages/Attendance.jsx")) && /mode="manage"/.test(src("src/pages/Attendance.jsx")), "manager board mounted on the team attendance tab");
+  // The fixed rule: overtime decisions live in طلباتي — إدارة الطلبات for management, not under الحضور.
+  ok(/mode="manage"/.test(src("src/pages/Requests.jsx")) && !/<OtDecisionsPanel/.test(src("src/pages/Attendance.jsx")), "manager board mounted in إدارة الطلبات");
   ok(/OtDecisionsPanel/.test(src("src/pages/Requests.jsx")) && /mode="mine"/.test(src("src/pages/Requests.jsx")), "worker board mounted in طلباتي");
   ok(/viewerEmployeeId\(currentUser\)/.test(src("src/components/schedules/OtDecisionBoard.jsx")), "mine mode filters by viewerEmployeeId");
   ok(!/currentUser\.id, dateKey/.test(src("src/components/schedules/OtDecisionBoard.jsx")), "cap consent answers with the employee id, not the user id");

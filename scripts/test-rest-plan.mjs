@@ -51,3 +51,11 @@ const openShift = { ...shift, flexBreak: { ...shift.flexBreak, from: "07:00", to
 assert.equal(checkRestPlanGate({ shift: openShift, onDate: DAY, parts: [{ start: "11:20", minutes: 60 }] }).ok, true);
 assert.equal(checkRestPlanGate({ shift: openShift, onDate: DAY, parts: [{ start: "15:30", minutes: 60 }] }).error, "REST_PLAN_OUTSIDE_WINDOW");
 console.log("PASS open rest time inside the duty");
+
+// Company policy: prayer counted as work (default 20 min), off unless the company turns it on.
+import { hoursPolicyOf } from "../src/lib/laborHoursPolicy.js";
+assert.equal(hoursPolicyOf({}).prayerPaid, false);
+assert.equal(hoursPolicyOf({}).prayerMinutes, 20);
+assert.equal(hoursPolicyOf({ hoursPolicy: { prayerCountsAsWork: true, prayerMinutes: 15 } }).prayerPaid, true);
+assert.equal(hoursPolicyOf({ hoursPolicy: { prayerCountsAsWork: true, prayerMinutes: 15 } }).prayerMinutes, 15);
+console.log("PASS prayer policy");

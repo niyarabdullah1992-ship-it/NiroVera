@@ -41,6 +41,9 @@ export function hoursPolicyOf(company, employee) {
     workPosting: bag.workPosting || company?.workPosting || company?.attendanceSettings?.workPosting || {},
     nurseryChildrenCount: Number(bag.nurseryChildrenCount ?? company?.nurseryChildrenCount) || 0,
     nurseryOnSite: flagOn(bag.nurseryOnSite),
+    // Company policy (not a statute): a prayer allowance counted as work, beside the rest — minutes default 20.
+    prayerPaid: flagOn(bag.prayerCountsAsWork),
+    prayerMinutes: Math.min(45, Math.max(5, Number(bag.prayerMinutes) || 20)),
   };
 }
 

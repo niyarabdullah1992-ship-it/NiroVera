@@ -552,6 +552,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
 
   // «راحة مرنة ببصمة»: the day read from the break punches — the buttons, the timeline and the bar use it.
   const continuous103 = hoursPolicyOf(data, dutyEmployee).continuousWork103 === true;
+  const prayerPolicy = hoursPolicyOf(data, dutyEmployee);
   // The worker's own rest plan for the day (he places his break where it suits him) — lib/shiftDerivations.
   const restPlan = data?.restPlans?.[`${currentUser?.id}:${dutyDay}`] || null;
   const flexDay = resolveDayBreaks({
@@ -908,10 +909,13 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       at: p.minutes,
       label: ar ? p.ar : p.en,
       value: p.clock,
-      badge: lawBadge(restCite, notWorkCite),
-      note: (ar ? "وقت الصلاة من فترة الراحة والصلاة والطعام — لا يُحسب من ساعات العمل" : "Prayer sits in the rest, prayer and meal period — not counted as work")
+      // Company policy first: a prayer allowance counted as work; otherwise the law's reading (inside the rest).
+      badge: prayerPolicy.prayerPaid ? (ar ? "سياسة المنشأة" : "Company policy") : lawBadge(restCite, notWorkCite),
+      note: (prayerPolicy.prayerPaid
+        ? (ar ? `${prayerPolicy.prayerMinutes} دقيقة للصلاة تُحسب من عملك ولا تُستقطع` : `${prayerPolicy.prayerMinutes} min for prayer counted as your work — company policy`)
+        : (ar ? "وقت الصلاة من فترة الراحة والصلاة والطعام — لا يُحسب من ساعات العمل" : "Prayer sits in the rest, prayer and meal period — not counted as work"))
         + (prayerApprox ? (ar ? " · الوقت تقريبي بتوقيت الرياض حتى تُحدَّد مدينة الفرع" : " · approximate (Riyadh) until the branch city is set") : ""),
-      hint: attRightHint("rest", {}, { view: "employee", ar }),
+      hint: prayerPolicy.prayerPaid ? null : attRightHint("rest", {}, { view: "employee", ar }),
     }, p.minutes);
   }
   // Art. 101: the five-hour mark from the shift start — the rest must begin before it (Art. 103 is exempt).
@@ -1060,7 +1064,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
               continuous103={continuous103}
               saved={restPlan}
               avoid={[
-                ...prayerPoints.map((p) => ({ from: p.minutes, to: p.minutes + 15 })),
+                ...prayerPoints.map((p) => ({ from: p.minutes, to: p.minutes + (prayerPolicy.prayerMinutes || 20) })),
                 ...(nursingToday && band ? nursingWindowsOf(nursingToday, band.start, band.start + band.targetMin).filter((w) => w.to != null).map((w) => ({ from: w.from, to: w.to })) : []),
               ]}
               avoidNames={[

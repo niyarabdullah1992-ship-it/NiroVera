@@ -167,7 +167,8 @@ export function buildFileReadiness({ employee, regulation = null, roleLabel = ""
   const med = expiryState(profileFieldValue(p, "medicalInsuranceExpiry", employee), day, MEDICAL_WARN_DAYS);
   add({
     id: "medical",
-    label: ar ? "التأمين الطبي" : "Medical insurance",
+    // Art. 144: preventive and curative care — medical cover valid for every worker.
+    label: ar ? "التأمين الطبي (المادة 144)" : "Medical insurance (Art. 144)",
     ok: med.state === "ok",
     state: med.state,
     owner: "hr",

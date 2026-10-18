@@ -493,6 +493,30 @@ export const LABOR_ARTICLE_TEXTS = [
   ),
 
   v(
+    "63",
+    "على صاحب العمل أو وكيله أو أي شخص له سلطة على العمال، منع دخول أي مادة محرمة شرعًا إلى أماكن العمل، ويطبق بحق من وجدت لديه أو من تعاطاها العقوبات المقررة في هذا النظام، مع عدم الإخلال بالعقوبات الشرعية.",
+    "The employer, his agent or any person with authority over the workers shall prevent any substance forbidden by Sharia from entering the workplace; the penalties in this Law apply to whoever holds or uses it, without prejudice to Sharia penalties.",
+  ),
+
+  v(
+    "125",
+    "على صاحب العمل أن يتخذ الاحتياطات اللازمة للوقاية من الحريق، وتهيئة الوسائل الفنية لمكافحته، بما في ذلك تأمين منافذ للنجاة، وجعلها صالحة للاستعمال في أي وقت، وأن يعلق في مكان ظاهر من أماكن العمل تعليمات مفصلة بشأن وسائل منع الحريق.",
+    "The employer shall take the precautions needed to prevent fire and provide the technical means to fight it, including escape exits kept usable at all times, and shall post detailed fire-prevention instructions in a visible place at the workplace.",
+  ),
+
+  v(
+    "144",
+    "على صاحب العمل أن يوفر لعماله العناية الصحية الوقائية والعلاجية طبقًا للمستويات التي يقررها الوزير، مع مراعاة ما يوفره نظام الضمان الصحي التعاوني.",
+    "The employer shall provide his workers with preventive and curative health care at the levels set by the Minister, taking into account what the Cooperative Health Insurance Law provides.",
+  ),
+
+  v(
+    "158",
+    "على صاحب العمل في جميع الأماكن التي يعمل فيها نساء وفي جميع المهن أن يوفر لهن مقاعد، تأمينًا لاستراحتهن.",
+    "In all places where women work and in all occupations, the employer shall provide them with seats for their rest.",
+  ),
+
+  v(
     "121",
     "على صاحب العمل حفظ المنشأة في حالة صحية ونظيفة، وإنارتها وتأمين المياه الصالحة للشرب والاغتسال، وغير ذلك من قواعد الحماية والسلامة والصحة المهنية وإجراءاتها ومستوياتها وفقًا لما يحدده الوزير بقرار منه.",
     "The employer shall keep the establishment in a hygienic and clean condition, light it, and provide water fit for drinking and washing, and such other occupational protection, safety and health rules, procedures and standards as the Minister determines by decision.",

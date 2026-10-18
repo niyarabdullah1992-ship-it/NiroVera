@@ -10,6 +10,7 @@ import { updateSafetyRecord, recordSafetyIncident, closeSafetyHazard, approveSaf
 import { safetyApprovalIssues } from "@/lib/safetyLogic";
 import SafetyIncidentReportForm from "@/components/safety/SafetyIncidentReportForm";
 import StationSiteDutiesCard from "@/components/safety/StationSiteDutiesCard";
+import WorkplaceLawCard from "@/components/safety/WorkplaceLawCard";
 import NightSiteDutiesCard from "@/components/safety/NightSiteDutiesCard";
 import { safetyMinistryFacts } from "@/lib/safetyMinistryRows";
 import SafetyOverviewTab from "@/components/safety/SafetyOverviewTab";
@@ -129,6 +130,12 @@ export default function Safety() {
   const handleSaveSite = (id, site) => {
     updateSafetyRecord(company.id, id, { site: { ...site, ...stamp() } }, currentUser.name);
     toast({ description: ar ? "سُجّل موقع الفرع — يُشتق «بعيد عن العمران» منه (اللائحة م30)." : "Site recorded — remoteness is derived from it (Regs Art. 30)." });
+  };
+  const handleSaveWorkplaceLaw = (id, workplaceLaw, itemId) => {
+    const at = new Date().toISOString();
+    const next = { ...workplaceLaw, [itemId]: { ...workplaceLaw[itemId], by: currentUser.name || "", at } };
+    updateSafetyRecord(company.id, id, { workplaceLaw: next }, currentUser.name);
+    toast({ description: ar ? "سُجّل فحص البند مع اسمك والتاريخ." : "Check recorded with your name and the date." });
   };
   const handleSaveCabinet = (id, cabinet) => {
     const at = new Date().toISOString();
@@ -408,6 +415,8 @@ export default function Safety() {
         <>
           <SafetyComplyBoard ar={ar} stations={stations} recFor={recFor} part="inspect" />
           <StationSiteDutiesCard ar={ar} stations={stations} recFor={recFor} canEdit={canEdit} today={todayKey} onSaveSite={handleSaveSite} onSaveCabinet={handleSaveCabinet} />
+          {/* Labour Law on the workplace — Arts. 125 · 63 · 144 · 158, each under its article. */}
+          <WorkplaceLawCard ar={ar} stations={stations} recFor={recFor} data={data} canEdit={canEdit} today={todayKey} onSave={handleSaveWorkplaceLaw} />
           {/* Decision 18632 (III) — first aid · emergency transfer · food for night work live here, in السلامة. */}
           <NightSiteDutiesCard
             ar={ar}

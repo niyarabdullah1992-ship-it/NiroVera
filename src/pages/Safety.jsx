@@ -443,6 +443,10 @@ export default function Safety() {
           />
         </>
       )}
+      {/* The employee side reads the same duties for his knowledge — his branch, no recording. */}
+      {employeeRail && reportStation ? (
+        <WorkplaceLawCard ar={ar} stations={[reportStation]} recFor={recFor} data={data} canEdit={false} today={todayKey} readOnly self={(data.employees || []).find((p) => p.id === currentUser.id) || currentUser} />
+      ) : null}
       <MinistrySectionPanel
         sectionKey="safety"
         lane={employeeRail ? "employee" : "manage"}

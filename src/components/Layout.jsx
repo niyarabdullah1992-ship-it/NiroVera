@@ -258,23 +258,55 @@ export default function Layout({ children }) {
   } catch {
     dismissedMinistry = new Set();
   }
-  const ministryNotifs = canSeeMinistryAlerts(currentUser, data)
-    ? deriveMinistryAlerts(data || {}).alerts
-      .filter((row) => !dismissedMinistry.has(row.id))
-      .map((row) => ({
-        id: `ministry_${row.id}`,
-        userId: currentUser.id,
-        text: lang === "ar" ? row.textAr : row.textEn,
-        read: false,
-        createdAt: new Date().toISOString(),
-        to: row.to,
-      }))
+  // Derived ministry alerts carry no stored row, so «read» and «first seen» live per viewer: the bell
+  // clears after «تعليم كمقروء» and the time stays the moment it was first seen, not «الآن» forever.
+  const ministrySeenKey = `powercare_ministry_seen_${company.id}_${currentUser.id}`;
+  let ministrySeen = {};
+  try {
+    ministrySeen = JSON.parse(localStorage.getItem(ministrySeenKey) || "{}") || {};
+  } catch {
+    ministrySeen = {};
+  }
+  const ministryRows = canSeeMinistryAlerts(currentUser, data)
+    ? deriveMinistryAlerts(data || {}).alerts.filter((row) => !dismissedMinistry.has(row.id))
     : [];
+  let ministrySeenChanged = false;
+  for (const row of ministryRows) {
+    if (!ministrySeen[row.id]) {
+      ministrySeen[row.id] = { at: new Date().toISOString(), read: false };
+      ministrySeenChanged = true;
+    }
+  }
+  if (ministrySeenChanged) {
+    try { localStorage.setItem(ministrySeenKey, JSON.stringify(ministrySeen)); } catch { /* quota */ }
+  }
+  const ministryNotifs = ministryRows.map((row) => ({
+    id: `ministry_${row.id}`,
+    userId: currentUser.id,
+    text: lang === "ar" ? row.textAr : row.textEn,
+    read: !!ministrySeen[row.id]?.read,
+    createdAt: ministrySeen[row.id]?.at || new Date().toISOString(),
+    to: row.to,
+  }));
+  const markMinistryRead = (ids) => {
+    let changed = false;
+    for (const id of ids) {
+      const mid = String(id).startsWith("ministry_") ? String(id).slice("ministry_".length) : "";
+      if (!mid) continue;
+      ministrySeen[mid] = { ...(ministrySeen[mid] || { at: new Date().toISOString() }), read: true };
+      changed = true;
+    }
+    if (changed) {
+      try { localStorage.setItem(ministrySeenKey, JSON.stringify(ministrySeen)); } catch { /* quota */ }
+      setMinistryDismissTick((n) => n + 1);
+    }
+  };
   void ministryDismissTick;
   void notifPrefTick;
   const myNotifs = [...ministryNotifs, ...myStoredNotifs];
 
   const markAllRead = () => {
+    markMinistryRead(ministryNotifs.map((row) => row.id));
     updateCompany(company.id, (d) => {
       d.notifications.forEach((n) => {
         if (n.userId === currentUser.id) n.read = true;
@@ -313,9 +345,13 @@ export default function Layout({ children }) {
 
   // Clicking a notification marks it read and jumps to the page it refers to.
   const openNotification = (n) => {
+    // A grouped row («×3») carries every id it stands for — all of them become read.
+    const ids = (n.ids && n.ids.length ? n.ids : [n.id]).map(String);
+    markMinistryRead(ids);
     updateCompany(company.id, (d) => {
-      const target = d.notifications.find((x) => x.id === n.id);
-      if (target) target.read = true;
+      for (const target of d.notifications) {
+        if (ids.includes(String(target.id))) target.read = true;
+      }
     });
     setNotifOpen(false);
     if (n.stationId) setStationScope(n.stationId, { manual: false });

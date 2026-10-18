@@ -540,9 +540,10 @@ export default function ShiftWeekBoard({
 
   const applyOrdinaryHours = (employee, kind, dateKey) => {
     if (!canEdit || !companyId || !stationId || !employee?.id) return { ok: false };
-    const dates = dateKey
-      ? [dateKey]
-      : weekNightDateKeys(schedule, employee.id, weekStart);
+    // Only days not yet begun: a past night is history, and tonight's night is not turned into a
+    // morning that already started.
+    const dates = (dateKey ? [dateKey] : weekNightDateKeys(schedule, employee.id, weekStart))
+      .filter((key) => key > todayCellKey);
     if (!dates.length) {
       toast({
         description: ar ? "لا يوم لتحويله إلى ساعات عادية." : "No day to convert to ordinary hours.",

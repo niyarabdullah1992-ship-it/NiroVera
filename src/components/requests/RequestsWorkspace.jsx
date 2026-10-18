@@ -324,14 +324,25 @@ function RequestDecisionPath({ status, ar, managerLine, effect, row }) {
   // An overtime assignment runs the other way: management assigns, the worker chooses, management approves.
   const assigned = row && isOvertimeAssignment(row);
   const comp = row?.compensation || row?.compensationChoice;
-  const steps = assigned
+  // 18632 consent: the platform opens it, the WORKER decides — no manager step, no 48-hour clock.
+  const nightConsent = row?.type === "night_consent";
+  const nightStage = nightConsent ? nightRotateStage(row) : null;
+  const nightDecided = nightConsent && nightStage && nightStage !== "active";
+  const nightSteps = nightConsent
+    ? (ar
+      ? [["فُتح", "المنصة · القرار 18632"], ["اختيارك", nightDecided ? "اخترت" : "بانتظارك"], ["الأثر", nightStage === "agreed_month" ? "موافقة محفوظة" : nightStage === "refused" || nightStage === "withdrawn" ? "تدوير لساعات عادية" : nightStage === "lapsed" ? "أُغلق بالجدول" : "على جدولك"]]
+      : [["Opened", "Platform · 18632"], ["Your choice", nightDecided ? "Chosen" : "Waiting on you"], ["Effect", nightStage || "On your roster"]])
+    : null;
+  const steps = nightSteps || (assigned
     ? (ar
       ? [["كُلّفت", row.recordedBy || "المسؤول"], ["اخترت التعويض", comp === "credit" ? "إجازة تعويضية" : comp === "pay" ? "أجر إضافي" : "بانتظارك"], ["الاعتماد", status === "approved" ? "اعتُمد" : status === "rejected" ? "رُدّ" : "بانتظار المسؤول"]]
       : [["Assigned", row.recordedBy || "Manager"], ["Your choice", comp || "Waiting on you"], ["Approval", status]])
     : (ar
       ? [["رُفع", "أنت"], ["مديرك المباشر", managerLine || "خلال 48 س"], ["القرار", effect || ""]]
-      : [["Raised", "You"], ["Your manager", managerLine || "Within 48h"], ["Decision", effect || ""]]);
-  const path = assigned
+      : [["Raised", "You"], ["Your manager", managerLine || "Within 48h"], ["Decision", effect || ""]]));
+  const path = nightConsent
+    ? (nightDecided ? { done: 3, at: 3 } : { done: 1, at: 1 })
+    : assigned
     ? (status === "pending_employee" ? { done: 1, at: 1 }
       : status === "pending_manager" ? { done: 2, at: 2 }
         : status === "approved" ? { done: 3, at: 3 }
@@ -3660,7 +3671,7 @@ export default function RequestsWorkspace({
                       })() : ""}`
                       : [row.type === STUDY_CONSENT_TYPE && (ar ? [row.program && `البرنامج: ${row.program}`, row.institution && `المؤسسة: ${row.institution}`, (row.startDate || row.date) && `البداية: ${formatArDate(row.startDate || row.date, lang)}`, row.approvedAt && `اعتُمدت: ${formatArDate(row.approvedAt, lang)}`, row.approvedBy && `بقرار: ${row.approvedBy}`].filter(Boolean).join(" · ") : [row.program && `Program: ${row.program}`, row.institution && `Institution: ${row.institution}`, (row.startDate || row.date) && `Start: ${formatArDate(row.startDate || row.date, lang)}`, row.approvedAt && `Approved: ${formatArDate(row.approvedAt, lang)}`, row.approvedBy && `By: ${row.approvedBy}`].filter(Boolean).join(" · ")), row.type === NIGHT_FITNESS_TYPE && (ar
                         ? [row.permanent ? NIGHT_FITNESS_PERMANENT_AR : ((row.from || row.examDate) && row.to) && `${NIGHT_FITNESS_FROM_AR} ${formatArDate(row.from || row.examDate, lang)} → ${NIGHT_FITNESS_TO_AR} ${formatArDate(row.to, lang)}`, row.approvedAt && `اعتُمد: ${formatArDate(row.approvedAt, lang)}`].filter(Boolean).join(" · ")
-                        : [row.permanent ? NIGHT_FITNESS_PERMANENT_EN : ((row.from || row.examDate) && row.to) && `${NIGHT_FITNESS_FROM_EN} ${formatArDate(row.from || row.examDate, lang)} → ${NIGHT_FITNESS_TO_EN} ${formatArDate(row.to, lang)}`, row.approvedAt && `Approved: ${formatArDate(row.approvedAt, lang)}`].filter(Boolean).join(" · ")), row.type === LEAVE_TOPUP_TYPE && row.days && (ar ? `${row.days} أيام إضافية على الرصيد السنوي` : `${row.days} extra days on the annual balance`), isOvertimeAssignment(row) && otAssignmentLine(row, row.employee, ar), isArticle106Assignment(row) && (ar ? (ARTICLE_106_GROUNDS.find((g) => g.key === row.article106Ground)?.ar || "المادة 106") : (ARTICLE_106_GROUNDS.find((g) => g.key === row.article106Ground)?.en || "Art. 106")), row.type === RESIGNATION_TYPE && resignationDetail(row, ar), isDutyRequestType(row.type) && dutyRequestDetail(row, { ar, shiftLabel: ((data?.schedules || []).find((item) => String(item.stationId) === String(row.employee?.stationId))?.shiftTypes || []).find((shift) => shift.id === row.shiftTypeId)?.label || "" }), row.fileName && (ar ? `الملف: ${row.fileName}` : `File: ${row.fileName}`), row.purpose && (ar ? `الغرض: ${row.purpose}` : `Purpose: ${row.purpose}`), row.party && (ar ? `إلى: ${row.party}` : `To: ${row.party}`), row.type !== STUDY_CONSENT_TYPE && row.type !== NIGHT_FITNESS_TYPE && row.reason, row.type !== STUDY_CONSENT_TYPE && row.type !== NIGHT_FITNESS_TYPE && row.date && formatArDate(row.date, lang), mode !== "manage" && stationName(row.employee?.stationId)].filter(Boolean).join(" · ")}
+                        : [row.permanent ? NIGHT_FITNESS_PERMANENT_EN : ((row.from || row.examDate) && row.to) && `${NIGHT_FITNESS_FROM_EN} ${formatArDate(row.from || row.examDate, lang)} → ${NIGHT_FITNESS_TO_EN} ${formatArDate(row.to, lang)}`, row.approvedAt && `Approved: ${formatArDate(row.approvedAt, lang)}`].filter(Boolean).join(" · ")), row.type === LEAVE_TOPUP_TYPE && row.days && (ar ? `${row.days} أيام إضافية على الرصيد السنوي` : `${row.days} extra days on the annual balance`), isOvertimeAssignment(row) && otAssignmentLine(row, row.employee, ar), isArticle106Assignment(row) && (ar ? (ARTICLE_106_GROUNDS.find((g) => g.key === row.article106Ground)?.ar || "المادة 106") : (ARTICLE_106_GROUNDS.find((g) => g.key === row.article106Ground)?.en || "Art. 106")), row.type === RESIGNATION_TYPE && resignationDetail(row, ar), isDutyRequestType(row.type) && dutyRequestDetail(row, { ar, shiftLabel: ((data?.schedules || []).find((item) => String(item.stationId) === String(row.employee?.stationId))?.shiftTypes || []).find((shift) => shift.id === row.shiftTypeId)?.label || "" }), row.fileName && (ar ? `الملف: ${row.fileName}` : `File: ${row.fileName}`), row.purpose && (ar ? `الغرض: ${row.purpose}` : `Purpose: ${row.purpose}`), row.party && (ar ? `إلى: ${row.party}` : `To: ${row.party}`), row.type !== STUDY_CONSENT_TYPE && row.type !== NIGHT_FITNESS_TYPE && !(row.type === "night_consent" && nightRotateStage(row) !== "active") && row.reason, row.type !== STUDY_CONSENT_TYPE && row.type !== NIGHT_FITNESS_TYPE && row.date && formatArDate(row.date, lang), mode !== "manage" && stationName(row.employee?.stationId)].filter(Boolean).join(" · ")}
                   </p>
                   {mode === "manage" && isDutyRequestType(row.type) && isPendingDecideStatus(st) ? <DutyRequestDecisionPanel row={row} data={data} ar={ar} /> : null}
                   {row.type === FILE_CORRECTION_TYPE ? (

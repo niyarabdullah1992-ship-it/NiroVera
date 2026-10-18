@@ -28,6 +28,7 @@ import {
   checkWithdrawNightConsentGate,
   checkWithdrawNightRemedyGate,
   nightScheduleFor,
+  collectLapsedNightRotates,
   applyLapsedNightConsents,
   collectDueNightRotates,
   nightCycleKey,
@@ -35,7 +36,7 @@ import {
   nightRotateStage,
   pendingNightRotate,
 } from "./nightRotateCycle";
-import { planNightDueAdminNotifications, planNightDueNotifications } from "./nightDueNotify";
+import { nightLapseAdminNotifyText, nightLapseNotifyText, planNightDueAdminNotifications, planNightDueNotifications } from "./nightDueNotify";
 import { planHeatBanNotices } from "./heatBanNotify";
 import { planDisciplineDeadlineNotices } from "./disciplineDeadlines";
 import { planNecessityNotices } from "./consentEffects";
@@ -1669,9 +1670,19 @@ function nightRotateAudienceIds(data, emp) {
 export function openDueNightRotateCycles(companyId, weekStart, employeeId) {
   const data = getCompanyData(companyId);
   if (!data) return { ok: false, opened: [] };
+  // Requests the roster is about to close (no night this week) — the worker and his managers are told once.
+  const lapsing = collectLapsedNightRotates(data, weekStart)
+    .filter((row) => !employeeId || String(row.employee?.id) === String(employeeId));
   updateCompany(companyId, (draft) => {
     applyLapsedNightConsents(draft, weekStart);
   });
+  for (const row of lapsing) {
+    const reqId = row.request?.id || "";
+    addNotification(companyId, row.employee.id, nightLapseNotifyText(true), { key: `18632-lapse:${row.employee.id}:${reqId}`, to: "/app/requests" });
+    for (const manager of nightDueAdminAudience(data, row.employee)) {
+      addNotification(companyId, manager.id, nightLapseAdminNotifyText(row.employee.name, true), { key: `18632-lapse-admin:${manager.id}:${row.employee.id}:${reqId}`, to: "/app/shifts?lane=manage" });
+    }
+  }
   const dueList = collectDueNightRotates(getCompanyData(companyId), weekStart)
     .filter((row) => !employeeId || String(row.employee?.id) === String(employeeId));
   const opened = [];
@@ -1715,11 +1726,11 @@ export function openDueNightRotateCycles(companyId, weekStart, employeeId) {
   });
   const usedKeys = [];
   for (const plan of plans) {
-    addNotification(companyId, plan.employeeId, plan.text, { key: plan.key });
+    addNotification(companyId, plan.employeeId, plan.text, { key: plan.key, to: "/app/requests" });
     usedKeys.push(plan.key);
   }
   for (const plan of adminPlans) {
-    addNotification(companyId, plan.managerId, plan.text, { key: plan.key });
+    addNotification(companyId, plan.managerId, plan.text, { key: plan.key, to: `/app/shifts?lane=manage&src=18632&emp=${encodeURIComponent(plan.employeeId)}` });
     usedKeys.push(plan.key);
   }
   if (usedKeys.length) {
@@ -2147,8 +2158,8 @@ export function answerNightRotate(companyId, employeeId, requestId, decision, { 
       employee.profile.nightConsentWithdrawnAt = now;
     }
     if (decision === "reduce" || decision === "refuse") {
-      const schedule = getOrCreateSchedule(draft, employee.stationId);
-      applied = applyNightWorkerDecision(schedule, employee.id, decision, weekStart);
+      const schedule = nightRosterOf(draft, employee, weekStart);
+      applied = applyNightWorkerDecision(schedule, employee.id, decision, weekStart, { notBefore: new Date() });
       request.appliedShiftId = applied.shiftId;
       request.appliedDays = applied.moved;
       const key = weekKeyFromDate(weekStart);
@@ -2204,6 +2215,12 @@ export function answerNightRotate(companyId, employeeId, requestId, decision, { 
     }
     pushEmployeeFileLog(employee, stamped.log);
   });
+  // The worker answered: the «وافق أو ارفض» notice has done its job.
+  updateCompany(companyId, (d) => {
+    for (const row of d.notifications || []) {
+      if (String(row.userId) === String(employeeId) && String(row.key || "").startsWith(`18632-due:${employeeId}:`)) row.read = true;
+    }
+  });
   return { ok: true, decision, applied };
 }
 
@@ -2230,8 +2247,8 @@ export function withdrawNightRotate(companyId, employeeId, requestId, { acknowle
     request.attestation = "أسحب موافقتي الخطية على الاستمرار كعامل ليلي وفق القرار 18632، وأطلب التدوير لساعات عادية شهراً على الأقل.";
     employee.profile = employee.profile || {};
     employee.profile.nightConsentWithdrawnAt = now;
-    const schedule = getOrCreateSchedule(draft, employee.stationId);
-    applied = applyNightWorkerDecision(schedule, employee.id, "refuse", weekStart);
+    const schedule = nightRosterOf(draft, employee, weekStart);
+    applied = applyNightWorkerDecision(schedule, employee.id, "refuse", weekStart, { notBefore: new Date() });
     request.appliedShiftId = applied.shiftId;
     request.appliedDays = applied.moved;
     const key = weekKeyFromDate(weekStart);
@@ -2328,6 +2345,12 @@ function syncNightAllowanceOnPayrollDraft(draft, employee) {
 }
 
 /** Establishment chooses reduce, allowance, or a change of night work. */
+/** The roster that holds a worker's nights inside the draft (own station, else a covered one). */
+function nightRosterOf(draft, employee, weekStart) {
+  const held = nightScheduleFor(draft, employee, weekStart);
+  return (draft.schedules || []).includes(held) ? held : getOrCreateSchedule(draft, employee.stationId);
+}
+
 function nightActorIsHead(companyId, actorId) {
   const data = getCompanyData(companyId);
   const actor = (data?.employees || []).find((row) => String(row.id) === String(actorId)) || (actorId ? { id: actorId } : null);
@@ -2353,8 +2376,7 @@ export function decideNightRemedy(companyId, employeeId, kind, { actorId, ordina
     const employee = draft.employees.find((row) => row.id === employeeId);
     if (!employee) return;
     // The roster that holds his nights (own station, else a covered one) — the same one the 18632 row reads.
-    const held = nightScheduleFor(draft, employee, weekStart);
-    const schedule = (draft.schedules || []).includes(held) ? held : getOrCreateSchedule(draft, employee.stationId);
+    const schedule = nightRosterOf(draft, employee, weekStart);
     const fromHours = kind === "reduce" ? firstNightDutyHours(schedule, employee.id, weekStart) : null;
     employee.profile = stampNightRemedy(employee.profile || {}, kind, {
       at: now,
@@ -2366,7 +2388,7 @@ export function decideNightRemedy(companyId, employeeId, kind, { actorId, ordina
     });
     if (kind === "allowance") syncNightAllowanceOnPayrollDraft(draft, employee);
     if (!applyRoster || kind === "allowance") return;
-    applied = applyNightWorkerDecision(schedule, employee.id, kind === "reduce" ? "reduce" : "rotate", weekStart, { ordinaryKind, cutHours: cut });
+    applied = applyNightWorkerDecision(schedule, employee.id, kind === "reduce" ? "reduce" : "rotate", weekStart, { ordinaryKind, cutHours: cut, notBefore: new Date() });
     // Remember the week the cut was applied to, so «سحب» can put the full night back there.
     if (kind === "reduce" && employee.profile?.nightRemedy) employee.profile.nightRemedy.weekKey = weekKeyFromDate(weekStart);
     const key = weekKeyFromDate(weekStart);
@@ -2377,12 +2399,14 @@ export function decideNightRemedy(companyId, employeeId, kind, { actorId, ordina
   const person = fresh?.employees.find((row) => row.id === employeeId);
   const cutLabel = nightCutHoursLabel(cut, true);
   const payLabel = nightAllowancePayLabel(pay, payKind, true);
+  // Said to the worker, in second person, with the week and where to see it.
+  const weekIso = weekKeyFromDate(weekStart);
   const text = kind === "allowance"
-    ? `${person?.name || ""} — سُجّل ${payLabel}. يُصرف مع الراتب. للمنشأة سحبه والبدء من جديد.`
+    ? `سجّلت المنشأة لك ${payLabel} عن العمل الليلي (القرار 18632). يُصرف مع الراتب.`
     : kind === "reduce"
-      ? `${person?.name || ""} — سُجّل تقليص ${cutLabel} (${applied.moved || 0} يوماً). للمنشأة سحبه والبدء من جديد.`
-      : `${person?.name || ""} — غُيّر العمل الليلي إلى ساعات عادية.`;
-  addNotification(companyId, employeeId, text);
+      ? `قُلّصت ساعات لياليك ${cutLabel} في أسبوع ${weekIso} (${applied.moved || 0} يوماً) — القرار 18632. تجدها في جدولي.`
+      : `حُوِّلت لياليك إلى ساعات عادية في أسبوع ${weekIso} — القرار 18632. تجدها في جدولي.`;
+  addNotification(companyId, employeeId, text, { to: kind === "allowance" ? "/app/payroll?view=self&tab=payslip" : `/app/shifts?week=${weekIso}` });
   audit(companyId, kind === "allowance" ? "night_allowance_recorded" : kind === "reduce" ? "night_hours_reduced" : "night_work_changed", `Night remedy ${kind}${cut ? ` −${cut}h` : pay ? ` ${payKind} ${pay}` : ""} by management for ${person?.name || employeeId}.`);
   return { ok: true, kind, applied, cutHours: cut || null, amount: pay || null, allowanceKind: payKind || null };
 }
@@ -5210,11 +5234,28 @@ export function addShiftType(companyId, stationId, shiftType) {
 }
 
 export function setScheduleNightCompensation(companyId, stationId, on) {
+  let workers = [];
   updateCompany(companyId, (d) => {
     const entry = getOrCreateSchedule(d, stationId);
+    const was = !!entry.nightCompensation;
     entry.nightCompensation = !!on;
     markWeekDirty(entry, new Date());
+    // Who works nights on this roster this week hears that the branch's night compensation changed.
+    if (was !== !!on) {
+      const start = weekStartDate(new Date());
+      workers = (d.employees || []).filter((employee) => weekDateKeys(start).some((key) => isNightWorker(employeeShiftOnDay(entry, employee.id, key), key)));
+    }
   });
+  for (const employee of workers) {
+    addNotification(
+      companyId,
+      employee.id,
+      on
+        ? "سُجّل تعويض العمل الليلي على جدول فرعك — القرار 18632."
+        : "أُلغي تعويض العمل الليلي المسجّل على جدول فرعك — القرار 18632.",
+      { to: "/app/shifts" },
+    );
+  }
 }
 
 export function setNightFacilityFlag(companyId, { stationId, key, on, scope = "schedule" } = {}) {
@@ -5297,6 +5338,15 @@ export function setNightMedicalFitnessReport(companyId, employeeId, report) {
     nightMedicalIssuedAt: from,
     nightMedicalPermanent: permanent || undefined,
   });
+  // The worker hears that his night fitness is on file (and until when) — he no longer has to ask.
+  addNotification(
+    companyId,
+    employeeId,
+    permanent
+      ? "حُفظ تقرير لياقتك للعمل الليلي في ملفك (دائم) — القرار 18632."
+      : `حُفظ تقرير لياقتك للعمل الليلي في ملفك${to ? ` — ساري حتى ${to}` : ""} (القرار 18632).`,
+    { key: `18632-fitness:${employeeId}:${from || "x"}:${to || "p"}`, to: "/app/shifts" },
+  );
 }
 
 export function updateShiftType(companyId, stationId, shiftTypeId, updates) {

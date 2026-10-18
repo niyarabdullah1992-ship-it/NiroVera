@@ -298,14 +298,15 @@ export function collectDueNightRotates(data, weekStart) {
   });
 }
 
-export function applyNightWorkerDecision(schedule, employeeId, decision, weekStart, { ordinaryKind, cutHours } = {}) {
-  if (decision === "reduce") return remapEmployeeNightWorkerDays(schedule, employeeId, weekStart, "reduce", { cutHours });
+export function applyNightWorkerDecision(schedule, employeeId, decision, weekStart, { ordinaryKind, cutHours, notBefore } = {}) {
+  if (decision === "reduce") return remapEmployeeNightWorkerDays(schedule, employeeId, weekStart, "reduce", { cutHours, notBefore });
   if (decision === "refuse" || decision === "rotate") {
     return remapEmployeeNightWorkerDays(
       schedule,
       employeeId,
       weekStart,
       ordinaryKind === "evening" ? "evening" : "rotate",
+      { notBefore },
     );
   }
   return { ok: true, moved: 0, mode: "agree" };

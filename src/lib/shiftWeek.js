@@ -1632,13 +1632,20 @@ export function ensureReducedNightShiftType(schedule, onDate) {
 }
 
 /** reduce = cut the chosen hours from that night duty. rotate = ordinary hours or rest. */
-export function remapEmployeeNightWorkerDays(schedule, employeeId, weekStart, mode = "reduce", { cutHours } = {}) {
+export function remapEmployeeNightWorkerDays(schedule, employeeId, weekStart, mode = "reduce", { cutHours, notBefore } = {}) {
   const start = weekStartDate(weekStart);
   const cut = nightReduceCutHours(cutHours);
+  // `notBefore` (a Date): never rewrite a day that has begun. A past day is history; today keeps its
+  // night when the change would move it to an ordinary shift that already started (a morning at
+  // 07:00 decided at 14:00 makes the worker 7 hours late). A cut keeps the night's start, so today
+  // still takes it.
+  const fromKey = notBefore ? isoDayKey(notBefore) : "";
+  const changeable = (key, keepsStart) => !fromKey || key > fromKey || (keepsStart && key === fromKey);
   if (mode === "reduce" && cut) {
     let moved = 0;
     let shiftId = null;
     for (const day of weekDays(start)) {
+      if (!changeable(day.key, true)) continue;
       const shift = employeeShiftOnDay(schedule, employeeId, day.key);
       if (!isNightShift(shift, day.key)) continue;
       const target = ensureCutNightShiftType(schedule, shift, cut);
@@ -1656,6 +1663,7 @@ export function remapEmployeeNightWorkerDays(schedule, employeeId, weekStart, mo
       : ((schedule.shiftTypes || []).find((shift) => isMorningShift(shift)) || null);
   let moved = 0;
   for (const day of weekDays(start)) {
+    if (!changeable(day.key, mode === "reduce")) continue;
     const shift = employeeShiftOnDay(schedule, employeeId, day.key);
     if (!isNightShift(shift, day.key)) continue;
     assignEmployeeDayOnSchedule(schedule, day.key, employeeId, target?.id || null);

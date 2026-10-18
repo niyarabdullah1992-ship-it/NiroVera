@@ -2,10 +2,13 @@
 // Notifications only carry a text message (from Supabase or local events),
 // so we match keywords in both English and Arabic.
 const RULES = [
+  // Specific phrases first — the place where the decision is actually taken.
+  { route: "/app/attendance?lane=manage&tab=team", keywords: ["طلب تسجيل حضور يدوي", "طلب بصمة يدوية", "manual punch request", "manual attendance request"] },
+  { route: "/app/shifts?lane=manage", keywords: ["مستحق موافقة خطية ليلية", "is due for night", "طلب موافقة", "night consent request"] },
   { route: "/app/signing", keywords: ["signature", "signing", "signed", "sign the", "توقيع", "وقّع", "وقع المستند"] },
   { route: "/app/complaints", keywords: ["complaint", "شكوى", "شكاوى", "بلاغ"] },
   { route: "/app/attendance", keywords: ["attendance", "check-in", "check in", "checked in", "late", "absent", "shift", "schedule", "حضور", "انصراف", "تأخير", "غياب", "غائب", "وردية", "جدول"] },
-  { route: "/app/requests/manage", keywords: ["مستحق موافقة خطية ليلية", "موافقة ليلية سارية", "سحب موافقته الخطية", "night consent is in force", "is due for night", "بانتظار مراجعتك", "needs your review", "بشأن:"] },
+  { route: "/app/requests/manage", keywords: ["موافقة ليلية سارية", "سحب موافقته الخطية", "night consent is in force", "is due for night", "بانتظار مراجعتك", "needs your review", "بشأن:"] },
   { route: "/app/requests", keywords: ["اعتُمدت إجازتك", "اعتُمدت إجازة", "تهانينا", "مبارك", "شفاك", "تقبّل الله", "عظّم الله", "your leave was approved", "ليلي", "ليلية", "18632", "تقليص الساعات", "night-work", "night work", "موافقة خطية", "written consent"] },
   { route: "/app/requests/leave", keywords: ["leave request", "leave ", "vacation", "إجازة", "طلب إجازة", "استحقاق", "رصيدك", "رفع رصيد"] },
   { route: "/app/requests/other", keywords: ["salary letter", "permission", "overtime request", "advance", "شهادة راتب", "استئذان", "سلفة", "طلب آخر", "موافقة دراسية", "study consent"] },

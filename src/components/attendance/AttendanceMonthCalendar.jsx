@@ -149,10 +149,9 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
   const [cmpQuery, setCmpQuery] = useState("");
   const [range, setRange] = useState(null);
   const [cmp, setCmp] = useState("late");
-  // «الكل» · «بين موظفين» (pick two or more) · «موظف مقابل الآخرين» (one against the scope's average).
+  // «كل النطاق» · «بين موظفين» (search, then pick two or more).
   const [cmpMode, setCmpMode] = useState("all");
   const [cmpPicked, setCmpPicked] = useState([]);
-  const [cmpFocus, setCmpFocus] = useState("");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const headerScope = useStationScope();
@@ -407,52 +406,41 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
   const cmpQ = String(cmpQuery || "").trim();
   const cmpSorted = stats
     .filter((row) => roster.some((employee) => String(employee.id) === String(row.id)))
-    .filter((row) => !cmpQ || String(row.name || "").includes(cmpQ))
+    // In «كل النطاق» the search narrows the table; in «بين موظفين» it finds people to add.
+    .filter((row) => cmpMode !== "all" || !cmpQ || String(row.name || "").includes(cmpQ))
     .sort((a, b) => ((Number(b[cmp]) || 0) - (Number(a[cmp]) || 0)) || String(a.name).localeCompare(String(b.name), ar ? "ar" : "en"));
-  const focusId = cmpFocus || (mineLane && currentUser?.id ? String(currentUser.id) : String(cmpSorted[0]?.id || ""));
-  const focusRow = cmpSorted.find((row) => String(row.id) === focusId) || null;
-  const othersRows = cmpSorted.filter((row) => String(row.id) !== focusId);
-  // The scope's average without the focused person — one decimal, from the same rows.
-  const othersAvg = othersRows.length ? {
-    id: "__others",
-    synthetic: true,
-    name: ar ? `متوسط الآخرين · ${othersRows.length}` : `Others' average · ${othersRows.length}`,
-    ...Object.fromEntries(["on", "late", "abs", "leave", "viol", "ot", "wait", "done", "prog", "over", "hse"].map((key) => [
-      key,
-      Math.round((othersRows.reduce((sum, row) => sum + (Number(row[key]) || 0), 0) / othersRows.length) * 10) / 10,
-    ])),
-  } : null;
   const pickedSet = new Set(cmpPicked.map(String));
-  const cmpRows = cmpMode === "pick"
-    ? cmpSorted.filter((row) => pickedSet.has(String(row.id)))
-    : cmpMode === "versus"
-      ? [focusRow, othersAvg].filter(Boolean)
-      : cmpSorted;
-  const pickChoices = (Array.isArray(stats) ? stats : [])
-    .filter((row) => roster.some((employee) => String(employee.id) === String(row.id)))
-    .filter((row) => !cmpQ || String(row.name || "").includes(cmpQ))
-    .sort((a, b) => String(a.name).localeCompare(String(b.name), ar ? "ar" : "en"));
-  const top = cmpSorted[0];
+  const cmpRows = cmpMode === "pick" ? cmpSorted.filter((row) => pickedSet.has(String(row.id))) : cmpSorted;
+  // The people search: names that match, not picked yet — at most eight suggestions.
+  const pickSuggestions = cmpMode === "pick" && cmpQ
+    ? cmpSorted.filter((row) => !pickedSet.has(String(row.id)) && String(row.name || "").includes(cmpQ)).slice(0, 8)
+    : [];
+  const pickedRows = cmpSorted.filter((row) => pickedSet.has(String(row.id)));
+  const addPicked = (id) => { setCmpPicked((list) => (list.map(String).includes(String(id)) ? list : [...list, String(id)])); setCmpQuery(""); };
+  const dropPicked = (id) => setCmpPicked((list) => list.filter((item) => String(item) !== String(id)));
+  const top = cmpRows[0];
   const topScore = top ? (Number(top[cmp]) || 0) : 0;
-  const zero = cmpSorted.filter((row) => (Number(row[cmp]) || 0) === 0).length;
+  const zero = cmpRows.filter((row) => (Number(row[cmp]) || 0) === 0).length;
   const recordedPeople = cmpSorted.filter((row) => (row.on + row.late + row.abs + row.leave) > 0).length;
+  // [pill words — read after «اعرض أولاً من…», colour, short column head, what it means]
   const cmpLabels = {
-    on: [ar ? "حضر في الوقت" : "On time", OC.greenText, ar ? "حضر" : "On"],
-    late: [ar ? "متأخر" : "Late", OC.goldText, ar ? "متأخر" : "Late"],
-    abs: [ar ? "غاب" : "Absent", OC.abs, ar ? "غاب" : "Abs"],
-    leave: [ar ? "إجازة" : "Leave", OC.leave, ar ? "إجازة" : "Leave"],
-    viol: [ar ? "مخالفات الدوام" : "Duty breaches", OC.goldText, ar ? "مخالفة" : "Breach"],
-    ot: [ar ? "إضافي (دقيقة)" : "Overtime (min)", OC.mid, ar ? "إضافي" : "OT"],
-    wait: [ar ? "معلّق" : "Pending", OC.abs, ar ? "معلّق" : "Pend."],
-    done: [ar ? "مهام منجزة" : "Done tasks", OC.greenText, ar ? "منجزة" : "Done"],
-    prog: [ar ? "قيد التنفيذ" : "In progress", OC.goldText, ar ? "جارية" : "Open"],
-    over: [ar ? "مهام متأخرة" : "Overdue tasks", OC.abs, ar ? "متأخرة" : "Over"],
-    hse: [ar ? "بلاغات سلامة" : "HSE", OC.abs, ar ? "سلامة" : "HSE"],
+    on: [ar ? "حضر في وقته" : "Came on time", OC.greenText, ar ? "حضر" : "On", ar ? "حضر في وقت ورديته." : "Punched in on time."],
+    late: [ar ? "تأخّر" : "Came late", OC.goldText, ar ? "تأخّر" : "Late", ar ? "سجّل حضوره بعد بداية ورديته." : "Punched in after the shift start."],
+    abs: [ar ? "غاب" : "Was absent", OC.abs, ar ? "غاب" : "Abs", ar ? "له وردية منشورة ولم يسجّل ولا إجازة له." : "Had a published shift, no punch and no leave."],
+    leave: [ar ? "في إجازة" : "Was on leave", OC.leave, ar ? "إجازة" : "Leave", ar ? "في إجازة معتمدة — لا تُحسب غياباً." : "On approved leave — not absence."],
+    viol: [ar ? "خالف الدوام" : "Broke duty rules", OC.goldText, ar ? "خالف" : "Breach", ar ? "عاد متأخراً من الراحة أو انصرف قبل نهاية ورديته." : "Came back late from a break or left before the shift end."],
+    ot: [ar ? "اشتغل إضافي" : "Worked overtime", OC.mid, ar ? "إضافي" : "OT", ar ? "عمل بعد ساعاته — بالساعة والدقيقة." : "Worked past his hours — in hours and minutes."],
+    wait: [ar ? "عنده شيء ينتظر" : "Has something waiting", OC.abs, ar ? "ينتظر" : "Waiting", ar ? "بصمة تنتظر قرار المدير، أو طلب لم يُرد عليه بعد." : "A punch waiting for the manager, or a request not answered yet."],
+    done: [ar ? "أنجز مهامه" : "Finished tasks", OC.greenText, ar ? "أنجز" : "Done", ar ? "مهام أُنجزت في هذا المدى." : "Tasks finished in this range."],
+    prog: [ar ? "مهامه جارية" : "Tasks in progress", OC.goldText, ar ? "جارية" : "Open", ar ? "مهام بدأت ولم تنتهِ بعد، وموعدها لم يفت." : "Tasks started, not finished, not yet due."],
+    over: [ar ? "تأخّر في مهامه" : "Late on tasks", OC.abs, ar ? "متأخرة" : "Over", ar ? "مهام فات موعدها ولم تُنجز." : "Tasks past their due date and not finished."],
+    hse: [ar ? "عنده بلاغ سلامة" : "Has a safety report", OC.abs, ar ? "بلاغ" : "HSE", ar ? "بلاغ سلامة مفتوح في يومه." : "An open safety report on his day."],
   };
   const CMP_GROUPS = [
     { id: "att", label: ar ? "الحضور" : "Attendance", keys: ["on", "late", "abs", "leave"] },
     { id: "duty", label: ar ? "الدوام" : "Duty", keys: ["viol", "ot", "wait"] },
-    { id: "work", label: ar ? "المهام والسلامة" : "Tasks & safety", keys: ["done", "prog", "over", "hse"] },
+    { id: "tasks", label: ar ? "المهام" : "Tasks", keys: ["done", "prog", "over"] },
+    { id: "safety", label: ar ? "السلامة" : "Safety", keys: ["hse"] },
   ];
   const CMP_ORDER = CMP_GROUPS.flatMap((group) => group.keys);
   // Each sort pill carries the scope's total for that key — read from the same rows the table shows.
@@ -478,14 +466,6 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
       ? (ar ? `كل نطاقك · ${roster.length} موظفاً` : `Your whole scope · ${roster.length} people`)
       : `${scopedStation?.name || headerScope} · ${roster.length}`);
   const cmpTitle = cmpLabels[cmp][0];
-  const versusLine = cmpMode === "versus" && focusRow && othersAvg
-    ? ["abs", "late", "viol", "wait", "over"]
-      .filter((key) => (Number(focusRow[key]) || 0) !== (Number(othersAvg[key]) || 0))
-      .map((key) => (ar
-        ? `${cmpLabels[key][0]}: ${key === "ot" ? minutesShort(focusRow[key]) : focusRow[key]} مقابل ${othersAvg[key]}`
-        : `${cmpLabels[key][0]}: ${focusRow[key]} vs ${othersAvg[key]}`))
-      .join(" · ")
-    : "";
 
   const todayIso = isoFromParts(now.getFullYear(), now.getMonth(), now.getDate());
   const back7 = (() => {
@@ -938,15 +918,40 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
                   </span>
                 </div>
                 {view === "team" ? (
-                  <label style={{ display: "flex", flexDirection: "column", gap: 5, flex: "1 1 220px", maxWidth: 320 }}>
-                    <span style={{ fontSize: 11.5, fontWeight: 600, color: OC.mid }}>{ar ? "ابحث بالاسم" : "Search by name"}</span>
+                  <div data-cmp-search style={{ position: "relative", display: "flex", flexDirection: "column", gap: 5, flex: "1 1 220px", maxWidth: 320 }}>
+                    <label htmlFor="nv-cmp-q" style={{ fontSize: 11.5, fontWeight: 600, color: OC.mid }}>
+                      {cmpMode === "pick" ? (ar ? "أضف موظفاً للمقارنة" : "Add a person to compare") : (ar ? "ابحث بالاسم" : "Search by name")}
+                    </label>
                     <input
+                      id="nv-cmp-q"
                       value={cmpQuery}
                       onChange={(e) => setCmpQuery(e.target.value)}
-                      placeholder={ar ? "اسم موظف في النطاق" : "A name in scope"}
+                      onKeyDown={(e) => { if (e.key === "Enter" && pickSuggestions[0]) addPicked(pickSuggestions[0].id); }}
+                      placeholder={cmpMode === "pick" ? (ar ? "اكتب جزءاً من الاسم" : "Type part of a name") : (ar ? "اسم موظف في النطاق" : "A name in scope")}
+                      autoComplete="off"
                       style={{ fontFamily: "inherit", fontSize: 12.5, height: 36, padding: "0 12px", border: `1px solid ${OC.line}`, borderRadius: 10, outline: "none", background: "var(--nv-card)", color: OC.ink, width: "100%", boxSizing: "border-box" }}
                     />
-                  </label>
+                    {cmpMode === "pick" && cmpQ ? (
+                      <div role="listbox" data-cmp-suggest style={{ position: "absolute", top: "100%", insetInline: 0, marginTop: 4, zIndex: 5, background: "var(--nv-card)", border: `1px solid ${OC.line}`, borderRadius: 10, boxShadow: "0 12px 28px rgba(12,20,16,.14)", padding: 4, display: "flex", flexDirection: "column", gap: 2, maxHeight: 260, overflowY: "auto" }}>
+                        {pickSuggestions.length ? pickSuggestions.map((row) => (
+                          <button
+                            key={row.id}
+                            type="button"
+                            role="option"
+                            data-cmp-person={row.id}
+                            onClick={() => addPicked(row.id)}
+                            style={{ fontFamily: "inherit", display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: "none", borderRadius: 8, background: "transparent", color: OC.ink, fontSize: 12.5, cursor: "pointer", textAlign: "start" }}
+                          >
+                            <NameLetter name={row.name} />
+                            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</span>
+                            <span style={{ fontSize: 11, color: OC.greenText, fontWeight: 600 }}>{ar ? "أضف" : "Add"}</span>
+                          </button>
+                        )) : (
+                          <span style={{ padding: "8px 10px", fontSize: 12, color: OC.muted }}>{ar ? "لا اسم يطابق في النطاق." : "No name matches in scope."}</span>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
 
@@ -961,37 +966,19 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
                     items={[
                       { id: "all", label: ar ? "كل النطاق" : "Whole scope" },
                       { id: "pick", label: ar ? "بين موظفين" : "Between people", n: cmpMode === "pick" ? cmpPicked.length : undefined },
-                      { id: "versus", label: ar ? "موظف مقابل الآخرين" : "One vs the rest" },
                     ]}
                   />
-                  {cmpMode !== "all" ? (
-                    <div data-cmp-pick style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                      <span style={{ fontSize: 10.5, color: OC.muted }}>
-                        {cmpMode === "pick"
-                          ? (ar ? "اختر موظفين أو أكثر — الضغط مرة ثانية يزيل الاسم" : "Pick two or more — press again to remove")
-                          : (ar ? "اختر الموظف — يُقارن بمتوسط بقية النطاق" : "Pick the person — compared with the rest of the scope")}
-                      </span>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxHeight: 132, overflowY: "auto" }}>
-                        {pickChoices.map((row) => {
-                          const on = cmpMode === "pick" ? pickedSet.has(String(row.id)) : String(row.id) === focusId;
-                          return (
-                            <button
-                              key={row.id}
-                              type="button"
-                              data-cmp-person={row.id}
-                              aria-pressed={on}
-                              onClick={() => {
-                                if (cmpMode === "versus") { setCmpFocus(String(row.id)); return; }
-                                setCmpPicked((list) => (list.map(String).includes(String(row.id)) ? list.filter((id) => String(id) !== String(row.id)) : [...list, String(row.id)]));
-                              }}
-                              style={{ ...statusPillStyle(on, "sm"), gap: 6, paddingInlineStart: 4 }}
-                            >
-                              <NameLetter name={row.name} mine={on} />
-                              {row.name}
-                            </button>
-                          );
-                        })}
-                      </div>
+                  {cmpMode === "pick" ? (
+                    <div data-cmp-picked style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                      {pickedRows.length ? pickedRows.map((row) => (
+                        <span key={row.id} style={{ ...statusPillStyle(true, "sm"), gap: 6, paddingInlineStart: 4, cursor: "default" }}>
+                          <NameLetter name={row.name} mine />
+                          {row.name}
+                          <button type="button" onClick={() => dropPicked(row.id)} aria-label={ar ? `أزل ${row.name}` : `Remove ${row.name}`} style={{ fontFamily: "inherit", border: "none", background: "transparent", color: "inherit", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "0 2px" }}>×</button>
+                        </span>
+                      )) : (
+                        <span style={{ fontSize: 11.5, color: OC.muted }}>{ar ? "ابحث بالاسم في الحقل أعلاه وأضف موظفين اثنين أو أكثر." : "Search a name above and add two or more people."}</span>
+                      )}
                     </div>
                   ) : null}
                 </div>
@@ -1019,7 +1006,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
               </div>
 
               <div data-cmp-sort style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: OC.mid }}>{ar ? "رتّب حسب" : "Sort by"}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: OC.mid }}>{ar ? "اعرض أولاً من…" : "Show first who…"}</span>
                 {CMP_GROUPS.map((group) => (
                   <div key={group.id} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 11, color: OC.muted, minWidth: 54 }}>{group.label}</span>
@@ -1033,6 +1020,9 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
                     />
                   </div>
                 ))}
+                <span data-cmp-explain style={{ fontSize: 11.5, color: OC.mid, lineHeight: 1.7, background: "var(--nv-soft)", borderRadius: 8, padding: "6px 10px" }}>
+                  {ar ? `يظهر أولاً من ${cmpLabels[cmp][0]} أكثر — ${cmpLabels[cmp][3]}` : `Shown first: who ${cmpLabels[cmp][0].toLowerCase()} most — ${cmpLabels[cmp][3]}`}
+                </span>
               </div>
             </div>
             {cmpSorted.length ? (
@@ -1063,17 +1053,15 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px 12px" }}>
                     {cmpMode === "pick" && cmpRows.length < 2 ? (
-                      <span style={{ fontSize: 12, color: OC.muted, padding: "6px 8px" }}>{ar ? "اختر موظفين اثنين على الأقل من الأسماء أعلاه." : "Pick at least two people above."}</span>
+                      <span style={{ fontSize: 12, color: OC.muted, padding: "6px 8px" }}>{ar ? "ابحث بالاسم وأضف موظفين اثنين على الأقل." : "Pick at least two people above."}</span>
                     ) : null}
                     {cmpRows.map((row) => {
                       const tot = Math.max(1, row.on + row.late + row.abs + row.leave);
-                      const self = !row.synthetic && isViewerOwnFile(row, currentUser);
+                      const self = isViewerOwnFile(row, currentUser);
                       return (
-                        <div key={row.id} role="row" data-cmp-row={row.id} style={{ display: "grid", gridTemplateColumns: cmpGrid, gap: 6, padding: "9px 8px", alignItems: "center", borderRadius: 10, border: row.synthetic ? `1px dashed ${OC.line}` : `1px solid ${self ? OC.greenBd : "var(--nv-line2)"}`, background: row.synthetic ? "var(--nv-soft)" : (self ? OC.greenBg : "var(--nv-card)") }}>
+                        <div key={row.id} role="row" data-cmp-row={row.id} style={{ display: "grid", gridTemplateColumns: cmpGrid, gap: 6, padding: "9px 8px", alignItems: "center", borderRadius: 10, border: `1px solid ${self ? OC.greenBd : "var(--nv-line2)"}`, background: self ? OC.greenBg : "var(--nv-card)" }}>
                           <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                            {row.synthetic
-                              ? <span aria-hidden style={{ width: 26, height: 26, flex: "none", borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, background: "var(--nv-card)", color: OC.mid, border: `1px solid ${OC.line}` }}>≈</span>
-                              : <NameLetter name={row.name} mine={self} />}
+                            <NameLetter name={row.name} mine={self} />
                             <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{row.name}</span>
                             {self ? <FileSelfBadge ar={ar} /> : null}
                           </span>
@@ -1108,10 +1096,6 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
               <span style={{ fontSize: 12, color: OC.mid, lineHeight: 1.85 }}>
                 {view !== "team"
                   ? (ar ? "بدّل إلى «الفريق» أعلى الصفحة لمقارنة الموظفين." : "Switch to Team to compare people.")
-                  : cmpMode === "versus" && focusRow
-                    ? (versusLine
-                      ? (ar ? `${focusRow.name} مقابل متوسط الآخرين — ${versusLine}.` : `${focusRow.name} vs the others — ${versusLine}.`)
-                      : (ar ? `${focusRow.name} مثل متوسط الآخرين في الغياب والتأخير والمخالفات والمعلّق.` : `${focusRow.name} matches the others' average.`))
                   : (top && topScore > 0
                     ? (ar ? `الأعلى في «${cmpTitle}»: ${top.name} بـ${cmp === "ot" ? minutesPhrase(topScore, true) : topScore}، و${zero} بلا شيء منه.` : `Highest ${cmpTitle}: ${top.name} at ${topScore}; ${zero} with none.`)
                     : (ar ? `لا أحد سجّل «${cmpTitle}» في هذا المدى.` : `Nobody recorded ${cmpTitle} in this range.`))}

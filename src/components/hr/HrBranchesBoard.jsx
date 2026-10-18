@@ -8,7 +8,8 @@ import { deriveStationReadiness, readinessLabel } from "@/lib/stationReadiness";
 import { HR_BRANCH_FILTERS, hrBranchMatches, hrBranchRows } from "@/lib/hrSection";
 import { foldOrgLookup } from "@/lib/orgLookup";
 
-const openBtn = { ...ui.btnRow, padding: "0 14px", height: 30, display: "inline-flex", alignItems: "center", textDecoration: "none", fontWeight: 600, flexShrink: 0 };
+// every branch row is the link itself — no separate «افتح» (the «طلباتي» list pattern)
+const rowLink = { display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderTop: "1px solid var(--nv-line2, #EEF2F7)", flexWrap: "wrap", minWidth: 0, textDecoration: "none", color: "inherit" };
 
 const FILTER_LABELS = {
   all: { ar: "الكل", en: "All" },
@@ -101,7 +102,7 @@ export default function HrBranchesBoard({
       <section style={{ ...slab, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {groups.length ? groups.map((g) => (
         <div key={g.key} data-hr-city={g.noCity ? "none" : g.city} style={{ display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "9px 18px", background: "var(--nv-soft, #F6F8FA)", borderBottom: "1px solid var(--nv-line2, #EEF2F7)", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ padding: "9px 18px", background: "var(--nv-soft, #F6F8FA)", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
             <b style={{ fontSize: 12.5, color: g.noCity ? "var(--nv-muted)" : "var(--nv-ink)" }}>{g.city}</b>
             {g.region || g.country ? <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{[g.region, g.country].filter(Boolean).join(" · ")}</span> : null}
             <span style={{ fontSize: 11.5, color: "var(--nv-muted)", marginInlineStart: "auto" }}>
@@ -110,8 +111,8 @@ export default function HrBranchesBoard({
           </div>
           {g.rows.map((row) => {
             const held = row.readiness && row.readiness.level === "blocked";
-            return (
-              <div key={row.id} data-hr-branch={row.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderBottom: "1px solid var(--nv-line2, #EEF2F7)", flexWrap: "wrap", minWidth: 0 }}>
+            return canWrite ? (
+                <button type="button" key={row.id} data-hr-branch={row.id} className="nv-hr-row" onClick={() => setFocusId(row.id)} style={{ ...rowLink, fontFamily: "inherit", width: "100%", border: "none", borderTop: "1px solid var(--nv-line2, #EEF2F7)", background: "transparent", cursor: "pointer", textAlign: "start" }}>
                 <span style={{ display: "flex", flexDirection: "column", gap: 2, flex: "1 1 220px", minWidth: 0 }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <b style={{ fontSize: 13, color: "var(--nv-ink)" }}>{row.name}</b>
@@ -125,13 +126,26 @@ export default function HrBranchesBoard({
                     {row.readiness?.top && row.readiness.level !== "ready" ? <> · {ar ? row.readiness.top.ar : row.readiness.top.en}</> : null}
                   </span>
                 </span>
-                {canWrite ? (
-                  <button type="button" onClick={() => setFocusId(row.id)} style={{ ...openBtn, border: "none" }}>{ar ? "افتح" : "Open"}</button>
-                ) : (
-                  <Link to="/app/org/chart?view=branches&lane=manage" state={{ from: "/app/hr?tab=branches" }} style={openBtn}>{ar ? "افتح" : "Open"}</Link>
-                )}
-              </div>
-            );
+                  <span aria-hidden style={{ fontSize: 15, lineHeight: 1, color: "var(--nv-muted)", flexShrink: 0 }}>›</span>
+                </button>
+              ) : (
+                <Link key={row.id} data-hr-branch={row.id} className="nv-hr-row" to="/app/org/chart?view=branches&lane=manage" state={{ from: "/app/hr?tab=branches" }} style={rowLink}>
+                <span style={{ display: "flex", flexDirection: "column", gap: 2, flex: "1 1 220px", minWidth: 0 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <b style={{ fontSize: 13, color: "var(--nv-ink)" }}>{row.name}</b>
+                    {row.noManager ? <span style={chip("warn")}>{ar ? "بلا مدير" : "No manager"}</span> : null}
+                    {held ? <span style={chip("bad")}>{readinessLabel("blocked", ar)}</span> : null}
+                  </span>
+                  <span style={{ fontSize: 12, color: "var(--nv-muted)", lineHeight: 1.7 }}>
+                    {row.managerName ? <>{ar ? "المدير: " : "Manager: "}{row.managerName} · </> : null}
+                    {ar ? "موظفون " : "people "}<Num>{row.headcount}</Num>
+                    {row.seats ? <> · {ar ? "مناصب " : "seats "}<Num>{row.seats}</Num>{row.vacant ? <> · {ar ? "شاغرة " : "vacant "}<Num>{row.vacant}</Num></> : null}</> : null}
+                    {row.readiness?.top && row.readiness.level !== "ready" ? <> · {ar ? row.readiness.top.ar : row.readiness.top.en}</> : null}
+                  </span>
+                </span>
+                  <span aria-hidden style={{ fontSize: 15, lineHeight: 1, color: "var(--nv-muted)", flexShrink: 0 }}>›</span>
+                </Link>
+              );
           })}
         </div>
       )) : (

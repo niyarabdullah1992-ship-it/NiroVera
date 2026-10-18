@@ -218,6 +218,7 @@ export const SUITE_APPS = [
     path: "/app/org",
     planSection: "hr",
     group: "workforce",
+    side: "employee",
     public: true,
     ar: "الهيكل",
     en: "Structure",

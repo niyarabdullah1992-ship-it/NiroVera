@@ -4400,3 +4400,7 @@ html.dark .nv-cic, .dark .nv-cic { background: var(--nv-card, #1C2922); }
 }
 @media (prefers-reduced-motion: reduce) { .nv-heat-glow[data-heat-season="live"] { animation: none; } }
 html.dark .nv-heat-glow { background: linear-gradient(270deg, rgba(232,163,23,.20), rgba(232,163,23,.06)) !important; }
+
+/* الموارد البشرية › نظرة عامة — every row is the link; hover lifts it quietly like a «طلباتي» card */
+.nv-hr-row:hover { background: var(--nv-soft, #F6F8F7); }
+.nv-hr-row:focus-visible { outline: 2px solid #C8A45A; outline-offset: -2px; }

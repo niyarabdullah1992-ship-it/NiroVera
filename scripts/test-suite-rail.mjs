@@ -142,7 +142,6 @@ assert.deepEqual(
 assert.deepEqual(
   manageSide.groups.map((group) => ({ label: group.label, items: group.items.map((item) => item.label) })),
   [
-    { label: "الرئيسية", items: ["لوحة القيادة"] },
     { label: "العمل اليومي", items: ["الحضور والدوام", "المهام والإثبات", "السلامة"] },
     // «الهيكل والفروع» and «المحطات التي أديرها» are one section now: «الموارد البشرية».
     { label: "الموظفون", items: ["الموارد البشرية", "الطلبات", "الجزاءات", "صوت الموظف", "الأداء"] },
@@ -152,7 +151,8 @@ assert.deepEqual(
 assert.equal(sideItems(employeeSide).some((item) => item.label === "ملفي" || item.section === "file"), false, "the personal file opens from the identity bar");
 assert.equal(railFooter(director, company, "ar", "employee").to, "/app/employees/d1");
 assert.equal(sideItems(manageSide).some((item) => item.section === "overview"), false, "نظرة عامة stays off the company rail");
-assert.equal(sideItems(manageSide).find((item) => item.section === "decide").to, "/app");
+// «لوحة القيادة» is retired: no decide item on either side.
+assert.equal(sideItems(manageSide).some((item) => item.section === "decide"), false);
 assert.equal(sideItems(manageSide).find((item) => item.section === "duty").to, "/app/attendance?lane=manage");
 assert.equal(sideItems(manageSide).find((item) => item.section === "requests").to, "/app/requests/manage");
 assert.equal(sideItems(manageSide).find((item) => item.section === "discipline").to, "/app/discipline?tab=manage&lane=manage");
@@ -230,7 +230,6 @@ const partial = buildSuiteRailClusters(
   { user: stationManager, data: { ownerId: "other" } },
 );
 const partialManage = sideItems(partial.find((side) => side.id === "manage")).map((item) => item.section);
-assert.ok(partialManage.includes("decide"));
 assert.ok(partialManage.includes("duty"));
 assert.ok(partialManage.includes("requests"));
 // The station-manager money decisions were expenses / assets / inventory — removed. Payroll stays HR-gated.
@@ -313,8 +312,6 @@ assert.equal(activeSuiteRailKey(managed, "discipline", "/app/discipline", "?tab=
 assert.equal(activeSuiteRailKey(managed, "discipline", "/app/discipline", "?tab=calc"), "discipline:manage");
 assert.equal(activeSuiteRailKey(managed, "discipline", "/app/discipline", "?tab=mine"), "discipline:employee");
 assert.equal(activeSuiteRailKey(employeeRail, "decide", "/app", ""), "");
-assert.equal(activeSuiteRailKey(managed, "decide", "/app", ""), "decide:manage");
-assert.equal(activeSuiteRailKey(managed, "decide", "/app", "?face=map"), "decide:manage");
 assert.equal(activeSuiteRailKey(managed, "daily", "/app/work-proof", ""), "daily:employee");
 assert.equal(activeSuiteRailKey(managed, "daily", "/app/escalation", ""), "daily:manage");
 assert.equal(activeSuiteRailKey(employeeRail, "daily", "/app/escalation", ""), "");

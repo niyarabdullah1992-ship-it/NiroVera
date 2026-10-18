@@ -17,6 +17,9 @@ import PageErrorBoundary from "@/components/PageErrorBoundary";
 import JobGradeManager from "@/components/employees/JobGradeManager";
 import HrDirectoryBoard from "@/components/hr/HrDirectoryBoard";
 import ComplianceMhrsdBoard from "@/components/hr/ComplianceMhrsdBoard";
+import CompanyObligationsList from "@/components/dashboard/CompanyObligationsList";
+import { visibleEmployees } from "@/lib/permissions";
+import { matchesStationScope } from "@/hooks/useStationScope";
 import HrOverviewBoard from "@/components/hr/HrOverviewBoard";
 import HrBranchesBoard from "@/components/hr/HrBranchesBoard";
 import HrStructurePane from "@/components/hr/HrStructurePane";
@@ -37,6 +40,10 @@ export default function HRStructureManagement() {
   const { data, currentUser, company } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const stationScope = useStationScope();
+  const scopeEmployees = useMemo(
+    () => (data && currentUser ? visibleEmployees(currentUser, data).filter((employee) => matchesStationScope(employee.stationId, stationScope, data?.stations || [])) : []),
+    [data, currentUser, stationScope],
+  );
   const [gradesOpen, setGradesOpen] = useState(false);
   const [hire, setHire] = useState(null);
 
@@ -179,7 +186,14 @@ export default function HRStructureManagement() {
                 onBranchConsumed={clearBranch}
               />
             ) : null}
-            {tab === "compliance" ? <ComplianceMhrsdBoard ministry="hr" /> : null}
+            {tab === "compliance" ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {/* «التزاماتي وحقوقي» — legal dates owed across the people in scope (moved here from the
+                    retired dashboard; it is compliance, not a glance). */}
+                <CompanyObligationsList employees={scopeEmployees} data={data} ar={ar} />
+                <ComplianceMhrsdBoard ministry="hr" />
+              </div>
+            ) : null}
           </PageErrorBoundary>
           {!tab ? <p style={{ margin: 0, fontSize: 13, color: MUTED }}>{ar ? "لا قسم متاح لك هنا." : "No pane is open to you here."}</p> : null}
         </div>

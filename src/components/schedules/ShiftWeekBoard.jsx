@@ -1210,16 +1210,6 @@ export default function ShiftWeekBoard({
       ar={ar}
       lane="manage"
       title={ar ? "جدول الدوام — الأسبوع" : "Duty roster — the week"}
-      hint={(
-        <>
-          {stationName ? `${ar ? `فرع ${String(stationName).replace(/^فرع\s+/u, "")}` : stationName} · ` : ""}
-          {canEdit
-            ? (ar ? "حرّر الخانات ثم انشر الأسبوع — " : "Edit the cells, then publish the week — ")
-            : (ar ? "جدول فرعك فقط — التحرير للإدارة · " : "Your branch only — editing stays with management · ")}
-          <Link to="/app/attendance?lane=manage" style={{ color: "#fff", fontWeight: 700 }}>{ar ? "حضور الفريق" : "Team attendance"}</Link>
-          {ar ? " يلتقط من النسخة المنشورة." : " captures from the published copy."}
-        </>
-      )}
       meta={<StatutoryItem decisionId="18632" ar={ar} entitlement glow={nightGlow} compact />}
     >
     <div className="nv-sched" style={{ display: "flex", flexDirection: "column", gap: 16 }}>

@@ -550,17 +550,7 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
     }
   }
 
-  const decide = byKey.get("decide");
-  if (decide && user?.role && user.role !== "employee") {
-    manage.set("decide", faceItem({
-      section: "decide",
-      lane: "manage",
-      iconKey: "decide",
-      label: ar ? "لوحة القيادة" : "Dashboard",
-      to: "/app",
-      signal: ownedSignal(decide, "command", true),
-    }));
-  }
+  // «لوحة القيادة» retired: no rail item — each figure is read in the section that owns it.
 
   // «الموارد البشرية» — one item for what were «الهيكل والفروع» (/app/hr) and «المحطات التي أديرها»
   // (/app/org admin). Same gates as the two it replaced; a station lead (ctx.hrAccess from

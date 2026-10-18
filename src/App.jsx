@@ -14,6 +14,7 @@ import Layout from '@/components/Layout';
 import TrialExpiryGate from '@/components/TrialExpiryGate';
 import AppErrorBoundary from '@/components/AppErrorBoundary';
 import { canAccessPath, canAccessPlanPath } from '@/lib/navVisibility';
+import { canCreateTasks } from '@/lib/permissions';
 import { isBase44BackendConfigured } from '@/lib/localPreview';
 
 import { lazy, Suspense, useEffect } from 'react';
@@ -39,7 +40,6 @@ const Mobile = lazy(() => import('./pages/Mobile'));
 const SalesDeck = lazy(() => import('./pages/SalesDeck'));
 const Careers = lazy(() => import('./pages/Careers'));
 const Workspace = lazy(() => import('./pages/Workspace'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Operations = lazy(() => import('./pages/Operations'));
 const Complaints = lazy(() => import('./pages/Complaints'));
 const Discipline = lazy(() => import('./pages/Discipline'));
@@ -78,7 +78,6 @@ const ProofVerify = lazy(() => import('./pages/ProofVerify'));
 // Start the workspace chunk immediately when a session already exists so /app
 // does not wait for window load — that delay was a blank spinner then a jump.
 if (typeof window !== "undefined" && localStorage.getItem("powercare_session")) {
-  import('./pages/Dashboard');
   const prefetch = () => {
     import('./pages/Operations');
     import('./pages/Attendance');
@@ -106,6 +105,21 @@ function OpenEmployeeFile() {
   const { currentUser } = usePowerCareAuth();
   if (!currentUser?.id) return <InteriorLoader />;
   return <Navigate to={`/app/employees/${encodeURIComponent(currentUser.id)}`} replace />;
+}
+
+function HomeRedirect() {
+  // لوحة القيادة retired — the home is the day's work. A manager lands on the management lane of
+  // الحضور والدوام; everyone else on بصمتي. If the plan or role closes it, the next open section.
+  const { company, data, currentUser } = usePowerCareAuth();
+  if (!currentUser?.id) return <InteriorLoader />;
+  const manager = canCreateTasks(currentUser, data);
+  const candidates = [
+    manager ? "/app/attendance?lane=manage" : "/app/attendance",
+    "/app/requests",
+    `/app/employees/${encodeURIComponent(currentUser.id)}`,
+  ];
+  const to = candidates.find((path) => canAccessPath(path.split("?")[0], currentUser, data, company)) || candidates[candidates.length - 1];
+  return <Navigate to={to} replace />;
 }
 
 function RequireAuth({ children }) {
@@ -225,7 +239,9 @@ function AppRoutes() {
         <Route path="/owner" element={<CompanyOwnerBoard />} />
         <Route path="/owner-panel" element={<Navigate to="/owner" replace />} />
       </Route>
-      <Route path="/app" element={<RequireAuth><Dashboard /></RequireAuth>} />
+      {/* لوحة القيادة retired — every figure lives in its own section. The home is the day's work:
+          الحضور والدوام (the rail side decides the employee or management lane). */}
+      <Route path="/app" element={<RequireAuth><HomeRedirect /></RequireAuth>} />
       <Route path="/app/executive" element={<Navigate to="/app" replace />} />
       <Route path="/app/tasks" element={<RequireAuth><Operations /></RequireAuth>} />
       <Route path="/app/escalation" element={<RequireAuth><Escalation /></RequireAuth>} />

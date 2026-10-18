@@ -41,13 +41,15 @@ function windowText(permit) {
   return `${s} → ${sameDay ? e.slice(11) : e.replace("T", " ")}`;
 }
 
-function PermitComposer({ ar, stations, staffOf, today, onIssue }) {
+function PermitComposer({ ar, stations, staffOf, today, onIssue, request = null, onCancel }) {
   const L = (a, e) => (ar ? a : e);
-  const [form, setForm] = useState({ type: "hot", stationId: stations[0]?.id || "", description: "", holderId: "", team: "", date: today, from: "", to: "", outdoor: false, controls: [] });
+  const [form, setForm] = useState(request
+    ? { type: request.type, stationId: request.stationId, description: request.description || "", holderId: String(request.holderId || ""), team: request.team || "", date: String(request.startAt || "").slice(0, 10), from: String(request.startAt || "").slice(11, 16), to: String(request.endAt || "").slice(11, 16), outdoor: Boolean(request.outdoor), controls: [] }
+    : { type: "hot", stationId: stations[0]?.id || "", description: "", holderId: "", team: "", date: today, from: "", to: "", outdoor: false, controls: [] });
   const patch = (next) => setForm((cur) => ({ ...cur, ...next }));
   const startAt = form.date && form.from ? `${form.date}T${form.from}` : "";
   const endAt = form.date && form.to ? `${form.to <= form.from ? addDays(form.date, 1) : form.date}T${form.to}` : "";
-  const draft = { ...form, startAt, endAt };
+  const draft = { ...form, startAt, endAt, requestId: request?.id || "" };
   const gate = checkPermitIssueGate(draft);
   const controls = permitControlRows(form.type);
   const staff = staffOf(form.stationId);
@@ -61,9 +63,11 @@ function PermitComposer({ ar, stations, staffOf, today, onIssue }) {
   ];
   return (
     <DisciplineNewFrame
-      dataKey="permit"
-      title={L("تصريح عمل جديد", "New permit to work")}
-      note={L("لا يبدأ العمل الخطِر قبل تصريح موقّع — ويُغلق بتوقيع عند انتهائه.", "Hazardous work does not start before a signed permit — it closes with a signature.")}
+      dataKey={request ? "permit-from-request" : "permit"}
+      title={request ? (ar ? `إصدار التصريح ${request.id}` : `Issue permit ${request.id}`) : L("تصريح عمل جديد", "New permit to work")}
+      note={request
+        ? (ar ? `طلبه ${request.holderName || "—"} · راجع الوقت والمكان، وأكّد الضوابط، ثم أصدر — أو ارفض بسبب.` : `Requested by ${request.holderName || "—"} · check time and place, confirm the controls, then issue — or decline with a reason.`)
+        : L("لا يبدأ العمل الخطِر قبل تصريح موقّع — ويُغلق بتوقيع عند انتهائه.", "Hazardous work does not start before a signed permit — it closes with a signature.")}
       tiles={tiles}
       value={form.type}
       onPick={(id) => patch({ type: id, controls: [] })}
@@ -135,27 +139,35 @@ function PermitComposer({ ar, stations, staffOf, today, onIssue }) {
 
       <Checklist dataKey="permit" items={checklist} />
       <GateLine gate={gate} ar={ar} dataAttr={{ "data-permit-gate": "1" }} />
-      <SendButton ready={gate.ok} dataAttr={{ "data-permit-issue": "1" }} onClick={() => { if (onIssue(draft)) setForm((cur) => ({ ...cur, description: "", holderId: "", team: "", from: "", to: "", controls: [], outdoor: false })); }}>
+      <SendButton ready={gate.ok} dataAttr={{ "data-permit-issue": "1" }} onClick={() => { if (onIssue(draft)) { if (request) onCancel?.(); else setForm((cur) => ({ ...cur, description: "", holderId: "", team: "", from: "", to: "", controls: [], outdoor: false })); } }}>
         {L("أصدر التصريح", "Issue the permit")}
       </SendButton>
+      {request ? (
+        <button type="button" data-permit-back="1" onClick={onCancel} style={{ fontFamily: "inherit", height: 36, borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ink)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+          {L("رجوع دون إصدار", "Back without issuing")}
+        </button>
+      ) : null}
     </DisciplineNewFrame>
   );
 }
 
-function PermitActions({ ar, row, onAct }) {
+function PermitActions({ ar, row, onAct, onReview, actorId }) {
   const L = (a, e) => (ar ? a : e);
   const [mode, setMode] = useState("");
   const [note, setNote] = useState("");
   const [areaSafe, setAreaSafe] = useState(false);
   const state = row.state;
   const permit = row.permit;
+  const live = ["open", "active", "closing"].includes(state);
   const choices = [
-    state === "open" ? { id: "suspend", label: L("أوقف العمل", "Stop the work") } : null,
+    state === "requested" ? { id: "issue", label: L("راجع وأصدر", "Review and issue") } : null,
+    state === "requested" ? { id: "decline", label: L("ارفض بسبب", "Decline with reason") } : null,
+    live ? { id: "suspend", label: L("أوقف العمل", "Stop the work") } : null,
     state === "suspended" ? { id: "resume", label: L("استأنف", "Resume") } : null,
-    ["open", "suspended", "expired"].includes(state) ? { id: "close", label: L("أغلق بتوقيع", "Close with signature") } : null,
-    ["open", "suspended"].includes(state) ? { id: "cancel", label: L("ألغِ", "Cancel") } : null,
+    live || ["suspended", "expired"].includes(state) ? { id: "close", label: L("أغلق بتوقيع", "Close with signature") } : null,
+    live || state === "suspended" ? { id: "cancel", label: L("ألغِ", "Cancel") } : null,
   ].filter(Boolean);
-  const gate = mode ? checkPermitActionGate(permit, mode, { note, areaSafe }) : null;
+  const gate = mode && mode !== "issue" ? checkPermitActionGate(permit, mode, { note, areaSafe, actorId }) : null;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 150px), 1fr))", gap: 8 }}>
@@ -163,6 +175,7 @@ function PermitActions({ ar, row, onAct }) {
           [L("المنفّذ", "Holder"), permit.holderName || "—"],
           [L("الفريق", "Team"), permit.team || "—"],
           [L("أصدره", "Issued by"), permit.issuedBy || "—"],
+          [L("توقيع المنفّذ", "Holder's signature"), permit.acknowledgedAt ? `${permit.acknowledgedBy || permit.holderName} · ${String(permit.acknowledgedAt).slice(0, 16).replace("T", " ")}` : (state === "open" ? L("لم يوقّع بعد — لا يبدأ العمل", "Not yet — work may not start") : "—")],
           [L("الضوابط", "Controls"), permitControlRows(permit.type).filter((c) => (permit.controls || []).includes(c.id)).map((c) => (ar ? c.ar : c.en)).join("، ") || "—"],
         ].map(([k, v]) => (
           <div key={k} style={{ display: "flex", flexDirection: "column", gap: 2, padding: "8px 10px", borderRadius: 8, background: "var(--nv-soft)" }}>
@@ -176,7 +189,7 @@ function PermitActions({ ar, row, onAct }) {
           {permit.trail.map((t, i) => (
             <li key={i}>
               <span dir="ltr" style={{ fontFamily: MONO }}>{String(t.at).slice(0, 16).replace("T", " ")}</span>
-              {" · "}{{ issue: L("صدر", "Issued"), suspend: L("أوقف", "Stopped"), resume: L("استؤنف", "Resumed"), close: L("أُغلق", "Closed"), cancel: L("أُلغي", "Cancelled") }[t.type] || t.type}
+              {" · "}{{ request: L("طُلب", "Requested"), issue: L("صدر", "Issued"), decline: L("رُفض", "Declined"), acknowledge: L("وقّع المنفّذ على الاستلام", "Holder signed"), requestClose: L("أنهى المنفّذ العمل", "Holder finished"), suspend: L("أوقف", "Stopped"), resume: L("استؤنف", "Resumed"), close: L("أُغلق", "Closed"), cancel: L("أُلغي", "Cancelled") }[t.type] || t.type}
               {t.by ? ` — ${t.by}` : ""}{t.note ? `: ${t.note}` : ""}
             </li>
           ))}
@@ -185,7 +198,7 @@ function PermitActions({ ar, row, onAct }) {
       {choices.length ? (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {choices.map((c) => (
-            <button key={c.id} type="button" data-permit-action={c.id} onClick={() => { setMode(mode === c.id ? "" : c.id); setNote(""); setAreaSafe(false); }} style={{ fontFamily: "inherit", height: 30, padding: "0 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", border: `1px solid ${mode === c.id ? "var(--nv-navy, #0B3D27)" : "var(--nv-line)"}`, background: mode === c.id ? "var(--nv-navy, #0B3D27)" : "var(--nv-card)", color: mode === c.id ? "#fff" : "var(--nv-ink)" }}>
+            <button key={c.id} type="button" data-permit-action={c.id} onClick={() => { if (c.id === "issue") { onReview?.(permit); return; } setMode(mode === c.id ? "" : c.id); setNote(""); setAreaSafe(false); }} style={{ fontFamily: "inherit", height: 30, padding: "0 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", border: `1px solid ${mode === c.id ? "var(--nv-navy, #0B3D27)" : "var(--nv-line)"}`, background: mode === c.id ? "var(--nv-navy, #0B3D27)" : "var(--nv-card)", color: mode === c.id ? "#fff" : "var(--nv-ink)" }}>
               {c.label}
             </button>
           ))}
@@ -211,35 +224,38 @@ function PermitActions({ ar, row, onAct }) {
 }
 
 /** تصاريح العمل — issue, follow and close permits to work across the branches in scope. */
-export default function PermitDesk({ ar, stations, recFor, staffOf, canEdit, today, onIssue, onAct }) {
+export default function PermitDesk({ ar, stations, recFor, staffOf, canEdit, today, onIssue, onAct, actorId = "" }) {
   const L = (a, e) => (ar ? a : e);
   const now = Date.now();
   const permits = useMemo(() => stations.flatMap((s) => (recFor(s.id)?.permits || []).map((p) => ({ ...p, stationId: p.stationId || s.id, stationName: s.name }))), [stations, recFor]);
   const board = permitBoard(permits, now);
-  const [face, setFace] = useState("live");
+  const [face, setFace] = useState(board.requested ? "requested" : "live");
+  const [review, setReview] = useState(null);
   const faces = [
-    { id: "live", label: L("سارية", "Live"), n: board.live, test: (r) => r.state === "open" },
+    { id: "requested", label: L("طلبات", "Requests"), n: board.requested, test: (r) => r.state === "requested" },
+    { id: "live", label: L("سارية", "Live"), n: board.live, test: (r) => ["open", "active", "closing"].includes(r.state) },
     { id: "suspended", label: L("موقوفة", "Stopped"), n: board.suspended, test: (r) => r.state === "suspended" },
     { id: "unclosed", label: L("تحتاج إغلاقاً", "Need closing"), n: board.unclosed, test: (r) => r.state === "expired" },
-    { id: "closed", label: L("مغلقة", "Closed"), n: board.rows.filter((r) => r.state === "closed" || r.state === "cancelled").length, test: (r) => r.state === "closed" || r.state === "cancelled" },
+    { id: "closed", label: L("مغلقة", "Closed"), n: board.rows.filter((r) => ["closed", "cancelled", "declined"].includes(r.state)).length, test: (r) => ["closed", "cancelled", "declined"].includes(r.state) },
     { id: "all", label: L("الكل", "All"), n: board.rows.length, test: () => true },
   ];
   const shown = board.rows
-    .filter((faces.find((f) => f.id === face) || faces[4]).test)
+    .filter((faces.find((f) => f.id === face) || faces[faces.length - 1]).test)
     .sort((a, b) => String(b.permit.startAt || "").localeCompare(String(a.permit.startAt || "")));
   const fold = useCollapsibleItems(shown.map((r) => r.permit.id));
   return (
     <div data-hse="admin-permits" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <SafetyKpiRow items={[
-        { label: L("سارية الآن", "Live now"), value: board.live, sub: L("عمل خطِر جارٍ بتصريح", "Hazardous work under permit"), tone: "ok" },
+        { label: L("طلبات بانتظارك", "Requests waiting"), value: board.requested, sub: L("طلبها العمال — راجع وأصدر أو ارفض", "Asked by workers — review, issue or decline"), tone: board.requested ? "warn" : null },
+        { label: L("سارية الآن", "Live now"), value: board.live, sub: board.awaitingAck ? (ar ? `${board.awaitingAck} لم يوقّع منفّذها بعد` : `${board.awaitingAck} not yet signed by the holder`) : L("عمل خطِر جارٍ بتصريح موقّع", "Hazardous work under a signed permit"), tone: board.awaitingAck ? "warn" : "ok" },
+        { label: L("انتهى العمل", "Work finished"), value: board.closing, sub: L("يطلب المنفّذ الإغلاق — وقّع على سلامة الموقع", "Holder asks to close — sign the site safe"), tone: board.closing ? "warn" : null },
         { label: L("موقوفة", "Stopped"), value: board.suspended, sub: L("أوقفها المشرف لسبب مكتوب", "Stopped with a written reason"), tone: board.suspended ? "warn" : null },
         { label: L("تنتهي خلال ساعتين", "End within 2 h"), value: board.endingSoon, sub: L("تُغلق أو تُجدّد بتصريح جديد", "Close, or renew with a new permit"), tone: board.endingSoon ? "warn" : null },
         { label: L("انتهت دون إغلاق", "Expired unclosed"), value: board.unclosed, sub: L("لم يُوقَّع على سلامة الموقع", "No site-safe signature"), tone: board.unclosed ? "bad" : "ok" },
-        { label: L("أُغلقت هذا الشهر", "Closed this month"), value: board.closedMonth, sub: L("بتوقيع", "Signed"), tone: null },
       ]} />
       <TwoPaneWorkspace
         dataKey="safety-permits"
-        raise={canEdit && stations.length ? <PermitComposer ar={ar} stations={stations} staffOf={staffOf} today={today} onIssue={onIssue} /> : null}
+        raise={canEdit && stations.length ? <PermitComposer key={review?.id || "new"} ar={ar} stations={stations} staffOf={staffOf} today={today} onIssue={onIssue} request={review} onCancel={() => setReview(null)} /> : null}
         list={(
           <ListStack data-permit-list="1">
             <StatusFilterPills card dataKey="permits" title={L("سجل التصاريح", "Permit register")} value={face} onChange={setFace} items={faces} />
@@ -247,11 +263,11 @@ export default function PermitDesk({ ar, stations, recFor, staffOf, canEdit, tod
               {shown.map((row) => {
                 const p = row.permit;
                 const label = PERMIT_STATUS_LABEL[row.state] || PERMIT_STATUS_LABEL.open;
-                const chip = row.state === "expired"
+                const chip = label.tone === "bad"
                   ? <AttentionChip tone="bad">{ar ? label.ar : label.en}</AttentionChip>
-                  : row.state === "suspended"
+                  : label.tone === "warn"
                     ? <AttentionChip tone="warn">{ar ? label.ar : label.en}</AttentionChip>
-                    : <span style={{ fontSize: 11, fontWeight: 700, color: row.state === "open" ? "var(--nv-ok-ink)" : "var(--nv-muted)" }}>{ar ? label.ar : label.en}</span>;
+                    : <span style={{ fontSize: 11, fontWeight: 700, color: label.tone === "ok" ? "var(--nv-ok-ink)" : "var(--nv-muted)" }}>{ar ? label.ar : label.en}</span>;
                 return (
                   <DisciplineRow
                     key={p.id}
@@ -265,14 +281,14 @@ export default function PermitDesk({ ar, stations, recFor, staffOf, canEdit, tod
                     open={fold.isOpen(p.id)}
                     onOpen={() => fold.toggle(p.id)}
                   >
-                    {canEdit ? <PermitActions ar={ar} row={row} onAct={onAct} /> : null}
+                    {canEdit ? <PermitActions ar={ar} row={row} onAct={onAct} actorId={actorId} onReview={(p) => { setReview(p); window.scrollTo({ top: 0, behavior: "smooth" }); }} /> : null}
                   </DisciplineRow>
                 );
               })}
             </DisciplineRowList>
             <p className="nv-cic" style={{ margin: 0, padding: "10px 14px", fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>
               <ArticleBadge>{L("قاعدة", "Rule")}</ArticleBadge>{" "}
-              {L(`التصريح لوردية واحدة (${PERMIT_MAX_HOURS} ساعة)، ولمكان وعمل محدّدين، ويُغلق بتوقيع على سلامة الموقع. المنتهي دون إغلاق يبقى ظاهراً هنا حتى يُوقَّع.`, `One permit, one shift (${PERMIT_MAX_HOURS} h), one place and job; it closes with a site-safe signature. An expired, unclosed permit stays here until signed.`)}
+              {L(`دورة التصريح: يطلبه المنفّذ أو يُصدره المشرف مباشرة ← يؤكّد المُصدر الضوابط ← يوقّع المنفّذ على الاستلام فيبدأ العمل ← يُنهي المنفّذ ← يغلق المُصدر بتوقيع على سلامة الموقع. المُصدر والمنفّذ لا يكونان شخصاً واحداً. التصريح لوردية واحدة (${PERMIT_MAX_HOURS} ساعة).`, `Lifecycle: the holder requests or the supervisor issues directly → the issuer confirms the controls → the holder signs and work starts → the holder finishes → the issuer closes with a site-safe signature. Issuer and holder are never one person. One permit, one shift (${PERMIT_MAX_HOURS} h).`)}
             </p>
           </ListStack>
         )}

@@ -4,7 +4,10 @@ import { checkHazardCloseGate } from "@/lib/hseDerivations";
 import { buildSafetyReportCard } from "@/lib/safetyReportCard";
 import { readSafety } from "@/lib/facts";
 import {
+  checkDrillGate,
   checkInspectionGate,
+  checkPermitRequestGate,
+  checkRiskAssessmentGate,
   checkInvestigationGate,
   checkPermitActionGate,
   checkPermitIssueGate,
@@ -339,14 +342,19 @@ function ensureRec(data, stationId) {
 /** Issue a permit to work after its named gate; the holder is told. */
 export function issueSafetyPermit(companyId, draft = {}, actor = {}, lang = "ar") {
   const ar = lang === "ar";
-  const gate = checkPermitIssueGate(draft);
+  const gate = checkPermitIssueGate({ ...draft, issuerId: actor.id });
   if (!gate.ok) return gate;
   const data = getCompanyData(companyId);
   if (!stationExists(data, draft.stationId)) return { ok: false, reason: "الفرع غير موجود.", reasonEn: "Branch not found." };
   const holder = (data.employees || []).find((row) => String(row.id) === String(draft.holderId));
   const now = new Date().toISOString();
+  // Issuing from a worker's request keeps its id and trail.
+  const requested = draft.requestId
+    ? (readSafety(data).find((item) => item.stationId === draft.stationId)?.permits || []).find((row) => row.id === draft.requestId && row.status === "requested")
+    : null;
   const permit = {
-    id: permitCode(new Date()),
+    ...(requested || {}),
+    id: requested?.id || permitCode(new Date()),
     type: draft.type,
     description: String(draft.description).trim().slice(0, 400),
     stationId: draft.stationId,
@@ -363,11 +371,12 @@ export function issueSafetyPermit(companyId, draft = {}, actor = {}, lang = "ar"
     issuedBy: String(actor.name || ""),
     issuedById: String(actor.id || ""),
     issuedAt: now,
-    trail: [{ type: "issue", at: now, by: String(actor.name || "") }],
+    trail: [...(requested?.trail || []), { type: "issue", at: now, by: String(actor.name || "") }],
   };
   updateCompany(companyId, (current) => {
     const rec = ensureRec(current, draft.stationId);
-    rec.permits = [permit, ...(Array.isArray(rec.permits) ? rec.permits : [])];
+    const rest = (Array.isArray(rec.permits) ? rec.permits : []).filter((row) => row.id !== permit.id);
+    rec.permits = [permit, ...rest];
     rec.lastActionBy = permit.issuedBy;
     rec.lastActionAt = now;
   });
@@ -375,22 +384,23 @@ export function issueSafetyPermit(companyId, draft = {}, actor = {}, lang = "ar"
   logAudit(companyId, "safety_permit_issued", `Permit ${permit.id} (${permit.type}) issued at "${stationName}" to ${permit.holderName || permit.holderId}.`);
   if (holder?.id && String(holder.id) !== String(actor.id || "")) {
     const text = ar
-      ? `صدر لك تصريح عمل ${permit.id} في ${stationName} من ${draft.startAt.replace("T", " ")} إلى ${draft.endAt.replace("T", " ")}. لا يبدأ العمل خارج وقته، ويُغلق بتوقيع.`
-      : `Permit ${permit.id} was issued to you at ${stationName}, ${draft.startAt.replace("T", " ")} to ${draft.endAt.replace("T", " ")}. No work outside its time; it closes with a signature.`;
-    addNotification(companyId, holder.id, text, { to: "/app/safety", key: `permit-${permit.id}` });
+      ? `صدر لك تصريح عمل ${permit.id} في ${stationName} من ${draft.startAt.replace("T", " ")} إلى ${draft.endAt.replace("T", " ")}. لا يبدأ العمل قبل توقيعك على استلام الضوابط في «تصاريحي».`
+      : `Permit ${permit.id} was issued to you at ${stationName}, ${draft.startAt.replace("T", " ")} to ${draft.endAt.replace("T", " ")}. Work does not start before you sign the controls in My permits.`;
+    addNotification(companyId, holder.id, text, { to: "/app/safety?tab=permits", key: `permit-${permit.id}` });
   }
   return { ok: true, permit };
 }
 
 /** suspend · resume · close · cancel — each on the permit's trail. */
-export function actOnSafetyPermit(companyId, stationId, permitId, action, { note = "", areaSafe = false } = {}, actor = {}) {
+export function actOnSafetyPermit(companyId, stationId, permitId, action, { note = "", areaSafe = false } = {}, actor = {}, lang = "ar") {
   const data = getCompanyData(companyId);
   const rec = readSafety(data).find((item) => item.stationId === stationId);
   const current = (rec?.permits || []).find((row) => row.id === permitId);
-  const gate = checkPermitActionGate(current, action, { note, areaSafe });
+  const gate = checkPermitActionGate(current, action, { note, areaSafe, actorId: actor.id });
   if (!gate.ok) return gate;
   const now = new Date().toISOString();
   const by = String(actor.name || "");
+  const ar = lang === "ar";
   let saved = null;
   updateCompany(companyId, (draft) => {
     const record = readSafety(draft).find((item) => item.stationId === stationId);
@@ -402,6 +412,9 @@ export function actOnSafetyPermit(companyId, stationId, permitId, action, { note
     if (action === "resume") { next.status = "open"; next.resumedAt = now; }
     if (action === "close") { next.status = "closed"; next.closedAt = now; next.closedBy = by; next.signedBy = by; next.signedAt = now; next.closeNote = text; next.areaSafe = true; }
     if (action === "cancel") { next.status = "cancelled"; next.cancelledAt = now; next.cancelReason = text; }
+    if (action === "decline") { next.status = "declined"; next.declinedAt = now; next.declinedBy = by; next.declineReason = text; }
+    if (action === "acknowledge") { next.acknowledgedAt = now; next.acknowledgedBy = by; }
+    if (action === "requestClose") { next.closeRequestedAt = now; next.closeNoteHolder = text; }
     next.trail.push({ type: action, at: now, by, note: text });
     record.permits[index] = next;
     record.lastActionBy = by;
@@ -410,7 +423,129 @@ export function actOnSafetyPermit(companyId, stationId, permitId, action, { note
   });
   if (!saved) return { ok: false, reason: "تعذّر الحفظ.", reasonEn: "Not saved." };
   logAudit(companyId, `safety_permit_${action}`, `Permit ${permitId} — ${action}${note ? `: ${note}` : ""}.`);
+  // The other party is told: the holder of an issuer's decision, the issuer of the holder's.
+  const holderId = String(saved.holderId || "");
+  const issuerId = String(saved.issuedById || saved.requestedTo || "");
+  const toHolder = { decline: ar ? `رُفض طلب التصريح ${saved.id}: ${note}` : `Permit request ${saved.id} declined: ${note}`, suspend: ar ? `أُوقف العمل على التصريح ${saved.id}: ${note}` : `Work on permit ${saved.id} stopped: ${note}`, resume: ar ? `استؤنف العمل على التصريح ${saved.id}.` : `Work on permit ${saved.id} resumed.`, close: ar ? `أُغلق التصريح ${saved.id} بتوقيع ${by}.` : `Permit ${saved.id} closed, signed by ${by}.`, cancel: ar ? `أُلغي التصريح ${saved.id}: ${note}` : `Permit ${saved.id} cancelled: ${note}` }[action];
+  const toIssuer = { acknowledge: ar ? `وقّع ${by} على استلام التصريح ${saved.id} — العمل جارٍ.` : `${by} signed permit ${saved.id} — work under way.`, requestClose: ar ? `${by} أنهى العمل على التصريح ${saved.id} ويطلب الإغلاق.` : `${by} finished work on ${saved.id} and asks to close.` }[action];
+  if (toHolder && holderId && holderId !== String(actor.id || "")) addNotification(companyId, holderId, toHolder, { to: "/app/safety?tab=permits", key: `permit-${saved.id}-${action}-${now}` });
+  if (toIssuer && issuerId && issuerId !== String(actor.id || "")) addNotification(companyId, issuerId, toIssuer, { to: "/app/safety?lane=manage&tab=permits", key: `permit-${saved.id}-${action}-${now}` });
   return { ok: true, permit: saved };
+}
+
+/** The worker's request for a permit — a row in the register with status «requested»; the branch issuers are told. */
+export function requestSafetyPermit(companyId, draft = {}, actor = {}, lang = "ar") {
+  const ar = lang === "ar";
+  const gate = checkPermitRequestGate(draft);
+  if (!gate.ok) return gate;
+  const data = getCompanyData(companyId);
+  if (!stationExists(data, draft.stationId)) return { ok: false, reason: "الفرع غير موجود.", reasonEn: "Branch not found." };
+  const now = new Date().toISOString();
+  const permit = {
+    id: permitCode(new Date()),
+    type: draft.type,
+    description: String(draft.description).trim().slice(0, 400),
+    stationId: draft.stationId,
+    holderId: String(actor.id || ""),
+    holderName: String(actor.name || ""),
+    team: String(draft.team || "").trim().slice(0, 160),
+    startAt: draft.startAt,
+    endAt: draft.endAt,
+    validUntil: new Date(riyadhLocalMs(draft.endAt)).toISOString(),
+    outdoor: Boolean(draft.outdoor),
+    controls: [],
+    status: "requested",
+    requestedAt: now,
+    trail: [{ type: "request", at: now, by: String(actor.name || "") }],
+  };
+  updateCompany(companyId, (current) => {
+    const rec = ensureRec(current, draft.stationId);
+    rec.permits = [permit, ...(Array.isArray(rec.permits) ? rec.permits : [])];
+  });
+  const stationName = (data.stations || []).find((row) => row.id === draft.stationId)?.name || draft.stationId;
+  logAudit(companyId, "safety_permit_requested", `Permit ${permit.id} (${permit.type}) requested at "${stationName}" by ${permit.holderName}.`);
+  const issuers = (data.employees || []).filter((row) => row.id && row.id !== actor.id && (row.role === "safety_officer" || row.id === data.ownerId || (row.role === "station_manager" && (String(row.stationId) === String(draft.stationId) || (row.managedStations || []).map(String).includes(String(draft.stationId))))));
+  issuers.forEach((row) => addNotification(companyId, row.id, ar ? `${permit.holderName} يطلب تصريح عمل (${permit.type}) في ${stationName} — ${draft.startAt.replace("T", " ")}.` : `${permit.holderName} requests a ${permit.type} permit at ${stationName} — ${draft.startAt.replace("T", " ")}.`, { to: "/app/safety?lane=manage&tab=permits", key: `permit-req-${permit.id}` }));
+  return { ok: true, permit };
+}
+
+/** A line in the branch's risk register (ISO 45001 §6.1.2); editing re-dates the review. */
+export function saveRiskAssessment(companyId, draft = {}, actor = {}) {
+  const gate = checkRiskAssessmentGate(draft);
+  if (!gate.ok) return gate;
+  const data = getCompanyData(companyId);
+  if (!stationExists(data, draft.stationId)) return { ok: false, reason: "الفرع غير موجود.", reasonEn: "Branch not found." };
+  const now = new Date().toISOString();
+  let saved = null;
+  updateCompany(companyId, (current) => {
+    const rec = ensureRec(current, draft.stationId);
+    const items = Array.isArray(rec.riskItems) ? rec.riskItems : [];
+    const prev = draft.id ? items.find((row) => row.id === draft.id) : null;
+    const row = {
+      id: prev?.id || uid("risk"),
+      activity: String(draft.activity).trim().slice(0, 160),
+      hazard: String(draft.hazard).trim().slice(0, 400),
+      likelihood: Number(draft.likelihood),
+      severity: Number(draft.severity),
+      controlId: draft.controlId,
+      control: String(draft.control).trim().slice(0, 400),
+      residualLikelihood: Number(draft.residualLikelihood),
+      residualSeverity: Number(draft.residualSeverity),
+      owner: String(draft.owner).trim().slice(0, 120),
+      createdAt: prev?.createdAt || now,
+      reviewedAt: now,
+      reviewedBy: String(actor.name || ""),
+      history: [...(prev?.history || []), { at: now, by: String(actor.name || ""), residual: Number(draft.residualLikelihood) * Number(draft.residualSeverity) }].slice(-12),
+    };
+    rec.riskItems = prev ? items.map((item) => (item.id === row.id ? row : item)) : [row, ...items];
+    rec.lastActionBy = row.reviewedBy;
+    rec.lastActionAt = now;
+    saved = row;
+  });
+  if (!saved) return { ok: false, reason: "تعذّر الحفظ.", reasonEn: "Not saved." };
+  logAudit(companyId, "safety_risk_assessed", `Risk «${saved.activity}» at ${draft.stationId}: ${saved.likelihood * saved.severity} → ${saved.residualLikelihood * saved.residualSeverity} (${saved.controlId}).`);
+  return { ok: true, item: saved };
+}
+
+/** An emergency drill (ISO 45001 §8.2); gaps become a safety report on the ordinary path. */
+export function recordSafetyDrill(companyId, draft = {}, actor = {}) {
+  const gate = checkDrillGate(draft);
+  if (!gate.ok) return gate;
+  const data = getCompanyData(companyId);
+  if (!stationExists(data, draft.stationId)) return { ok: false, reason: "الفرع غير موجود.", reasonEn: "Branch not found." };
+  const now = new Date();
+  const iso = now.toISOString();
+  const by = String(actor.name || "");
+  const drill = {
+    id: uid("drill"),
+    type: draft.type,
+    date: draft.date,
+    participants: Number(draft.participants),
+    evacuationMinutes: draft.type === "evacuation" ? Number(draft.evacuationMinutes) : undefined,
+    outcome: draft.outcome,
+    findings: String(draft.findings || "").trim().slice(0, 400),
+    by,
+    byId: String(actor.id || ""),
+    at: iso,
+  };
+  let raised = 0;
+  updateCompany(companyId, (current) => {
+    const rec = ensureRec(current, draft.stationId);
+    rec.drills = [drill, ...(Array.isArray(rec.drills) ? rec.drills : [])].slice(0, 60);
+    if (drill.outcome === "gaps") {
+      const card = buildSafetyReportCard({ kind: 0, category: 2, likelihood: 3, severity: 4, where: `تمرين ${draft.date}`, what: `ثغرات تمرين الطوارئ: ${drill.findings}`, reporterId: String(actor.id || "") }, now);
+      rec.incidentLog = rec.incidentLog || [];
+      rec.incidentLog.unshift({ id: uid("inc"), description: card.what, at: iso, by, reporterId: String(actor.id || ""), anonymous: false, status: "open", step: 0, source: { kind: "drill", drillId: drill.id }, card });
+      rec.lastIncidentAt = iso;
+      rec.incidents = rec.incidentLog.length;
+      if (rec.level !== "red") rec.level = "amber";
+      raised = 1;
+    }
+    rec.lastActionBy = by;
+    rec.lastActionAt = iso;
+  });
+  logAudit(companyId, "safety_drill", `Drill ${drill.type} at ${draft.stationId} on ${drill.date} — ${drill.outcome}.`);
+  return { ok: true, drill, raised };
 }
 
 const FINDING_CATEGORY = { law_125_fire: 2, law_125_notice: 2, law_63_substances: 5, law_158_seats: 7 };

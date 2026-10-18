@@ -16,7 +16,15 @@ import { CHECKLIST_GROUPS, PERMIT_REQUIREMENTS, PERMIT_TYPES } from "./safetySta
 const DAY = 86400000;
 const HOUR = 3600000;
 
-/* ─────────────────────────── Permits to work ─────────────────────────── */
+/* ─────────────────────────── Permits to work ───────────────────────────
+ * Lifecycle (ISO 45001 §8.1 operational control — separation of duties):
+ *   requested  — the worker asks (type · place · time); nothing may start.
+ *   open       — an authorised issuer confirmed every control; work still may not start until the holder signs.
+ *   active     — the holder acknowledged the controls (open + acknowledgedAt): work may proceed.
+ *   closing    — the holder reports the work finished; the issuer closes with a site-safe signature.
+ *   suspended · closed · cancelled · declined · expired.
+ * Issuer and holder are never the same person.
+ */
 
 /** Controls a permit of each type cannot be issued without (all must be confirmed on issue). */
 export const PERMIT_CONTROLS = {
@@ -69,7 +77,30 @@ export function permitHeatBanDay(startMs, endMs) {
   return "";
 }
 
-/** Named gate for issuing a permit. */
+/** The worker's request: what, where, when — no controls yet (those are the issuer's to confirm). */
+export function checkPermitRequestGate(draft = {}, { now = Date.now() } = {}) {
+  const fail = (reason, reasonEn, field) => ({ ok: false, reason, reasonEn, field });
+  const type = permitTypeRow(draft.type);
+  if (!type) return fail("اختر نوع العمل.", "Pick the kind of work.", "type");
+  if (!draft.stationId) return fail("لا فرع مرتبط بحسابك — لا يُرفع الطلب.", "No branch is linked to your account.", "stationId");
+  if (String(draft.description || "").trim().length < 8) return fail("صف العمل وموقعه بدقة (8 أحرف على الأقل).", "Describe the work and its place (at least 8 characters).", "description");
+  const start = riyadhLocalMs(draft.startAt);
+  const end = riyadhLocalMs(draft.endAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return fail("حدّد بداية العمل ونهايته.", "Set the work start and end.", "startAt");
+  if (end <= start) return fail("النهاية يجب أن تكون بعد البداية.", "The end must come after the start.", "endAt");
+  if (end - start > PERMIT_MAX_HOURS * HOUR) return fail(`التصريح لوردية واحدة — ${PERMIT_MAX_HOURS} ساعة كحدّ أقصى.`, `A permit covers one shift — ${PERMIT_MAX_HOURS} hours at most.`, "endAt");
+  if (end <= now) return fail("لا يُطلب تصريح لوقت مضى.", "A permit cannot be requested for a time that has passed.", "endAt");
+  if (draft.outdoor) {
+    const day = permitHeatBanDay(start, end);
+    if (day) {
+      const w = `${String(ruleValue("hours.heat.startHour")).padStart(2, "0")}:00–${String(ruleValue("hours.heat.endHour")).padStart(2, "0")}:00`;
+      return fail(`القرار 3337: لا عمل مكشوف تحت الشمس ${w} يوم ${day}. اطلب وقتاً خارج الساعات.`, `Decision 3337: no sun-exposed work ${w} on ${day}. Ask for a time outside those hours.`, "endAt");
+    }
+  }
+  return { ok: true };
+}
+
+/** Named gate for issuing a permit (directly, or from a worker's request). */
 export function checkPermitIssueGate(draft = {}, { now = Date.now() } = {}) {
   const fail = (reason, reasonEn, field) => ({ ok: false, reason, reasonEn, field });
   const type = permitTypeRow(draft.type);
@@ -77,6 +108,7 @@ export function checkPermitIssueGate(draft = {}, { now = Date.now() } = {}) {
   if (!draft.stationId) return fail("اختر الفرع الذي يجري فيه العمل.", "Pick the branch where the work happens.", "stationId");
   if (String(draft.description || "").trim().length < 8) return fail("صف العمل وموقعه بدقة (8 أحرف على الأقل).", "Describe the work and its place (at least 8 characters).", "description");
   if (!draft.holderId) return fail("سمِّ منفّذ العمل المسؤول عن التصريح.", "Name the person responsible for the work.", "holderId");
+  if (draft.issuerId && String(draft.issuerId) === String(draft.holderId)) return fail("لا يُصدر المنفّذ تصريحه لنفسه — التصريح شهادة طرف ثانٍ.", "The holder cannot issue his own permit — a permit is a second party's confirmation.", "holderId");
   const start = riyadhLocalMs(draft.startAt);
   const end = riyadhLocalMs(draft.endAt);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return fail("حدّد بداية التصريح ونهايته.", "Set the permit start and end.", "startAt");
@@ -117,16 +149,28 @@ export function permitCode(at = new Date(), seed = Math.random()) {
 /** Permit state on the clock: open · suspended · closed · cancelled · expired. */
 export function permitStatus(permit, now = Date.now()) {
   if (!permit) return "";
+  if (permit.status === "requested") return "requested";
+  if (permit.status === "declined") return "declined";
   if (permit.status === "cancelled") return "cancelled";
   if (permit.status === "closed") return "closed";
   const end = Number.isFinite(riyadhLocalMs(permit.endAt)) ? riyadhLocalMs(permit.endAt) : new Date(permit.validUntil).getTime();
   if (Number.isFinite(end) && end < now) return "expired";
   if (permit.status === "suspended") return "suspended";
-  return "open";
+  if (permit.closeRequestedAt) return "closing";
+  return permit.acknowledgedAt ? "active" : "open";
+}
+
+/** Work may proceed only on an issued permit the holder has signed, inside its time. */
+export function permitWorkAllowed(permit, now = Date.now()) {
+  return permitStatus(permit, now) === "active";
 }
 
 export const PERMIT_STATUS_LABEL = {
-  open: { ar: "ساري", en: "Live", tone: "ok" },
+  requested: { ar: "طلب بانتظار الإصدار", en: "Requested", tone: "warn" },
+  declined: { ar: "رُفض بسبب", en: "Declined", tone: "idle" },
+  open: { ar: "صدر — بانتظار توقيع المنفّذ", en: "Issued — awaiting holder's signature", tone: "warn" },
+  active: { ar: "ساري — العمل جارٍ", en: "Active — work in progress", tone: "ok" },
+  closing: { ar: "انتهى العمل — بانتظار إغلاق المُصدر", en: "Work done — awaiting issuer's close", tone: "warn" },
   suspended: { ar: "موقوف", en: "Suspended", tone: "warn" },
   closed: { ar: "مُغلق بتوقيع", en: "Closed, signed", tone: "idle" },
   cancelled: { ar: "ملغى", en: "Cancelled", tone: "idle" },
@@ -134,12 +178,29 @@ export const PERMIT_STATUS_LABEL = {
 };
 
 /** Named gate for an action on a live permit: suspend · resume · close · cancel. */
-export function checkPermitActionGate(permit, action, { note = "", areaSafe = false, now = Date.now() } = {}) {
+export function checkPermitActionGate(permit, action, { note = "", areaSafe = false, actorId = "", now = Date.now() } = {}) {
   const fail = (reason, reasonEn) => ({ ok: false, reason, reasonEn });
   if (!permit) return fail("التصريح غير موجود.", "Permit not found.");
   const state = permitStatus(permit, now);
+  const live = state === "open" || state === "active" || state === "closing";
+  const isHolder = actorId && String(permit.holderId || "") === String(actorId);
+  if (action === "decline") {
+    if (state !== "requested") return fail("لا يُرفض إلا طلب لم يُصدر.", "Only an unissued request is declined.");
+    if (String(note).trim().length < 5) return fail("اكتب سبب الرفض — يصل الطالب.", "Write why — the requester is told.");
+    return { ok: true };
+  }
+  if (action === "acknowledge") {
+    if (state !== "open") return fail(state === "active" ? "وقّعت على هذا التصريح من قبل." : "لا يُوقَّع إلا تصريح صادر لم يُوقَّع بعد.", state === "active" ? "You already signed this permit." : "Only an issued, unsigned permit is acknowledged.");
+    if (!isHolder) return fail("يوقّع المنفّذ المسمّى في التصريح وحده.", "Only the named holder signs.");
+    return { ok: true };
+  }
+  if (action === "requestClose") {
+    if (state !== "active") return fail(state === "open" ? "وقّع على الاستلام أولاً." : "لا يُطلب الإغلاق إلا لتصريح ساري.", state === "open" ? "Sign the acknowledgement first." : "Close is requested only on an active permit.");
+    if (!isHolder) return fail("يطلب الإغلاق المنفّذ المسمّى وحده.", "Only the named holder requests the close.");
+    return { ok: true };
+  }
   if (action === "suspend") {
-    if (state !== "open") return fail("لا يوقف إلا تصريح ساري.", "Only a live permit is suspended.");
+    if (!live) return fail("لا يوقف إلا تصريح ساري.", "Only a live permit is suspended.");
     if (String(note).trim().length < 5) return fail("اكتب سبب الإيقاف — يُقرأ في سجل التصريح.", "Write why the work is stopped — it stays on the permit's trail.");
     return { ok: true };
   }
@@ -149,12 +210,13 @@ export function checkPermitActionGate(permit, action, { note = "", areaSafe = fa
     return { ok: true };
   }
   if (action === "close") {
-    if (!["open", "suspended", "expired"].includes(state)) return fail("التصريح مُغلق أصلاً.", "The permit is already closed.");
+    if (!live && state !== "suspended" && state !== "expired") return fail("التصريح مُغلق أصلاً.", "The permit is already closed.");
+    if (isHolder) return fail("يغلق التصريحَ مُصدِرُه أو مسؤول السلامة، لا منفّذه.", "The issuer or the safety officer closes — not the holder.");
     if (!areaSafe) return fail("أكّد أن الموقع تُرك آمناً وأُعيدت العوازل والطاقة — ثم أغلق.", "Confirm the site was left safe and isolations restored — then close.");
     return { ok: true };
   }
   if (action === "cancel") {
-    if (state !== "open" && state !== "suspended") return fail("لا يُلغى إلا تصريح لم يُغلق.", "Only an unclosed permit is cancelled.");
+    if (!live && state !== "suspended" && state !== "requested") return fail("لا يُلغى إلا تصريح لم يُغلق.", "Only an unclosed permit is cancelled.");
     if (String(note).trim().length < 5) return fail("اكتب سبب الإلغاء.", "Write why it is cancelled.");
     return { ok: true };
   }
@@ -164,7 +226,7 @@ export function checkPermitActionGate(permit, action, { note = "", areaSafe = fa
 /** Permit figures for a scope. */
 export function permitBoard(permits = [], now = Date.now()) {
   const rows = permits.map((permit) => ({ permit, state: permitStatus(permit, now) }));
-  const live = rows.filter((row) => row.state === "open");
+  const live = rows.filter((row) => ["open", "active", "closing"].includes(row.state));
   const endingSoon = live.filter((row) => {
     const end = riyadhLocalMs(row.permit.endAt);
     return Number.isFinite(end) && end - now <= 2 * HOUR;
@@ -173,6 +235,9 @@ export function permitBoard(permits = [], now = Date.now()) {
   return {
     rows,
     live: live.length,
+    requested: rows.filter((row) => row.state === "requested").length,
+    awaitingAck: rows.filter((row) => row.state === "open").length,
+    closing: rows.filter((row) => row.state === "closing").length,
     suspended: rows.filter((row) => row.state === "suspended").length,
     endingSoon: endingSoon.length,
     unclosed: rows.filter((row) => row.state === "expired").length,
@@ -366,4 +431,146 @@ export function openCapas(incidents = [], now = Date.now()) {
     .filter((item) => item?.investigation?.capa && !item.investigation.capaDoneAt)
     .map((item) => ({ item, due: item.investigation.capaDue, overdue: String(item.investigation.capaDue || "") < todayKey }))
     .sort((a, b) => String(a.due).localeCompare(String(b.due)));
+}
+
+/* ─────────────────────────── Risk assessment register (ISO 45001 §6.1.2) ─────────────────────────── */
+
+/** Hierarchy of controls, most to least effective — the control level a residual score is judged against. */
+export const RISK_CONTROL_LEVELS = [
+  { id: "elim", ar: "الإزالة", en: "Elimination", rank: 1 },
+  { id: "sub", ar: "الاستبدال", en: "Substitution", rank: 2 },
+  { id: "eng", ar: "ضابط هندسي", en: "Engineering control", rank: 3 },
+  { id: "adm", ar: "ضابط إداري", en: "Administrative control", rank: 4 },
+  { id: "ppe", ar: "معدات الوقاية الشخصية", en: "PPE", rank: 5 },
+];
+
+/** Review at least every twelve months, or after an incident on the activity. */
+export const RISK_REVIEW_MONTHS = 12;
+export const RISK_INTOLERABLE = 15;
+
+export function riskBand(score) {
+  if (score == null || !Number.isFinite(score) || score <= 0) return "";
+  if (score >= 15) return "critical";
+  if (score >= 10) return "high";
+  if (score >= 5) return "medium";
+  return "low";
+}
+
+export const RISK_BAND_LABEL = {
+  critical: { ar: "حرج — لا يُقبل", en: "Critical — intolerable", tone: "bad" },
+  high: { ar: "مرتفع", en: "High", tone: "bad" },
+  medium: { ar: "متوسط", en: "Medium", tone: "warn" },
+  low: { ar: "منخفض", en: "Low", tone: "ok" },
+};
+
+const grade = (v) => { const n = Number(v); return Number.isInteger(n) && n >= 1 && n <= 5 ? n : null; };
+
+export function checkRiskAssessmentGate(draft = {}) {
+  const fail = (reason, reasonEn, field) => ({ ok: false, reason, reasonEn, field });
+  if (!draft.stationId) return fail("اختر الفرع.", "Pick the branch.", "stationId");
+  if (String(draft.activity || "").trim().length < 3) return fail("سمِّ النشاط أو المهمة.", "Name the activity.", "activity");
+  if (String(draft.hazard || "").trim().length < 5) return fail("صف الخطر وكيف يقع الضرر (5 أحرف على الأقل).", "Describe the hazard and how harm occurs.", "hazard");
+  const L = grade(draft.likelihood); const S = grade(draft.severity);
+  if (!L || !S) return fail("قدّر الاحتمال والشدة قبل الضوابط (1–5).", "Grade likelihood and severity before controls (1–5).", "likelihood");
+  if (!RISK_CONTROL_LEVELS.some((row) => row.id === draft.controlId)) return fail("اختر مستوى الضابط من هرم الضوابط.", "Pick the control level from the hierarchy.", "controlId");
+  if (String(draft.control || "").trim().length < 5) return fail("اكتب الضابط نفسه — ما الذي يُفعل.", "Write the control itself — what is done.", "control");
+  const rL = grade(draft.residualLikelihood); const rS = grade(draft.residualSeverity);
+  if (!rL || !rS) return fail("قدّر الخطر المتبقي بعد الضابط (1–5).", "Grade the residual risk after the control (1–5).", "residualLikelihood");
+  if (rL * rS > L * S) return fail("الخطر المتبقي لا يزيد على الخطر الأصلي.", "Residual risk cannot exceed the inherent risk.", "residualLikelihood");
+  if (rL * rS >= RISK_INTOLERABLE) return fail(`خطر متبقٍ ${rL * rS}/25 لا يُقبل — ارفع مستوى الضابط أو أوقف النشاط حتى يُضبط.`, `A residual of ${rL * rS}/25 is intolerable — raise the control level or stop the activity.`, "residualLikelihood");
+  if (String(draft.owner || "").trim().length < 2) return fail("سمِّ مسؤول الضابط.", "Name the control's owner.", "owner");
+  return { ok: true };
+}
+
+export function riskRegisterState(items = [], now = Date.now()) {
+  const rows = (Array.isArray(items) ? items : []).map((item) => {
+    const inherent = (grade(item.likelihood) || 0) * (grade(item.severity) || 0);
+    const residual = (grade(item.residualLikelihood) || 0) * (grade(item.residualSeverity) || 0);
+    const reviewedAt = new Date(item.reviewedAt || item.createdAt).getTime();
+    const ageDays = Number.isFinite(reviewedAt) ? Math.floor((now - reviewedAt) / DAY) : null;
+    const reviewDue = ageDays == null || ageDays >= RISK_REVIEW_MONTHS * 30;
+    const level = RISK_CONTROL_LEVELS.find((row) => row.id === item.controlId) || null;
+    return { item, inherent, residual, band: riskBand(residual), level, ageDays, reviewDue, ppeOnly: level?.id === "ppe" && residual >= 10 };
+  });
+  return {
+    rows,
+    total: rows.length,
+    high: rows.filter((row) => row.band === "high" || row.band === "critical").length,
+    reviewDue: rows.filter((row) => row.reviewDue).length,
+    ppeOnly: rows.filter((row) => row.ppeOnly).length,
+  };
+}
+
+/* ─────────────────────────── Emergency preparedness (ISO 45001 §8.2) ─────────────────────────── */
+
+export const DRILL_TYPES = [
+  { id: "evacuation", ar: "تمرين إخلاء", en: "Evacuation drill", everyMonths: 6, cite: "safety.fire.cite" },
+  { id: "fire", ar: "تمرين مكافحة حريق", en: "Fire-fighting drill", everyMonths: 12, cite: "safety.fire.cite" },
+  { id: "firstAid", ar: "تمرين إسعاف أولي", en: "First-aid drill", everyMonths: 12, cite: "" },
+];
+
+export function checkDrillGate(draft = {}, { now = Date.now() } = {}) {
+  const fail = (reason, reasonEn, field) => ({ ok: false, reason, reasonEn, field });
+  const type = DRILL_TYPES.find((row) => row.id === draft.type);
+  if (!type) return fail("اختر نوع التمرين.", "Pick the drill type.", "type");
+  if (!draft.stationId) return fail("اختر الفرع.", "Pick the branch.", "stationId");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(draft.date || ""))) return fail("حدّد تاريخ التمرين.", "Set the drill date.", "date");
+  if (new Date(`${draft.date}T00:00:00Z`).getTime() > now + DAY) return fail("لا يُسجَّل تمرين لم يُجرَ بعد.", "A drill is recorded after it is held.", "date");
+  const n = Number(draft.participants);
+  if (!Number.isInteger(n) || n < 1) return fail("كم شارك؟ (1 على الأقل)", "How many took part? (at least 1)", "participants");
+  if (type.id === "evacuation") {
+    const m = Number(draft.evacuationMinutes);
+    if (!Number.isFinite(m) || m <= 0 || m > 120) return fail("زمن الإخلاء الكامل بالدقائق مطلوب.", "Full-evacuation time in minutes is required.", "evacuationMinutes");
+  }
+  if (draft.outcome !== "met" && draft.outcome !== "gaps") return fail("احكم: الهدف تحقق أم ظهرت ثغرات؟", "Judge: objective met, or gaps found?", "outcome");
+  if (draft.outcome === "gaps" && String(draft.findings || "").trim().length < 5) return fail("اكتب الثغرات — تتحوّل إلى بلاغ يُعالج.", "Write the gaps — they become a report to fix.", "findings");
+  return { ok: true };
+}
+
+/** Per drill type: last held and whether the cadence is due. */
+export function drillState(rec = {}, now = Date.now()) {
+  const drills = (Array.isArray(rec.drills) ? rec.drills : []).filter((row) => row && row.date);
+  const types = DRILL_TYPES.map((type) => {
+    const last = drills.filter((row) => row.type === type.id).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0] || null;
+    const at = last ? new Date(`${last.date}T00:00:00Z`).getTime() : NaN;
+    const ageDays = Number.isFinite(at) ? Math.floor((now - at) / DAY) : null;
+    const limit = type.everyMonths * 30;
+    return { type, last, ageDays, due: ageDays == null || ageDays >= limit, dueIn: ageDays == null ? null : limit - ageDays };
+  });
+  return { drills, types, due: types.filter((row) => row.due).length, compliant: types.every((row) => !row.due) };
+}
+
+/* ─────────────────────────── Leading indicators ─────────────────────────── */
+
+/**
+ * The leading side of the board (what is done before harm), beside the lagging rates:
+ *   near-miss ratio    — near misses reported per recordable injury (higher = a reporting culture);
+ *   round compliance   — branches whose monthly round is current;
+ *   drill compliance   — branches whose drills are all within cadence;
+ *   CAPA closure       — corrective actions done on time, of those due;
+ *   finding closure    — inspection findings closed, of those raised in the window.
+ */
+export function leadingIndicators({ incidents = [], branches = [], now = Date.now() } = {}) {
+  const since = now - 365 * DAY;
+  const inWindow = incidents.filter((item) => { const at = new Date(item?.at).getTime(); return Number.isFinite(at) && at >= since; });
+  const nearMiss = inWindow.filter((item) => incidentClass(item) === "nearMiss").length;
+  const recordables = inWindow.filter((item) => ["fatality", "lti", "medical"].includes(incidentClass(item))).length;
+  const todayKey = riyadhParts(now).key;
+  const capas = incidents.filter((item) => item?.investigation?.capa);
+  const capaDue = capas.filter((item) => item.investigation.capaDoneAt || String(item.investigation.capaDue || "") < todayKey);
+  const capaOnTime = capaDue.filter((item) => item.investigation.capaDoneAt && String(item.investigation.capaDoneAt).slice(0, 10) <= String(item.investigation.capaDue || "")).length;
+  const findings = inWindow.filter((item) => item.source?.kind === "inspection");
+  const findingsClosed = findings.filter((item) => item.status === "closed").length;
+  const pct = (n, d) => (d ? Math.round((n / d) * 100) : null);
+  return {
+    nearMissRatio: recordables ? Math.round((nearMiss / recordables) * 10) / 10 : (nearMiss ? Infinity : null),
+    nearMiss,
+    recordables,
+    roundCompliance: pct(branches.filter((b) => !b.roundDue).length, branches.length),
+    drillCompliance: pct(branches.filter((b) => b.drillsCompliant).length, branches.length),
+    capaClosure: pct(capaOnTime, capaDue.length),
+    capaDue: capaDue.length,
+    findingClosure: pct(findingsClosed, findings.length),
+    findings: findings.length,
+  };
 }

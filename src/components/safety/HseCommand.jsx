@@ -3,10 +3,13 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import {
   branchInspectionState,
   daysSinceLastLti,
+  drillState,
   hseRates,
   injuryReportState,
+  leadingIndicators,
   openCapas,
   permitBoard,
+  riskRegisterState,
 } from "@/lib/safetyOps";
 import { SafetyKpiRow, SafetyPanel } from "@/components/safety/SafetyOpsKit";
 
@@ -27,8 +30,16 @@ export function deriveHseCommand({ stations = [], recFor, employees = [], now = 
     lti.push(...(rec.ltiEntries || []));
     const insp = branchInspectionState(rec, now);
     const pb = permitBoard(rec.permits || [], now);
+    const drills = drillState(rec, now);
+    const risks = riskRegisterState(rec.riskItems || [], now);
     return {
       station,
+      drillsCompliant: drills.compliant,
+      drillsDue: drills.due,
+      risksHigh: risks.high,
+      risksReviewDue: risks.reviewDue,
+      requestedPermits: pb.requested,
+      closingPermits: pb.closing,
       readiness: insp.pct,
       roundDue: insp.due,
       lastRound: insp.last ? String(insp.last.at).slice(0, 10) : "",
@@ -50,12 +61,19 @@ export function deriveHseCommand({ stations = [], recFor, employees = [], now = 
     queue.push({ key: `gosi-${item.id}`, tone: st.state === "overdue" ? "bad" : "warn", tab: "incidents", ar: st.state === "overdue" ? `إصابة تجاوزت مهلة إبلاغ التأمينات — ${item.card?.code || ""}` : `أبلغ التأمينات عن إصابة ${item.card?.code || ""} خلال ${st.left} يوم`, en: st.state === "overdue" ? `Injury past the GOSI window — ${item.card?.code || ""}` : `Report injury ${item.card?.code || ""} to GOSI within ${st.left} d` });
   });
   if (pb.unclosed) queue.push({ key: "permits-unclosed", tone: "bad", tab: "permits", ar: `${pb.unclosed} تصريح انتهى دون توقيع إغلاق`, en: `${pb.unclosed} permits expired without a closing signature` });
+  if (pb.requested) queue.push({ key: "permits-requested", tone: "warn", tab: "permits", ar: `${pb.requested} طلب تصريح عمل بانتظار الإصدار`, en: `${pb.requested} permit requests awaiting issue` });
+  if (pb.closing) queue.push({ key: "permits-closing", tone: "warn", tab: "permits", ar: `${pb.closing} تصريح أنهى منفّذه العمل — وقّع على سلامة الموقع`, en: `${pb.closing} permits finished by the holder — sign the site safe` });
+  branches.filter((b) => b.risksHigh).forEach((b) => queue.push({ key: `risk-${b.station.id}`, tone: "bad", tab: "risks", ar: `${b.risksHigh} خطر متبقٍ مرتفع في سجل ${b.station.name} — ارفع مستوى الضابط`, en: `${b.risksHigh} high residual risks at ${b.station.name} — raise the control level` }));
+  branches.filter((b) => b.risksReviewDue).forEach((b) => queue.push({ key: `riskrev-${b.station.id}`, tone: "warn", tab: "risks", ar: `${b.risksReviewDue} تقييم خطر تجاوز سنة بلا مراجعة — ${b.station.name}`, en: `${b.risksReviewDue} risk assessments a year without review — ${b.station.name}` }));
+  branches.filter((b) => b.drillsDue).forEach((b) => queue.push({ key: `drill-${b.station.id}`, tone: "warn", tab: "inspect", ar: `${b.drillsDue} تمرين طوارئ مستحق — ${b.station.name}`, en: `${b.drillsDue} emergency drills due — ${b.station.name}` }));
   capas.filter((c) => c.overdue).forEach((c) => queue.push({ key: `capa-${c.item.id}`, tone: "bad", tab: "incidents", ar: `إجراء تصحيحي متأخر — ${c.item.investigation.capaOwner} · ${c.due}`, en: `Corrective action overdue — ${c.item.investigation.capaOwner} · ${c.due}` }));
   branches.filter((b) => b.roundDue).forEach((b) => queue.push({ key: `round-${b.station.id}`, tone: b.lastRound ? "bad" : "warn", tab: "inspect", ar: b.lastRound ? `جولة التفتيش الشهرية متأخرة — ${b.station.name}` : `لم تُجرَ جولة تفتيش بعد — ${b.station.name}`, en: b.lastRound ? `Monthly round overdue — ${b.station.name}` : `No inspection round yet — ${b.station.name}` }));
   const known = branches.filter((b) => b.readiness != null);
+  const leading = leadingIndicators({ incidents, branches, now });
   return {
     headcount,
     rates,
+    leading,
     permits: pb,
     queue,
     branches,
@@ -72,7 +90,7 @@ function rateTone(value, aim) {
 /** The decision glance: rates, the queue of what needs a decision, and the branch matrix. */
 export default function HseCommand({ ar, command, onGo, part = "top" }) {
   const L = (a, e) => (ar ? a : e);
-  const { rates } = command;
+  const { rates, leading } = command;
   const Arrow = ar ? ArrowLeft : ArrowRight;
   const fmt = (v) => (v == null ? null : v.toFixed(2));
   return (
@@ -89,6 +107,14 @@ export default function HseCommand({ ar, command, onGo, part = "top" }) {
           ? `آخر 12 شهراً. الساعات تقديرية: ${command.headcount} عاملاً × ${rates.weekly} ساعة (المادة 98) × 52 أسبوعاً = ${rates.hours.toLocaleString("en-US")} ساعة.`
           : `Last 12 months. Hours estimated: ${command.headcount} workers × ${rates.weekly} h (Art. 98) × 52 weeks = ${rates.hours.toLocaleString("en-US")} h.`}
       </span>
+
+      <SafetyKpiRow dataKey="leading" items={[
+        { key: "nearmiss", label: L("نسبة الحوادث الوشيكة", "Near-miss ratio"), value: leading.nearMissRatio == null ? null : leading.nearMissRatio === Infinity ? `${leading.nearMiss} : 0` : `${leading.nearMissRatio} : 1`, sub: ar ? `${leading.nearMiss} وشيك لكل إصابة مسجّلة — الأعلى أفضل: ثقافة إبلاغ` : `${leading.nearMiss} near misses per recordable — higher is better`, tone: leading.nearMissRatio == null ? null : leading.nearMissRatio >= 10 ? "ok" : leading.nearMissRatio >= 3 ? "warn" : "bad" },
+        { key: "rounds", label: L("التزام الجولات الشهرية", "Round compliance"), value: leading.roundCompliance == null ? null : `${leading.roundCompliance}%`, sub: L("فروع جولتها في موعدها", "Branches with a current round"), tone: leading.roundCompliance == null ? null : leading.roundCompliance >= 90 ? "ok" : leading.roundCompliance >= 60 ? "warn" : "bad" },
+        { key: "drills", label: L("التزام تمارين الطوارئ", "Drill compliance"), value: leading.drillCompliance == null ? null : `${leading.drillCompliance}%`, sub: L("فروع تمارينها كلها في موعدها", "Branches with every drill in cadence"), tone: leading.drillCompliance == null ? null : leading.drillCompliance >= 90 ? "ok" : leading.drillCompliance >= 60 ? "warn" : "bad" },
+        { key: "capa", label: L("إغلاق الإجراءات في موعدها", "CAPA on time"), value: leading.capaClosure == null ? null : `${leading.capaClosure}%`, sub: ar ? `من ${leading.capaDue} إجراءً حلّ موعده` : `Of ${leading.capaDue} actions that fell due`, tone: leading.capaClosure == null ? null : leading.capaClosure >= 90 ? "ok" : leading.capaClosure >= 60 ? "warn" : "bad" },
+        { key: "findings", label: L("إغلاق ملاحظات التفتيش", "Finding closure"), value: leading.findingClosure == null ? null : `${leading.findingClosure}%`, sub: ar ? `من ${leading.findings} ملاحظة في 12 شهراً` : `Of ${leading.findings} findings in 12 months`, tone: leading.findingClosure == null ? null : leading.findingClosure >= 90 ? "ok" : leading.findingClosure >= 60 ? "warn" : "bad" },
+      ]} />
 
       <SafetyPanel
         dataKey="queue"

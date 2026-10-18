@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 // Safety operations: permits to work, inspection rounds, investigations, HSE rates — named gates, derived figures.
 import * as ops from "../src/lib/safetyOps.js";
+import * as be from "../base44/shared/safetyOps.ts";
 
 const NOW = Date.parse("2026-07-20T05:00:00Z"); // 08:00 Riyadh, in the 3337 season
 const base = { type: "hot", stationId: "st_n", description: "لحام أنبوب في غرفة المضخات", holderId: "e1", startAt: "2026-07-20T08:00", endAt: "2026-07-20T11:30", controls: ["ppe", "firewatch", "gas", "barricade"] };
@@ -88,3 +89,100 @@ assert.equal(ops.daysSinceLastLti([{ ...injury, investigation: { lostDays: 1 } }
 assert.equal(ops.daysSinceLastLti([], [], NOW), null);
 assert.equal(ops.openCapas([{ ...injury, investigation: inv }], Date.parse("2026-08-02T08:00:00Z"))[0].overdue, true);
 console.log("safety ops ok");
+
+// ── Lifecycle: request → issue → acknowledge → close (separation of duties) ──
+const req = { type: "height", stationId: "st_n", description: "استبدال كشّافات السقف من سقالة", startAt: "2026-07-20T16:00", endAt: "2026-07-20T19:00" };
+assert.equal(ops.checkPermitRequestGate(req, { now: NOW }).ok, true);
+assert.match(ops.checkPermitRequestGate({ ...req, description: "قصير" }, { now: NOW }).reason, /8 أحرف/);
+assert.match(ops.checkPermitRequestGate({ ...req, outdoor: true, startAt: "2026-07-20T11:00", endAt: "2026-07-20T13:00" }, { now: NOW }).reason, /3337/);
+const requested = { ...req, id: "PTW-2607-REQ1", status: "requested", holderId: "e1" };
+assert.equal(ops.permitStatus(requested, NOW), "requested");
+// The holder cannot issue his own permit.
+assert.match(ops.checkPermitIssueGate({ ...requested, holderId: "e1", issuerId: "e1", controls: ["ppe", "barricade", "rescue"] }, { now: NOW }).reason, /لنفسه/);
+assert.equal(ops.checkPermitIssueGate({ ...requested, holderId: "e1", issuerId: "mgr", controls: ["ppe", "barricade", "rescue"] }, { now: NOW }).ok, true);
+// Declining needs a reason; only a request is declined.
+assert.match(ops.checkPermitActionGate(requested, "decline", { note: "", now: NOW }).reason, /سبب/);
+assert.equal(ops.checkPermitActionGate(requested, "decline", { note: "لا سقالة معتمدة اليوم", now: NOW }).ok, true);
+assert.equal(ops.checkPermitActionGate({ ...requested, status: "open" }, "decline", { note: "x".repeat(6), now: NOW }).ok, false);
+// Issued but unsigned: no work; only the holder signs.
+const issued = { ...requested, status: "open", issuedById: "mgr" };
+assert.equal(ops.permitStatus(issued, NOW), "open");
+assert.equal(ops.permitWorkAllowed(issued, NOW), false);
+assert.match(ops.checkPermitActionGate(issued, "acknowledge", { actorId: "mgr", now: NOW }).reason, /المنفّذ/);
+assert.equal(ops.checkPermitActionGate(issued, "acknowledge", { actorId: "e1", now: NOW }).ok, true);
+assert.match(ops.checkPermitActionGate(issued, "requestClose", { actorId: "e1", now: NOW }).reason, /وقّع/);
+const active = { ...issued, acknowledgedAt: "2026-07-20T13:05:00Z" };
+assert.equal(ops.permitStatus(active, NOW), "active");
+assert.equal(ops.permitWorkAllowed(active, NOW), true);
+assert.equal(ops.checkPermitActionGate(active, "acknowledge", { actorId: "e1", now: NOW }).ok, false);
+assert.equal(ops.checkPermitActionGate(active, "requestClose", { actorId: "e1", now: NOW }).ok, true);
+// The holder never closes; the issuer does, after the site is safe.
+assert.match(ops.checkPermitActionGate(active, "close", { actorId: "e1", areaSafe: true, now: NOW }).reason, /مُصدِرُه/);
+assert.equal(ops.checkPermitActionGate(active, "close", { actorId: "mgr", areaSafe: true, now: NOW }).ok, true);
+const closing = { ...active, closeRequestedAt: "2026-07-20T15:50:00Z" };
+assert.equal(ops.permitStatus(closing, NOW), "closing");
+const b2 = ops.permitBoard([requested, issued, active, closing], NOW);
+assert.deepEqual([b2.requested, b2.awaitingAck, b2.live, b2.closing], [1, 1, 3, 1]);
+
+// ── Risk register ──
+const risk = { stationId: "st_n", activity: "تفريغ الشاحنات بالرافعة", hazard: "اصطدام المشاة بالرافعة في ممر مشترك", likelihood: 4, severity: 4, controlId: "eng", control: "فصل ممر المشاة بحاجز معدني", residualLikelihood: 2, residualSeverity: 4, owner: "أحمد" };
+assert.equal(ops.checkRiskAssessmentGate(risk).ok, true);
+assert.match(ops.checkRiskAssessmentGate({ ...risk, residualLikelihood: 5 }).reason, /لا يزيد/);
+assert.match(ops.checkRiskAssessmentGate({ ...risk, likelihood: 5, severity: 5, residualLikelihood: 4, residualSeverity: 4 }).reason, /لا يُقبل/);
+assert.match(ops.checkRiskAssessmentGate({ ...risk, controlId: "" }).reason, /هرم/);
+assert.equal(ops.riskBand(8), "medium");
+assert.equal(ops.riskBand(16), "critical");
+const reg = ops.riskRegisterState([{ ...risk, id: "r1", reviewedAt: "2025-05-01T00:00:00Z" }, { ...risk, id: "r2", controlId: "ppe", residualLikelihood: 3, residualSeverity: 4, reviewedAt: "2026-07-01T00:00:00Z" }], NOW);
+assert.equal(reg.reviewDue, 1);
+assert.equal(reg.high, 1);
+assert.equal(reg.ppeOnly, 1);
+
+// ── Drills ──
+const drill = { type: "evacuation", stationId: "st_n", date: "2026-07-19", participants: 12, evacuationMinutes: 4, outcome: "met" };
+assert.equal(ops.checkDrillGate(drill, { now: NOW }).ok, true);
+assert.match(ops.checkDrillGate({ ...drill, evacuationMinutes: "" }, { now: NOW }).reason, /زمن الإخلاء/);
+assert.match(ops.checkDrillGate({ ...drill, outcome: "gaps", findings: "" }, { now: NOW }).reason, /الثغرات/);
+assert.match(ops.checkDrillGate({ ...drill, date: "2026-09-01" }, { now: NOW }).reason, /لم يُجرَ/);
+const ds = ops.drillState({ drills: [{ type: "evacuation", date: "2026-05-01" }, { type: "fire", date: "2025-01-01" }] }, NOW);
+assert.equal(ds.types.find((t) => t.type.id === "evacuation").due, false);
+assert.equal(ds.types.find((t) => t.type.id === "fire").due, true);
+assert.equal(ds.due, 2); // fire overdue + first aid never held
+
+// ── Leading indicators ──
+const lead = ops.leadingIndicators({
+  incidents: [
+    { at: "2026-07-01T08:00:00Z", card: { kind: 2 } }, { at: "2026-07-02T08:00:00Z", card: { kind: 2 } }, { at: "2026-07-03T08:00:00Z", card: { kind: 2 } },
+    { ...injury, investigation: { lostDays: 1, capa: "x", capaDue: "2026-07-18", capaDoneAt: "2026-07-17T00:00:00Z" } },
+    { at: "2026-06-01T08:00:00Z", status: "closed", source: { kind: "inspection" }, card: { kind: 0 } },
+    { at: "2026-06-02T08:00:00Z", status: "open", source: { kind: "inspection" }, card: { kind: 0 } },
+  ],
+  branches: [{ roundDue: false, drillsCompliant: true }, { roundDue: true, drillsCompliant: false }],
+  now: NOW,
+});
+assert.equal(lead.nearMissRatio, 3);
+assert.equal(lead.roundCompliance, 50);
+assert.equal(lead.drillCompliance, 50);
+assert.equal(lead.capaClosure, 100);
+assert.equal(lead.findingClosure, 50);
+console.log("safety lifecycle · risk · drills · leading ok");
+
+// ── Server twin: same gates, same named reasons ──
+for (const [fe, srv] of [[ops, be]]) void fe && void srv;
+const twinCases = [
+  ["checkPermitIssueGate", [{ ...base, outdoor: true, endAt: "2026-07-20T13:00" }, { now: NOW }]],
+  ["checkPermitIssueGate", [{ ...base, controls: ["ppe"] }, { now: NOW }]],
+  ["checkPermitRequestGate", [{ ...req, description: "قصير" }, { now: NOW }]],
+  ["checkPermitActionGate", [active, "close", { actorId: "e1", areaSafe: true, now: NOW }]],
+  ["checkPermitActionGate", [issued, "acknowledge", { actorId: "mgr", now: NOW }]],
+  ["checkRiskAssessmentGate", [{ ...risk, likelihood: 5, severity: 5, residualLikelihood: 4, residualSeverity: 4 }]],
+  ["checkDrillGate", [{ ...drill, outcome: "gaps", findings: "" }, { now: NOW }]],
+  ["checkInvestigationGate", [injury, { ...inv, gosiReportedAt: "2026-07-10" }, { now: NOW }]],
+  ["checkInspectionGate", [{ stationId: "st_n", results: {} }]],
+];
+for (const [fn, args] of twinCases) {
+  assert.deepEqual(be[fn](...args), ops[fn](...args), `twin ${fn}`);
+}
+assert.equal(be.permitStatus(closing, NOW), "closing");
+assert.deepEqual(be.hseRates({ incidents: [{ ...injury, investigation: { lostDays: 4 } }], headcount: 10, now: NOW }).trir, rates.trir);
+assert.equal(be.inspectionItems().length, ops.inspectionItems().length);
+console.log("safety ops server twin ok");

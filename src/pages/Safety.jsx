@@ -6,12 +6,15 @@ import { getRoleLabel } from "@/lib/roles";
 import { safetyCardFaceCounts, safetyCardStage, safetyCardsOnFace, safetyCardsVisibleTo } from "@/lib/safetyBranchVisibility";
 import { visibleStations, canApproveReports } from "@/lib/permissions";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
-import { updateSafetyRecord, recordSafetyIncident, closeSafetyHazard, approveSafetyRecord, revokeSafetyApproval, decideSafetyCard, issueSafetyPermit, actOnSafetyPermit, recordInspectionRound, saveIncidentInvestigation } from "@/lib/safetyStore";
+import { updateSafetyRecord, recordSafetyIncident, closeSafetyHazard, approveSafetyRecord, revokeSafetyApproval, decideSafetyCard, issueSafetyPermit, actOnSafetyPermit, recordInspectionRound, saveIncidentInvestigation, requestSafetyPermit, saveRiskAssessment, recordSafetyDrill } from "@/lib/safetyStore";
 import PermitDesk from "@/components/safety/PermitDesk";
 import InspectionRound from "@/components/safety/InspectionRound";
 import IncidentRegister from "@/components/safety/IncidentRegister";
 import HseCommand, { deriveHseCommand } from "@/components/safety/HseCommand";
-import { injuryReportState, isTrackedIncident, openCapas } from "@/lib/safetyOps";
+import MyPermits from "@/components/safety/MyPermits";
+import RiskRegister from "@/components/safety/RiskRegister";
+import DrillLog from "@/components/safety/DrillLog";
+import { injuryReportState, isTrackedIncident, openCapas, permitStatus } from "@/lib/safetyOps";
 import { safetyApprovalIssues } from "@/lib/safetyLogic";
 import SafetyIncidentReportForm from "@/components/safety/SafetyIncidentReportForm";
 import StationSiteDutiesCard from "@/components/safety/StationSiteDutiesCard";
@@ -32,7 +35,8 @@ import { MUTED } from "@/lib/platformStyles";
 import { pageKicker } from "@/lib/moduleMeta";
 import { useRailSide } from "@/lib/railSide";
 
-const ADMIN_TABS = new Set(["dash", "register", "permits", "inspect", "incidents"]);
+const ADMIN_TABS = new Set(["dash", "register", "permits", "risks", "inspect", "incidents"]);
+const EMPLOYEE_TABS = new Set(["mine", "branch", "permits"]);
 const TAB_ALIAS = {
   work: "register",
   comply: "permits",
@@ -51,7 +55,7 @@ export default function Safety() {
   const headerScope = useStationScope();
   const requested = searchParams.get("tab");
   const tab = employeeRail
-    ? "work"
+    ? (EMPLOYEE_TABS.has(requested) ? requested : "work")
     : (ADMIN_TABS.has(requested) ? requested : (TAB_ALIAS[requested] || "dash"));
   const [stationId, setStationId] = useState(searchParams.get("station") || "");
   const [levelOpen, setLevelOpen] = useState(false);
@@ -74,7 +78,13 @@ export default function Safety() {
 
   // Safety cards follow the branch rule of المهام / إثبات العمل / إثبات الزائر (lib/safetyBranchVisibility):
   // the reporter, his branch and the managers whose scope holds the branch — redacted where named.
-  const [mineScope, setMineScope] = useState("mine");
+  const [mineScope, setMineScopeState] = useState(EMPLOYEE_TABS.has(requested) ? requested : "mine");
+  const setMineScope = (value) => {
+    setMineScopeState(value);
+    const next = new URLSearchParams(searchParams);
+    if (value === "mine") next.delete("tab"); else next.set("tab", value);
+    setSearchParams(next, { replace: true });
+  };
   const [mineFace, setMineFace] = useState("all");
   const [manageFace, setManageFace] = useState("open");
   const managerRole = Boolean(currentUser) && (["director", "ops_manager", "pgm", "station_manager", "safety_officer"].includes(currentUser.role) || data?.ownerId === currentUser.id);
@@ -238,10 +248,25 @@ export default function Safety() {
     const result = issueSafetyPermit(company.id, draft, actor, lang);
     return say(result, ar ? `صدر التصريح ${result.permit?.id || ""} — وصل المنفّذ إشعار بوقته.` : `Permit ${result.permit?.id || ""} issued — the holder was told its window.`);
   };
-  const handleActPermit = (row, action, opts) => {
-    const result = actOnSafetyPermit(company.id, row.permit.stationId, row.permit.id, action, opts, actor);
-    const done = { suspend: ar ? "أُوقف العمل — السبب في سجل التصريح." : "Work stopped — the reason is on the permit.", resume: ar ? "استؤنف العمل." : "Work resumed.", close: ar ? "أُغلق التصريح بتوقيعك." : "Permit closed with your signature.", cancel: ar ? "أُلغي التصريح." : "Permit cancelled." }[action];
-    return say(result, done);
+  const permitDone = (action) => ({
+    suspend: ar ? "أُوقف العمل — السبب في سجل التصريح، ووصل المنفّذ إشعار." : "Work stopped — the reason is on the permit; the holder was told.",
+    resume: ar ? "استؤنف العمل." : "Work resumed.",
+    close: ar ? "أُغلق التصريح بتوقيعك." : "Permit closed with your signature.",
+    cancel: ar ? "أُلغي التصريح." : "Permit cancelled.",
+    decline: ar ? "رُفض الطلب — وصل الطالب السبب." : "Request declined — the requester was told why.",
+    acknowledge: ar ? "وقّعت على استلام الضوابط — يبدأ العمل، وأُبلغ المُصدر." : "You signed the controls — work starts; the issuer was told.",
+    requestClose: ar ? "أُبلغ المُصدر أنك أنهيت العمل — ينتظر توقيعه على سلامة الموقع." : "The issuer was told you finished — awaiting the site-safe signature.",
+  }[action]);
+  const handleActPermit = (row, action, opts) => say(actOnSafetyPermit(company.id, row.permit.stationId, row.permit.id, action, opts, actor, lang), permitDone(action));
+  const handleMyPermitAct = (permit, action, opts) => say(actOnSafetyPermit(company.id, permit.stationId, permit.id, action, opts, actor, lang), permitDone(action));
+  const handleRequestPermit = (draft) => {
+    const result = requestSafetyPermit(company.id, draft, actor, lang);
+    return say(result, ar ? `أُرسل طلب التصريح ${result.permit?.id || ""} — لا تبدأ قبل الإصدار وتوقيعك.` : `Permit request ${result.permit?.id || ""} sent — do not start before issue and your signature.`);
+  };
+  const handleRisk = (draft) => say(saveRiskAssessment(company.id, draft, actor), ar ? "سُجّل تقييم الخطر وتاريخ مراجعته." : "Risk assessment and its review date recorded.");
+  const handleDrill = (draft) => {
+    const result = recordSafetyDrill(company.id, draft, actor);
+    return say(result, result.raised ? (ar ? "سُجّل التمرين ورُفعت ثغراته بلاغاً في «بلاغات السلامة»." : "Drill recorded; its gaps were raised in Safety reports.") : (ar ? "سُجّل التمرين." : "Drill recorded."));
   };
   const handleRound = (stationId, results) => {
     const result = recordInspectionRound(company.id, stationId, results, actor);
@@ -261,6 +286,7 @@ export default function Safety() {
     { key: "dash", label: ar ? "لوحة السلامة" : "Safety board" },
     { key: "register", label: ar ? "بلاغات السلامة" : "Safety reports" },
     { key: "permits", label: ar ? "تصاريح العمل" : "Permits" },
+    { key: "risks", label: ar ? "تقييم المخاطر" : "Risk assessment" },
     { key: "inspect", label: ar ? "التفتيش والجاهزية" : "Inspection" },
     { key: "incidents", label: ar ? "الحوادث والإصابات" : "Incidents" },
   ];
@@ -387,14 +413,16 @@ export default function Safety() {
         ? [
           { value: "mine", label: L("بلاغاتي", "My reports"), count: mineCards.length },
           { value: "branch", label: L("بلاغات الفرع", "Branch reports"), count: branchCards.length },
+          { value: "permits", label: L("تصاريحي", "My permits"), count: (recFor(reportStation?.id)?.permits || []).filter((p) => String(p.holderId) === String(currentUser.id) && ["requested", "open", "active", "closing", "suspended"].includes(permitStatus(p))).length },
         ]
         : toolbarTabs.map((tabItem) => ({
           value: tabItem.key,
           label: tabItem.label,
           count: tabItem.key === "register" ? openCardCount
             : tabItem.key === "dash" ? command.queue.length
-              : tabItem.key === "permits" ? command.permits.live + command.permits.unclosed
-                : tabItem.key === "inspect" ? command.branches.filter((b) => b.roundDue).length
+              : tabItem.key === "permits" ? command.permits.requested + command.permits.closing + command.permits.unclosed
+                : tabItem.key === "risks" ? command.branches.reduce((n, b) => n + b.risksHigh + b.risksReviewDue, 0)
+                : tabItem.key === "inspect" ? command.branches.filter((b) => b.roundDue || b.drillsDue).length
                   : tabItem.key === "incidents" ? incidentAttention : 0,
         }))}
       tool={employeeRail ? mineScope : tab}
@@ -402,7 +430,10 @@ export default function Safety() {
       meta={null}
     >
       <div data-safety-face={employeeRail ? "employee" : "manage"} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {employeeRail && (
+      {employeeRail && mineScope === "permits" ? (
+        <MyPermits ar={ar} station={reportStation} rec={recFor(reportStation?.id)} actorId={currentUser.id} today={todayKey} onRequest={handleRequestPermit} onAct={handleMyPermitAct} />
+      ) : null}
+      {employeeRail && mineScope !== "permits" && (
         <TwoPaneWorkspace
           dataKey="safety-mine"
           raise={(
@@ -448,11 +479,15 @@ export default function Safety() {
         <TwoPaneWorkspace dataKey="safety-register" list={cardList} />
       )}
       {tab === "permits" && !employeeRail && (
-        <PermitDesk ar={ar} stations={stations} recFor={recFor} staffOf={staffOf} canEdit={canEdit} today={todayKey} onIssue={handleIssuePermit} onAct={handleActPermit} />
+        <PermitDesk ar={ar} stations={stations} recFor={recFor} staffOf={staffOf} canEdit={canEdit} today={todayKey} onIssue={handleIssuePermit} onAct={handleActPermit} actorId={currentUser.id} />
+      )}
+      {tab === "risks" && !employeeRail && (
+        <RiskRegister ar={ar} stations={stations} recFor={recFor} canEdit={canEdit} onSave={handleRisk} />
       )}
       {tab === "inspect" && !employeeRail && (
         <>
           <InspectionRound ar={ar} stations={stations} recFor={recFor} canEdit={canEdit} onSave={handleRound} />
+          <DrillLog ar={ar} stations={stations} recFor={recFor} canEdit={canEdit} today={todayKey} onSave={handleDrill} />
           <StationSiteDutiesCard ar={ar} stations={stations} recFor={recFor} canEdit={canEdit} today={todayKey} onSaveSite={handleSaveSite} onSaveCabinet={handleSaveCabinet} />
           {/* Labour Law on the workplace — Arts. 125 · 63 · 144 · 158, each under its article. */}
           <WorkplaceLawCard ar={ar} stations={stations} recFor={recFor} data={data} canEdit={canEdit} today={todayKey} onSave={handleSaveWorkplaceLaw} />
@@ -483,7 +518,7 @@ export default function Safety() {
         </>
       )}
       {/* The employee side reads the same duties for his knowledge — his branch, no recording. */}
-      {employeeRail && reportStation ? (
+      {employeeRail && reportStation && mineScope !== "permits" ? (
         <WorkplaceLawCard ar={ar} stations={[reportStation]} recFor={recFor} data={data} canEdit={false} today={todayKey} readOnly self={(data.employees || []).find((p) => p.id === currentUser.id) || currentUser} />
       ) : null}
       {/* «أنظمة الوزارة» once — on the board (manage) or the employee's page, never under every tab. */}

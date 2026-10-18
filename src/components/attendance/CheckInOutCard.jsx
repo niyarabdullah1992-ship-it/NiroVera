@@ -498,7 +498,8 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const exposedToday = dutyShift ? sunExposureMark(dutySchedule, currentUser?.id, dutyDay, dutyShift).mark === SUN_FIELD : false;
   const breakHint = dutyShift ? prayerBreakHint({ shift: dutyShift, onDate: dutyDay, prayers: prayerDay, employee: dutyEmployee, company: data, published: isWeekDayPublished(dutySchedule, dutyDay) }) : null;
   // The worker sets his break time; when it comes he is told — no punch is required (lib/shiftDerivations).
-  const restPlan = data?.restPlans?.[`${currentUser?.id}:${dutyDay}`] || null;
+  // No rest plan any more (owner's rule): the statutory 30 minutes are deducted on their own, placed at the nearest prayer.
+  const restPlan = null;
   const dutyAlerts = deriveDutyAlerts({
     shift: dutyShift,
     punches: { checkIn: attendance?.check_in_at, checkOut: attendance?.check_out_at, breaks: attendance?.breaks, restPlan: restPlan?.parts || null },
@@ -1219,7 +1220,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             ))}
           </div>
           {/* With a saved break time the rest needs no punch — the buttons stay for a day without one. */}
-          {flexOn && inn && !done && !restPlan?.parts ? (
+          {false ? (
             <BreakPunch
               ar={ar}
               day={flexDay}
@@ -1233,7 +1234,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           ) : null}
           {(() => {
             // Taking the whole break now would leave more than five hours of work after it — say so before he taps.
-            if (!flexOn || !breakGate?.ok || flexDay.open || !band || restPlan?.parts) return null;
+            return null; // no break button — nothing to warn before
             const consecLimit = (Number(ruleValue("hours.rest.maxConsecutiveHours", dutyDay)) || 5) * 60;
             let nowM = riyadhMinutesOf(new Date(tick));
             if (nowM + 720 < band.start) nowM += 1440;
@@ -1271,7 +1272,6 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           ) : null}
           {error ? <span style={{ fontSize: 12, color: "var(--nv-bad-ink)", textAlign: "center", lineHeight: 1.7 }}>{error}</span> : null}
           {onApprovedLeave && !inn ? <LeaveCutOffer ar={ar} companyId={company?.id} employee={currentUser} onDone={async () => { setError(""); setLeaveCut(false); await refresh?.(); }} /> : null}
-          {restCardEl && restSlot ? createPortal(restCardEl, restSlot) : restCardEl ? <div style={{ width: "100%", maxWidth: 360, alignSelf: "center", textAlign: "start" }}>{restCardEl}</div> : null}
         </div>
 
         <div className="nv-punch-day" style={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
@@ -1458,9 +1458,9 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                   ? (flexDay.assumed
                     ? (flexDay.assumed.fromPlan
                       ? (ar ? "الجزء المخطّط راحتك كما حددتها — لا تُحسب من ساعات عملك (المادة 102)." : "The hatched part is your break as you set it — not counted as work (Art. 102).")
-                      : (ar ? "الجزء المخطّط راحة مفترضة — لم تحدد وقتها، ولا تُحسب من ساعات عملك (المادة 102)." : "The hatched part is an assumed break — you did not set it; not counted as work (Art. 102)."))
+                      : (ar ? "الجزء المخطّط راحتك النظامية — لا تُحسب من ساعات عملك (المادة 102)." : "The hatched part is your statutory rest — not counted as work (Art. 102)."))
                     : (ar ? "الجزء المخطّط راحتك كما بصمتها — لا تُحتسب ساعات عمل." : "The hatched part is your break as punched — not counted as work."))
-                  : (ar ? "راحتك في الوقت الذي تحدده — لا تُحتسب ساعات عمل." : "Your break, at the time you set — not counted as work."))
+                  : (ar ? "راحتك النظامية 30 دقيقة قبل أن تكمل 5 ساعات — لا تُحتسب ساعات عمل." : "Your statutory 30-minute rest before five hours — not counted as work."))
                 : band?.label
                   ? (ar ? "الجزء المخطّط هو الراحة — لا تُحتسب ساعات عمل." : "The hatched part is the break — not counted as work.")
                   : (ar ? "راحة الوردية لا تُحسب من ساعات عملك" : "Shift rest is not counted as working time")}
@@ -1657,10 +1657,10 @@ export function flexSteps(day, { ar = true, hint = null, plan = null } = {}) {
         kind: "plan",
         assumed: !row.fromPlan,
         at: row.startMin,
-        label: row.fromPlan ? (ar ? "راحتك" : "Your break") : (ar ? "راحة مفترضة" : "Assumed break"),
+        label: row.fromPlan ? (ar ? "راحتك" : "Your break") : (ar ? "راحتك النظامية" : "Your statutory rest"),
         note: row.fromPlan
           ? (ar ? "في الوقت الذي حددته — تُحتسب بلا بصمة، ولا تُحسب من عملك" : "At the time you set — counted without a punch, not as work")
-          : (ar ? "لم تحدد وقتها فافتُرضت — لا تُحسب من عملك (المادة 102)" : "Not set by you, so assumed — not counted as work (Art. 102)"),
+          : (ar ? `${minutesAr(row.minutes)} للراحة والصلاة والطعام (المادة 101) — لا تُحسب من عملك (المادة 102)، بلا بصمة` : `${row.minutes} min for rest, prayer and food (Art. 101) — not counted as work (Art. 102), no punch`),
         value: `${row.start}–${row.end}`,
       });
       return;

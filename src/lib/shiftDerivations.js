@@ -369,14 +369,19 @@ export function resolveFlexDayBreaks({ shift, breaks, checkIn, checkOut, now, on
     const touches = endM != null && inM < flex.toMin && endM > flex.fromMin;
     // Decided at check-in, so the notice can fire the minute it begins: never later than the 5h mark.
     // The worker's own plan (one lawful block) is where an unpunched break is assumed — his choice first.
-    const ownPlan = ownParts ? checkRestPlanGate({ shift, onDate, parts: ownParts, continuous103 }) : null;
-    const ownRows = ownPlan?.ok ? ownPlan.rows.map((row) => ({ ...row, source: "assumed", fromPlan: true })) : null;
+    // Two or more statutory rests (a long day): placed evenly on their own so no stretch passes five hours.
+    const autoParts = !ownParts && flex.splitEffective
+      ? statutoryRestParts(flex.span, flex.minPart, consecMax).map((part) => ({ start: hmOfClock(flex.shiftStart + part.from), minutes: part.minutes }))
+      : null;
+    const useParts = ownParts || (autoParts?.length > 1 ? autoParts : null);
+    const ownPlan = useParts ? checkRestPlanGate({ shift, onDate, parts: useParts, continuous103 }) : null;
+    const ownRows = ownPlan?.ok ? ownPlan.rows.map((row) => ({ ...row, source: "assumed", ...(ownParts ? { fromPlan: true } : {}) })) : null;
     const storedRows = rows.filter((row) => row.source === "assumed");
     if (ownRows) {
       // The worker's own plan (one block or two parts) is where his break is counted — no punch needed.
       out.planned = ownRows.find((row) => endM == null || row.startMin > endM) || ownRows[0];
       if (storedRows.length) {
-        assumedList = storedRows.map((row) => ({ ...row, source: "assumed", fromPlan: true }));
+        assumedList = storedRows.map((row) => ({ ...row, source: "assumed", ...(ownParts ? { fromPlan: true } : {}) }));
       } else {
         assumedList = ownRows
           .filter((row) => endM != null && endM >= row.startMin && (outM == null || row.startMin < outM))
@@ -420,6 +425,20 @@ export const LONG_SHIFT_REST_MINUTES = 60;
  * split in two by default, the window from the first half hour after the start to the last before the end.
  * Returns the patch to apply, or null (short shift · already flex · continuous Art. 103 · fixed by choice).
  */
+/**
+ * Art. 101 literally: the fewest statutory rests (each the 30-minute minimum) so that no stretch of work
+ * passes five hours — 8 or 9 hours → one rest, 12 hours → two. Each part's offset from the shift start
+ * spreads the work evenly between them: [{ from, minutes }].
+ */
+export function statutoryRestParts(span, minPart = 30, consecMax = 300) {
+  const S = Number(span) || 0;
+  if (S <= consecMax) return [];
+  let n = 1;
+  while (n < 6 && (S - n * minPart) / (n + 1) > consecMax) n += 1;
+  const block = (S - n * minPart) / (n + 1);
+  return Array.from({ length: n }, (_, i) => ({ from: Math.round((block * (i + 1) + minPart * i) / 5) * 5, minutes: minPart }));
+}
+
 export function longShiftRestPatch(shift, onDate) {
   // The worker sets his own rest (owner's rule): the roster holds no break settings. Every shift with more than
   // five hours (Art. 101) gets a rest the worker places in بصمتي — its length read from the shift's hours: what
@@ -433,12 +452,16 @@ export function longShiftRestPatch(shift, onDate) {
   if (span <= consecMax) return null;
   const ordinary = (Number(ruleValue("hours.shift.ordinaryHours", onDate)) || 8) * 60;
   const minPart = ruleValue("hours.rest.duringShiftMinutes", onDate) || 30;
-  const minutes = Math.min(LONG_SHIFT_REST_MINUTES, Math.max(minPart, span - ordinary));
+  // The law, literally (owner's rule): the statutory minimum only — 30 minutes for rest, prayer and food,
+  // deducted on its own (Art. 102), placed at the nearest prayer before five hours of work. No plan, no punch.
+  void ordinary;
+  const parts = statutoryRestParts(span, minPart, consecMax);
+  const minutes = parts.reduce((sum, part) => sum + part.minutes, 0);
   const flexBreak = {
     minutes,
     from: hmOfClock(start),
     to: hmOfClock(start + span),
-    split: minutes >= minPart * 2,
+    split: parts.length > 1,
     earlyEnd: false,
   };
   const fb = shift.flexBreak || {};

@@ -660,6 +660,8 @@ export function getCompanyData(id) {
   // The platform rule: a shift longer than 8 hours opens a one-hour rest the worker places in بصمتي.
   if (openLongShiftRests(data)) persist = true;
   if (clearContinuous103(data)) persist = true;
+  // Rest plans were removed (owner's rule) — a stored plan no longer places anyone's rest.
+  if (data.restPlans && Object.keys(data.restPlans).length) { data.restPlans = {}; persist = true; }
   // Local preview used to seed compass names (شمال/شرق) — those were labels only,
   // not a forced region layer. Rewrite once so the org tree shows free branch names.
   if (isLocalPreviewWorkspace(id) && Array.isArray(data.stations)) {

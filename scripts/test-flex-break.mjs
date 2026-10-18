@@ -204,7 +204,7 @@ assert.ok(!ids(live("11:29")).includes("rest_5h_soon"));
 assert.ok(ids(live("11:30")).includes("rest_5h_soon"), "4h30 with no punched break — the window ahead does not hide it");
 assert.equal(live("12:00").current.id, "flex_break_assumed_start", "none punched: the assumed break begins at the 5h mark");
 assert.ok(!ids(live("12:00")).includes("rest_5h_breach"), "an assumed break is a rest — no breach");
-assert.equal(live("12:00").current.textAr, "بدأت راحتك الآن (\u206612:00–13:00\u2069) — لم تبصم لها، فتُحتسب تلقائياً.");
+assert.equal(live("12:00").current.textAr, "حان وقت راحتك النظامية (\u206612:00–13:00\u2069) — 60 دقيقة للراحة والصلاة والطعام، لا تحتاج بصمة.");
 assert.ok(ids(live("13:00")).includes("flex_break_ended"), "«انتهت راحتك» at its end");
 assert.ok(!ids(live("17:00", [{ start: "11:00", end: "11:30" }], { shift: { ...FLEX, end: "18:00" } })).includes("flex_break_assumed_start"), "a punched part — nothing assumed");
 assert.ok(!ids(live("12:00", [{ start: "11:50" }])).includes("rest_5h_breach"), "an open break holds the count");

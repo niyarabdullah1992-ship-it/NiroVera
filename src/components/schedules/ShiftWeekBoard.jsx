@@ -843,7 +843,7 @@ export default function ShiftWeekBoard({
                 <span style={{ fontSize: 11, color: SW.mid }}><span style={mono}>{shiftHours(shift)}</span> {ar ? "س" : "h"}</span>
                 {shift.breakMode === "flex" ? (
                   <span style={chip("mute", { fontSize: 10, fontWeight: 500 })}>
-                    {ar ? `راحة ${shift.flexBreak?.minutes ?? "—"} د · وقتها للموظف` : `${shift.flexBreak?.minutes ?? "—"}m rest · timed by the worker`}
+                    {ar ? `راحة ${shift.flexBreak?.minutes ?? "—"} د · المادة 101` : `${shift.flexBreak?.minutes ?? "—"}m rest · Art. 101`}
                   </span>
                 ) : null}
               </span>

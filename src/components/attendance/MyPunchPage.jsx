@@ -162,7 +162,6 @@ export default function MyPunchPage({ me, currentUser, company, data, t, lang = 
           >
             <AttendanceProofChain ar={ar} {...chain} compact onManual={() => setManualAsk((n) => n + 1)} />
             {/* «وقت راحتك» lands here from the punch card (CheckInOutCard portals into this slot). */}
-            <div id="nv-rest-plan-slot" />
           </DutySide>
         )}
       />

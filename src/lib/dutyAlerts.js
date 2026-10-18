@@ -248,10 +248,10 @@ export function deriveDutyAlerts({
         // His own time: told that the break he set has begun — nothing to punch.
         textAr: a.fromPlan
           ? `بدأت راحتك التي حددتها (\u2066${a.start}–${a.end}\u2069) — حتى ${a.end}، لا تحتاج بصمة.`
-          : `بدأت راحتك الآن (\u2066${a.start}–${a.end}\u2069) — لم تبصم لها، فتُحتسب تلقائياً.`,
+          : `حان وقت راحتك النظامية (\u2066${a.start}–${a.end}\u2069) — ${minutesAr(a.minutes)} للراحة والصلاة والطعام، لا تحتاج بصمة.`,
         textEn: a.fromPlan
           ? `The break you set has started (${a.start}–${a.end}) — until ${a.end}, no punch needed.`
-          : `Your break has started (${a.start}–${a.end}) — you did not punch it, so it counts automatically.`,
+          : `Time for your statutory rest (${a.start}–${a.end}) — ${a.minutes} min for rest, prayer and food, no punch needed.`,
         hint: { kind: "rest", item: { date: onDate } },
       }));
     } else if (flexDay.assumed && !flexDay.punched.length && flexDay.planned && flexDay.assumed.startMin === flexDay.planned.startMin
@@ -278,8 +278,8 @@ export function deriveDutyAlerts({
       // The worker's own break: he chooses when, inside the window, and proves it by punch.
       alerts.push(alert("flex_break_yours", "info", "hours.rest.duringShiftMinutes", onDate, {
         atMinutes: flex.fromMin,
-        textAr: `راحتك ${minutesAr(flex.minutes)} (المادة 101) — حدّد وقتها في «وقت راحتك»${flex.splitEffective ? "، مرة واحدة أو على جزأين" : ""}، قبل أن تكمل ${consecMax / 60} ساعات عمل متصلة. لا تحتاج بصمة.`,
-        textEn: `Your ${flex.minutes}-min break (Art. 101) — set its time in «Your break time»${flex.splitEffective ? ", in one block or two" : ""}, before ${consecMax / 60} hours of work in a row. No punch needed.`,
+        textAr: `لك راحة ${minutesAr(flex.minutes)} على الأقل للراحة والصلاة والطعام قبل أن تكمل ${consecMax / 60} ساعات عمل متصلة (المادة 101). لا تحتاج بصمة، ولا تُحسب من ساعات عملك (المادة 102).`,
+        textEn: `You have at least ${flex.minutes} min for rest, prayer and food before ${consecMax / 60} hours of work in a row (Art. 101). No punch needed; not counted as work (Art. 102).`,
         hint: { kind: "rest", item: { date: onDate } },
       }));
     } else if (flexDay.assumed) {
@@ -287,10 +287,10 @@ export function deriveDutyAlerts({
         atMinutes: flexDay.assumed.startMin,
         textAr: flexDay.assumed.fromPlan
           ? `راحتك كما حددتها \u2066${(flexDay.assumedList || [flexDay.assumed]).map((r) => `${r.start}–${r.end}`).join(" · ")}\u2069 — لا تُحسب من ساعات عملك (المادة 102).`
-          : `لم تحدد وقت راحتك — افتُرضت \u2066${flexDay.assumed.start}–${flexDay.assumed.end}\u2069 ولا تُحسب من ساعات عملك (المادة 102).`,
+          : `راحتك النظامية \u2066${flexDay.assumed.start}–${flexDay.assumed.end}\u2069 — لا تُحسب من ساعات عملك (المادة 102).`,
         textEn: flexDay.assumed.fromPlan
           ? `Your break as you set it, ${(flexDay.assumedList || [flexDay.assumed]).map((r) => `${r.start}–${r.end}`).join(" · ")} — not counted as work (Art. 102).`
-          : `You did not set your break — it is assumed at ${flexDay.assumed.start}–${flexDay.assumed.end} and not counted as work (Art. 102).`,
+          : `Your statutory rest ${flexDay.assumed.start}–${flexDay.assumed.end} — not counted as work (Art. 102).`,
         hint: { kind: "rest", item: { date: onDate } },
       }));
     } else if (flexDay.punched.length && flex.splitEffective && flexDay.windowState === "open" && allowed >= flex.minPart) {
@@ -634,8 +634,8 @@ function appNoticeText(row, ar) {
   }
   if (row.id === "flex_break_assumed_start") {
     return ar
-      ? `بدأت راحتك الآن (\u2066${meta.start}–${meta.end}\u2069) — لم تبصم لها، فتُحتسب تلقائياً`
-      : `Your break starts now (${meta.start}–${meta.end}) — you did not punch it, so it counts automatically`;
+      ? `حان وقت راحتك النظامية (\u2066${meta.start}–${meta.end}\u2069) — للراحة والصلاة والطعام، لا تحتاج بصمة.`
+      : `Time for your statutory rest (${meta.start}–${meta.end}) — rest, prayer and food, no punch needed.`;
   }
   if (row.id === "break_now") {
     return ar

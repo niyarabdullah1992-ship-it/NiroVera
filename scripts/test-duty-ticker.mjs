@@ -102,7 +102,7 @@ const fx = tick(FLEX, flexNone, at("12:00"));
 const startNotice = fx.plans.filter((p) => p.key.includes(":assumed_start:"));
 assert.equal(startNotice.length, 1, "one notice");
 assert.equal(startNotice[0].key, "duty-alert:e1:2026-10-17:day:assumed_start:12:00");
-assert.equal(startNotice[0].text, "بدأت راحتك الآن (⁦12:00–13:00⁩) — لم تبصم لها، فتُحتسب تلقائياً");
+assert.equal(startNotice[0].text, "حان وقت راحتك النظامية (⁦12:00–13:00⁩) — للراحة والصلاة والطعام، لا تحتاج بصمة.");
 assert.equal(startNotice[0].userId, "e1");
 assert.equal(startNotice[0].breach, false, "a notice, not a breach");
 assert.ok(!fx.plans.some((p) => p.key.includes("rest_5h_breach")), "no Art. 101 breach at the 5h mark");

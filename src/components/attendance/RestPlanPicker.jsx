@@ -1,19 +1,9 @@
 import React, { useState } from "react";
 import { checkRestPlanGate, flexBreakOf } from "@/lib/shiftDerivations";
 import { minutesAr } from "@/lib/dutyAlerts";
+import TimeField from "@/components/shared/TimeField";
 
 const MONO = { fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums" };
-const field = {
-  fontFamily: "'IBM Plex Mono', monospace",
-  height: 32,
-  padding: "0 8px",
-  border: "1px solid var(--nv-line)",
-  borderRadius: 8,
-  background: "var(--nv-card)",
-  color: "var(--nv-ink)",
-  fontSize: 13,
-  minWidth: 0,
-};
 const label = { fontSize: 11, color: "var(--nv-muted)" };
 const toMin = (hm) => {
   const m = String(hm || "").match(/^(\d{1,2}):(\d{2})$/);
@@ -107,12 +97,12 @@ export default function RestPlanPicker({ ar = true, shift, onDate, continuous103
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span style={label}>{split ? (ar ? `الجزء الأول · ${minutesAr(half)}` : `Part 1 · ${half} min`) : (ar ? `من · ${minutesAr(flex.minutes)}` : `From · ${flex.minutes} min`)}</span>
-            <input type="time" data-rest-plan-first value={first} min={minClock} max={maxClock} step={300} onChange={(event) => setFirst(event.target.value)} dir="ltr" style={field} />
+            <TimeField ar={ar} dataKey="rest-first" value={first} min={minClock} max={maxClock} step={5} onChange={setFirst} />
           </label>
           {split ? (
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <span style={label}>{ar ? `الجزء الثاني · ${minutesAr(flex.minutes - half)}` : `Part 2 · ${flex.minutes - half} min`}</span>
-              <input type="time" data-rest-plan-second value={second} min={minClock} max={maxClock} step={300} onChange={(event) => setSecond(event.target.value)} dir="ltr" style={field} />
+              <TimeField ar={ar} dataKey="rest-second" value={second} min={minClock} max={maxClock} step={5} onChange={setSecond} />
             </label>
           ) : null}
           <button type="button" data-rest-plan-save disabled={!ready} onClick={() => { onSave?.(parts); setEditing(false); }} style={{ fontFamily: "inherit", height: 32, padding: "0 14px", borderRadius: 8, border: "none", background: ready ? "#0B3D27" : "var(--nv-line)", color: ready ? "#fff" : "var(--nv-muted)", fontSize: 12, fontWeight: 700, cursor: ready ? "pointer" : "default" }}>

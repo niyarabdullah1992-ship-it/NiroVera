@@ -95,7 +95,8 @@ export function checkEnvelopeFieldsGate({ signers = [], fields = [], ar = true }
     const mine = (fields || []).filter((field) => field.signer === index);
     const name = signer.name || (ar ? `المستلم ${index + 1}` : `Recipient ${index + 1}`);
     if (!mine.some(isSignatureField)) noSign.push(name);
-    if (signer.stamp && !mine.some(isSealField)) noSeal.push(name);
+    // The separate «ختم» field was removed (owner's rule): the signature is the one mark — no stamp gate.
+    void isSealField;
   });
   const gaps = [];
   if (noSign.length) gaps.push(ar ? `حقل توقيع لـ: ${noSign.join("، ")}` : `A signature field for: ${noSign.join(", ")}`);

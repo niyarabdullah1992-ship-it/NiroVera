@@ -63,16 +63,15 @@ const doc = { name: "عقد.pdf", size: 1000 };
   assert.deepEqual(envelopeSigners({ recipients: [nora], meSigns: false, me }).map((row) => row.key), ["r1"]);
 }
 
-// ── Field gate: a signature per party, a «الختم» field where the stamp is required ──
+// ── Field gate: a signature per party — the separate «الختم» field is gone, so no stamp gate ──
 {
   const signers = [{ name: "نيار" }, { name: "نورة", stamp: true }, { name: "Client" }];
   const none = checkEnvelopeFieldsGate({ signers, fields: [] });
   assert.equal(none.ok, false);
   assert.deepEqual(none.noSign, ["نيار", "نورة", "Client"]);
-  assert.deepEqual(none.noSeal, ["نورة"]);
+  assert.deepEqual(none.noSeal, [], "no stamp requirement any more");
   const sigOnly = checkEnvelopeFieldsGate({ signers, fields: [0, 1, 2].map((signer) => ({ signer, type: "signature", tool: "sig" })) });
-  assert.equal(sigOnly.ok, false);
-  assert.ok(sigOnly.reason.includes("الختم") && sigOnly.reason.includes("نورة"));
+  assert.equal(sigOnly.ok, true, "a signature per party is enough");
   const full = checkEnvelopeFieldsGate({ signers, fields: [...[0, 1, 2].map((signer) => ({ signer, type: "signature", tool: "sig" })), { signer: 1, type: "signature", tool: "seal" }] });
   assert.equal(full.ok, true);
   // A seal field is also a signature field: it alone satisfies both for a stamped party.

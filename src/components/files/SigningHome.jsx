@@ -447,12 +447,12 @@ export default function SigningHome({
       </div>
       <Line
         dataKey="seal"
-        label={ar ? "ختمك" : "Your seal"}
+        label={ar ? "توقيعك" : "Your signature"}
         note={sealReady ? null : (ar ? "يلزم لتوقيعك أنت؛ المستلمون يعتمدون توقيعهم عند التوقيع." : "Needed for your own signature; recipients adopt theirs when they sign.")}
       >
-        {sealPreview ? <img src={sealPreview} alt={ar ? "ختمك" : "Your seal"} style={{ height: 34, maxWidth: 96, objectFit: "contain", border: "1px solid var(--nv-line)", borderRadius: 8, background: "#fff", padding: 2 }} /> : null}
+        {sealPreview ? <img src={sealPreview} alt={ar ? "توقيعك" : "Your signature"} style={{ height: 34, maxWidth: 96, objectFit: "contain", border: "1px solid var(--nv-line)", borderRadius: 8, background: "#fff", padding: 2 }} /> : null}
         {sealId ? <span dir="ltr" style={{ ...mono, fontSize: 11, color: "var(--nv-muted)" }}>{sealId}</span> : null}
-        <button type="button" onClick={onOpenStudio} style={lineBtn}>{sealReady ? (ar ? "غيّر الختم" : "Change seal") : (ar ? "صمّم ختمك" : "Design your seal")}</button>
+        <button type="button" onClick={onOpenStudio} style={lineBtn}>{sealReady ? (ar ? "غيّر التوقيع" : "Change signature") : (ar ? "صمّم توقيعك" : "Design your signature")}</button>
         {sealReady && manage ? <button type="button" onClick={onRemoveSeal} style={{ ...lineBtn, color: "var(--nv-bad-ink)" }}>{ar ? "احذف" : "Remove"}</button> : null}
       </Line>
       <Line dataKey="verify" label={ar ? "تحقق من مستند" : "Verify a document"} note={ar ? "تُحسب البصمة على جهازك وتُطابق سجل الشركة." : "The fingerprint is computed on your device and matched to the registry."}>

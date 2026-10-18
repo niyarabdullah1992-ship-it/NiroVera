@@ -36,7 +36,7 @@ function kindOf(field) {
 }
 
 function labelOf(kind, field, ar) {
-  if (kind === "sig" && field?.tool === "seal") return ar ? "الختم" : "Stamp";
+  // A «ختم» field from an older envelope is a signature like any other — one mark per signer.
   const map = {
     sig: ar ? "توقيع" : "Signature",
     init: ar ? "الأحرف الأولى" : "Initials",

@@ -274,15 +274,11 @@ export default function EnvelopeSetup({
           </span>
           <span dir="auto" style={{ fontSize: 11.5, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {isMe
-              ? (sealReady ? (ar ? "يُختم بختمك المحفوظ" : "Stamped with your saved seal") : (ar ? "تعتمد توقيعك عند التوقيع" : "You adopt your signature when you sign"))
+              ? (sealReady ? (ar ? "يوقّع بتوقيعك المحفوظ" : "Signs with your saved signature") : (ar ? "تعتمد توقيعك عند التوقيع" : "You adopt your signature when you sign"))
               : [row.outside ? (ar ? "من خارج المنشأة" : "Outside the company") : (row.title || (ar ? "من المنشأة" : "From the company")), row.email].filter(Boolean).join(" · ")}
           </span>
         </span>
         <span style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ink2)", flex: "none" }}>{ar ? "يوقّع" : "Signs"}</span>
-        <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--nv-ink2)", cursor: "pointer", flex: "none" }}>
-          <input type="checkbox" data-stamp-required={isMe ? "me" : row.email} checked={isMe ? myStamp : !!row.stamp} onChange={(event) => (isMe ? setMyStamp(event.target.checked) : patchRecipient(row.key, { stamp: event.target.checked }))} />
-          {ar ? "يُطلب ختمه" : "Stamp required"}
-        </label>
         {!isMe && sequential ? (
           <span style={{ display: "inline-flex", gap: 2, flex: "none" }}>
             <button type="button" aria-label={ar ? "قدّمه" : "Move up"} disabled={index - (meSigns ? 1 : 0) <= 0} onClick={() => moveRecipient(index - (meSigns ? 1 : 0), -1)} style={{ ...iconBtn, opacity: index - (meSigns ? 1 : 0) <= 0 ? 0.35 : 1 }}><ArrowUp size={14} /></button>

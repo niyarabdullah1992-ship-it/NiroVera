@@ -45,7 +45,6 @@ export const SIGNER_COLORS = ["#3B5A86", "#8A6A2E", "#2F7480", "#9A5B2E", "#7A51
 const TOOLS = [
   { id: "sig", type: "signature", glyph: "SIG", ar: "التوقيع", chipAr: "توقيع", en: "Signature", scale: 100 },
   { id: "init", type: "text", glyph: "IN", ar: "الأحرف الأولى", en: "Initials", scale: 70 },
-  { id: "seal", type: "signature", glyph: "SEAL", ar: "الختم", chipAr: "ختم", en: "Stamp", scale: 100 },
   { id: "date", type: "text", glyph: "DD/MM", ar: "تاريخ التوقيع", chipAr: "التاريخ", en: "Signing date", chipEn: "Date", scale: 70 },
   { id: "name", type: "text", glyph: "Aa", ar: "الاسم", en: "Name", scale: 100 },
   { id: "email", type: "text", glyph: "MAIL", ar: "البريد الإلكتروني", en: "Email", scale: 110 },
@@ -57,7 +56,7 @@ const TOOLS = [
 ];
 
 const FIELD_GROUPS = [
-  { id: "sign", ar: "التوقيع", en: "Signature", tools: ["sig", "init", "seal", "date"] },
+  { id: "sign", ar: "التوقيع", en: "Signature", tools: ["sig", "init", "date"] },
   { id: "who", ar: "بيانات الموقّع", en: "Signer details", tools: ["name", "email", "org", "role"] },
   { id: "input", ar: "إدخال", en: "Input", tools: ["txt", "check", "yn"] },
 ];

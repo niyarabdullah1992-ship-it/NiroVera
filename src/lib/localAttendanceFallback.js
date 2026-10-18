@@ -262,7 +262,7 @@ export function localCheckOut(companyId, { employeeId }) {
     const checkInAt = list[idx].checkInAt || list[idx].check_in_at;
     // «راحة مرنة ببصمة»: an open break ends at the checkout; an unpunched one is written as assumed.
     const breaks = shift?.breakMode === "flex"
-      ? closeDayBreaks({ shift, breaks: list[idx].breaks, checkIn: checkInAt, checkOut: checkOutAt, onDate: date, prayers: dayPrayers(d, shift, date), company: d, employee })
+      ? closeDayBreaks({ shift, breaks: list[idx].breaks, checkIn: checkInAt, checkOut: checkOutAt, onDate: date, prayers: dayPrayers(d, shift, date), company: d, employee, plan: d.restPlans?.[`${employeeId}:${date}`]?.parts || null })
       : list[idx].breaks;
     list[idx] = {
       ...list[idx],

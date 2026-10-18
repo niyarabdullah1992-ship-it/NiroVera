@@ -90,9 +90,9 @@ export function resolveDayBreaks({ shift, breaks, checkIn, checkOut, now, onDate
  * and an unpunched flex break is written as assumed («مفترضة — لم تُثبت ببصمة»). Times are ISO instants
  * placed from the check-in instant. Returns the new list, or the given list when nothing changes.
  */
-export function closeDayBreaks({ shift, breaks, checkIn, checkOut, onDate, prayers = null, company, employee } = {}) {
+export function closeDayBreaks({ shift, breaks, checkIn, checkOut, onDate, prayers = null, company, employee, plan = null } = {}) {
   const list = Array.isArray(breaks) ? breaks.map((row) => ({ ...row })) : [];
-  const day = resolveDayBreaks({ shift, breaks: list, checkIn, checkOut, onDate, prayers, company, employee });
+  const day = resolveDayBreaks({ shift, breaks: list, checkIn, checkOut, onDate, prayers, company, employee, plan });
   if (!day.flex) return breaks;
   for (const row of list) {
     if (row && row.source !== "assumed" && row.start && !row.end) row.end = checkOut;

@@ -59,3 +59,16 @@ assert.equal(hoursPolicyOf({}).prayerMinutes, 20);
 assert.equal(hoursPolicyOf({ hoursPolicy: { prayerCountsAsWork: true, prayerMinutes: 15 } }).prayerPaid, true);
 assert.equal(hoursPolicyOf({ hoursPolicy: { prayerCountsAsWork: true, prayerMinutes: 15 } }).prayerMinutes, 15);
 console.log("PASS prayer policy");
+
+// No punch needed: the break he set is told as it comes — 15 min ahead, then «بدأت راحتك التي حددتها».
+import { deriveDutyAlerts } from "../src/lib/dutyAlerts.js";
+{
+  const flexShift = { id: "m", start: "07:00", end: "16:00", breakMode: "flex", flexBreak: { minutes: 60, from: "07:00", to: "16:00", split: true } };
+  const at = (hm) => new Date(`${DAY}T${hm}:00+03:00`);
+  const punches = { checkIn: at("07:00").toISOString(), breaks: [], restPlan: [{ start: "11:00", minutes: 60 }] };
+  const soon = deriveDutyAlerts({ shift: flexShift, punches, onDate: DAY, now: at("10:50") });
+  assert.ok(soon.alerts.some((a) => a.id === "flex_plan_soon" && /بعد/.test(a.textAr)), "told before it starts");
+  const started = deriveDutyAlerts({ shift: flexShift, punches, onDate: DAY, now: at("11:05") });
+  assert.ok(started.alerts.some((a) => /بدأت راحتك التي حددتها/.test(a.textAr) && /لا تحتاج بصمة/.test(a.textAr)), "told when it starts — no punch");
+}
+console.log("PASS planned break told without a punch");

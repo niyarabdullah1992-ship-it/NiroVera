@@ -69,6 +69,7 @@ export function dutyContextOf({ data, user, attendance, now = Date.now(), shift:
       checkIn: att.check_in_at || att.checkInAt || null,
       checkOut: att.check_out_at || att.checkOutAt || null,
       breaks: att.breaks,
+      restPlan: data?.restPlans?.[`${user.id}:${onDate}`]?.parts || null,
     },
     shiftKey: dutyShiftKey(user.id, onDate, dutyShift),
   };
@@ -124,7 +125,7 @@ export function breakClockOf(ctx, now) {
     overMs: Math.max(0, nowMs - at(endMin)),
   });
   if (ctx.shift.breakMode === "flex") {
-    const day = resolveDayBreaks({ shift: ctx.shift, breaks: ctx.punches.breaks, checkIn: ctx.punches.checkIn, now: new Date(nowMs), onDate: ctx.onDate, prayers: ctx.prayers, company: ctx.company, employee: ctx.employee });
+    const day = resolveDayBreaks({ shift: ctx.shift, breaks: ctx.punches.breaks, checkIn: ctx.punches.checkIn, now: new Date(nowMs), onDate: ctx.onDate, prayers: ctx.prayers, company: ctx.company, employee: ctx.employee, plan: ctx.punches.restPlan || null });
     if (!day.flex) return null;
     if (day.open) return out("flex", day.open.startMin, day.open.startMin + day.remaining);
     // None punched: the assumed break runs on the same clock until its end (a punch replaces it).

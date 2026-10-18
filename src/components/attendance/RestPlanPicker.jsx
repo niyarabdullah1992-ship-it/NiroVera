@@ -68,7 +68,7 @@ export default function RestPlanPicker({ ar = true, shift, onDate, continuous103
 
   if (savedGate?.ok && !editing) {
     return (
-      <RestCard ar={ar} note={ar ? "اضغط «بدأت راحتي» عند بدايتها — وإن نسيت تُحتسب في هذا الوقت." : "Tap “I started my break” when it starts — if you forget, it is counted at this time."}>
+      <RestCard ar={ar} note={ar ? "نخبرك حين تبدأ — لا تحتاج بصمة، وتُحتسب راحتك في هذا الوقت." : "We tell you when it starts — no punch needed; your break counts at this time."}>
         <div data-rest-plan="saved" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 12px", border: "1px solid var(--nv-ok-line)", background: "var(--nv-ok-soft)", borderRadius: 10 }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-ok-ink)" }}>{ar ? "راحتك المخطّطة" : "Planned"}</span>
           <span dir="ltr" style={{ ...MONO, fontSize: 13, fontWeight: 700, color: "var(--nv-ink)" }}>{savedGate.rows.map((row) => `${row.start}–${row.end}`).join("  ·  ")}</span>

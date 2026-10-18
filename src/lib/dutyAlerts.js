@@ -199,7 +199,7 @@ export function deriveDutyAlerts({
   const alerts = [];
   // «راحة مرنة ببصمة»: the day read from the break punches (Art. 103 / Art. 108 exemptions keep none).
   const flexDay = !exempt && shift?.breakMode === "flex"
-    ? resolveDayBreaks({ shift, breaks: punches?.breaks, checkIn: punches.checkIn, now: nowM, onDate, prayers, company, employee })
+    ? resolveDayBreaks({ shift, breaks: punches?.breaks, checkIn: punches.checkIn, now: nowM, onDate, prayers, company, employee, plan: punches?.restPlan || null })
     : null;
   const flex = flexDay?.flex || null;
 
@@ -230,14 +230,28 @@ export function deriveDutyAlerts({
         textEn: `On your break since ${flexDay.open.start} — ${Math.max(0, allowed - flexDay.runningMinutes)} min left, not counted as work.`,
         hint: { kind: "rest", item: { date: onDate } },
       }));
+    } else if (!flexDay.punched.length && flexDay.planned?.fromPlan && nowM < flexDay.planned.startMin && flexDay.planned.startMin - nowM <= DUTY_ALERT_LEAD.breakSoon) {
+      const a = flexDay.planned;
+      alerts.push(alert("flex_plan_soon", "info", "hours.rest.duringShiftMinutes", onDate, {
+        atMinutes: a.startMin,
+        meta: { minutesLeft: a.startMin - nowM, start: a.start, end: a.end },
+        textAr: `راحتك التي حددتها بعد ${minutesAr(a.startMin - nowM)} (\u2066${a.start}–${a.end}\u2069).`,
+        textEn: `The break you set starts in ${a.startMin - nowM} min (${a.start}–${a.end}).`,
+        hint: { kind: "rest", item: { date: onDate } },
+      }));
     } else if (flexDay.assumedRunning) {
       // None punched: the assumed break begins now — told once, counted down like a punched one.
       const a = flexDay.assumed;
       alerts.push(alert("flex_break_assumed_start", "info", "hours.rest.notWorkingHours.cite", onDate, {
         atMinutes: a.startMin,
         meta: { start: a.start, end: a.end, breakStart: a.start, endMin: a.endMin, assumed: true },
-        textAr: `بدأت راحتك الآن (\u2066${a.start}–${a.end}\u2069) — لم تبصم لها، فتُحتسب تلقائياً.`,
-        textEn: `Your break has started (${a.start}–${a.end}) — you did not punch it, so it counts automatically.`,
+        // His own time: told that the break he set has begun — nothing to punch.
+        textAr: a.fromPlan
+          ? `بدأت راحتك التي حددتها (\u2066${a.start}–${a.end}\u2069) — حتى ${a.end}، لا تحتاج بصمة.`
+          : `بدأت راحتك الآن (\u2066${a.start}–${a.end}\u2069) — لم تبصم لها، فتُحتسب تلقائياً.`,
+        textEn: a.fromPlan
+          ? `The break you set has started (${a.start}–${a.end}) — until ${a.end}, no punch needed.`
+          : `Your break has started (${a.start}–${a.end}) — you did not punch it, so it counts automatically.`,
         hint: { kind: "rest", item: { date: onDate } },
       }));
     } else if (flexDay.assumed && !flexDay.punched.length && flexDay.planned && flexDay.assumed.startMin === flexDay.planned.startMin

@@ -1,6 +1,5 @@
 import React, { useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
 import { buildMyFileCard } from "@/lib/myFileCard";
 import { buildServiceStory } from "@/lib/serviceStory";
 import { buildFileReadiness } from "@/lib/fileReadiness";
@@ -267,44 +266,6 @@ function Readiness({ readiness, ar, self, onOpenTab }) {
 
 /* ─────────────────────────── 4 · compliance and linked records ─────────────────────────── */
 
-function LinkedRecords({ view, ar, self, onOpenTab }) {
-  const live = self ? 0 : (view.penalties || []).filter((row) => row.tone === "warn").length;
-  const soon = (view.docs || []).some((row) => row.days != null && row.days <= EXPIRY_WARN_DAYS);
-  // On his own file the worker reads no sanction line — «الجزاءات» holds them.
-  const growthLink = self
-    ? { label: ar ? "التدرّج" : "Progression", what: ar ? "التعيين والنقل والتكليف بتواريخها" : "Hire, transfers and assignments, dated", tab: "growth" }
-    : { label: ar ? "التدرّج والجزاءات" : "Progression and sanctions", what: live ? (ar ? `${live === 1 ? "جزاء ساري" : `${live} جزاءات سارية`}` : `${live} live`) : (ar ? "لا جزاء ساري" : "None live"), tab: "growth" };
-  const links = [
-    growthLink,
-    { label: ar ? (self ? "طلباتي" : "الطلبات") : "Requests", what: view.hasPendingLeave ? view.pendingPointer : (ar ? "الإجازات والأرصدة والإصابات تُتابَع هناك" : "Leave, balances and injuries live there"), href: view.pendingHref || "/app/requests" },
-    { label: ar ? (self ? "قسيمتي" : "المسير") : "Payslip", what: ar ? "الأجر وبنوده يُقرأ هناك لا هنا" : "Pay is read there, not here", href: self ? "/app/payroll?view=self&tab=payslip" : "/app/payroll" },
-    { label: ar ? "التوقيعات" : "Signatures", what: ar ? "المستندات المختومة وصفحة التحقق" : "Sealed documents and verification", href: "/app/signing" },
-    { label: ar ? "السلامة" : "Safety", what: soon ? (ar ? "شهادة تنتهي قريباً" : "A certificate ends soon") : (ar ? "الشهادات والتدريب الإلزامي" : "Certificates and mandatory training"), href: "/app/safety" },
-  ];
-  const row = { display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "4px 12px", padding: "11px 20px", textDecoration: "none", color: "inherit", fontFamily: "inherit", textAlign: "start", width: "100%", border: "none", background: "transparent", cursor: "pointer", boxSizing: "border-box" };
-  return (
-    <section style={paper}>
-      <SectionHead title={ar ? "السجلات المرتبطة" : "Linked records"} note={ar ? "تفتح سجلها ولا تُنسخ هنا." : "They open their own record."} />
-      <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-        {links.map((l) => {
-          const inner = (
-            <>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--nv-ink)", minWidth: "7em" }}>{l.label}</span>
-              <span style={{ flex: "1 1 180px", minWidth: 0, fontSize: 12, color: "var(--nv-ink3)", lineHeight: 1.7 }}>{l.what}</span>
-              <span style={greenLink}>{ar ? "افتح ‹" : "Open ›"}</span>
-            </>
-          );
-          return (
-            <li key={l.label} style={{ borderTop: "1px solid var(--nv-line)" }}>
-              {l.href ? <Link to={l.href} style={row}>{inner}</Link> : <button type="button" onClick={() => onOpenTab?.(l.tab)} style={row}>{inner}</button>}
-            </li>
-          );
-        })}
-      </ul>
-    </section>
-  );
-}
-
 /* ─────────────────────────── the tab ─────────────────────────── */
 
 export default function EmployeeFileSummary({
@@ -342,7 +303,6 @@ export default function EmployeeFileSummary({
       <ServiceStory story={story} ar={ar} self={isSelf} />
       <Readiness readiness={readiness} ar={ar} self={isSelf} onOpenTab={onOpenTab} />
       {/* The ministry compliance rows (contract, GOSI, insurance, documents) are the readiness items above — not repeated. */}
-      <LinkedRecords view={view} ar={ar} self={isSelf} onOpenTab={onOpenTab} />
     </div>
   );
 }

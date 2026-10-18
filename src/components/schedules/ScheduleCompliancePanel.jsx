@@ -1,6 +1,5 @@
 import { ruleValue } from "@/lib/laborRules";
 import React, { forwardRef, useMemo, useState } from "react";
-import { openLinkStyle } from "@/components/schedules/dutyLinks";
 import { Link } from "react-router-dom";
 import { sectionRouteFor } from "@/lib/sectionRoutes";
 import { NIGHT_FACILITY_FLAGS } from "@/lib/decision18632";
@@ -16,7 +15,8 @@ import {
 import { managerDutyAlertGroups } from "@/lib/suiteBadges";
 import { buildLawGatesBoard } from "@/lib/lawGatesBoard";
 import { lawGatePillLabel } from "@/lib/lawGateStatus";
-import DutyStripAlertCard from "@/components/employees/DutyStripAlertCard";
+import DutyStripAlertCard, { dutyAlertActionStyle } from "@/components/employees/DutyStripAlertCard";
+import { CalendarDays } from "lucide-react";
 import { NightWorkDefinition } from "@/components/shared/NightWorkRightsTable";
 import NightObligationProof from "@/components/schedules/NightObligationProof";
 import {
@@ -401,9 +401,10 @@ const ScheduleCompliancePanel = forwardRef(function ScheduleCompliancePanel({
                 : undefined}
             >
               {person.employeeId && onFocusPerson ? (
-                <span data-person-links="1" style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", paddingTop: 2 }}>
-                  <button type="button" onClick={() => onFocusPerson(person.employeeId, person.onDate)} style={openLinkStyle()}>
-                    {ar ? "في الجدول ›" : "On the roster ›"}
+                <span data-person-links="1" style={{ display: "contents" }}>
+                  <button type="button" onClick={() => onFocusPerson(person.employeeId, person.onDate)} style={dutyAlertActionStyle()}>
+                    <CalendarDays size={14} aria-hidden />
+                    {ar ? "افتح في الجدول" : "Open on the roster"}
                   </button>
                 </span>
               ) : null}

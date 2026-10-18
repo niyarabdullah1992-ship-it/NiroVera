@@ -1,11 +1,12 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Scale, Sun } from "lucide-react";
+import { CalendarDays, Scale, Sun } from "lucide-react";
 import { heatSeasonNoticeCopy, isLiveHeatBanDay, SW, weekDays } from "@/lib/shiftWeek";
 import FileHoursAlertsRail from "@/components/employees/FileHoursAlertsRail";
+import { dutyAlertActionStyle } from "@/components/employees/DutyStripAlertCard";
 import { SectionHead, slab } from "@/components/schedules/scheduleChrome";
 import { dutyChip, dutyLabel, dutyTone } from "@/components/schedules/dutyStatus";
-import { myRosterDayHref, openLinkStyle } from "@/components/schedules/dutyLinks";
+import { myRosterDayHref } from "@/components/schedules/dutyLinks";
 import RightHint from "@/components/shared/RightHint";
 import { attRightHint } from "@/lib/rightHints.att.js";
 import { ruleValue } from "@/lib/laborRules";
@@ -16,8 +17,9 @@ export function myAlertLinks(ar = true) {
     const day = card?.onDate || card?.items?.find((row) => row?.onDate)?.onDate || "";
     if (!day) return null;
     return (
-      <Link to={myRosterDayHref(String(day))} data-alert-open="day" style={openLinkStyle()}>
-        {ar ? "افتح اليوم في جدولي ›" : "Open the day on My roster ›"}
+      <Link to={myRosterDayHref(String(day))} data-alert-open="day" style={dutyAlertActionStyle()}>
+        <CalendarDays size={14} aria-hidden />
+        {ar ? "افتح اليوم في جدولي" : "Open the day on My roster"}
       </Link>
     );
   };

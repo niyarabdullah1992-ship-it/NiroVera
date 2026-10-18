@@ -2,11 +2,12 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { citeRule, explainRule } from "@/lib/laborRules";
-import { BORDER, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
+import { BORDER, CARD, MUTED, NAVY, NAVY_FILL, SURFACE } from "@/lib/platformStyles";
 import { DS_CONTROL_RADIUS, DS_RADIUS } from "@/lib/designSystem";
 import { cardAwaitsNightConsent, nightConsentWaitCopy } from "@/lib/shiftWeek";
 import LawGateStatusPill, { LawGateArticleBadge } from "@/components/shared/LawGateStatusPill";
 import NvIcon from "@/components/shared/NvIcon";
+import { ArrowLeft, ArrowRight, BookOpen, ChevronUp } from "lucide-react";
 import { sectionRoutesForCard } from "@/lib/sectionRoutes";
 
 export const DUTY_ALERT_DUE = "var(--nv-bad-fill)";
@@ -14,26 +15,40 @@ export const DUTY_ALERT_BLOCK = "var(--nv-bad-ink)";
 
 const AR = { letterSpacing: 0 };
 
-/** Quiet secondary action — underline, muted, not a primary CTA. */
-export function dutyAlertActionStyle() {
+/**
+ * Card actions — institutional controls, not underlined text.
+ * "quiet" (default): bordered secondary · "go": the section the decision belongs to (filled).
+ */
+export function dutyAlertActionStyle(kind = "quiet") {
+  const go = kind === "go";
   return {
     fontFamily: "inherit",
-    fontSize: 11,
-    fontWeight: 500,
-    padding: "2px 0",
-    border: "none",
-    background: "transparent",
-    color: MUTED,
+    fontSize: 12,
+    fontWeight: 600,
+    height: 30,
+    boxSizing: "border-box",
+    padding: "0 12px",
+    borderRadius: DS_CONTROL_RADIUS,
+    border: go ? `1px solid ${NAVY_FILL}` : `1px solid ${BORDER}`,
+    background: go ? NAVY_FILL : CARD,
+    color: go ? "#FFFFFF" : NAVY,
     cursor: "pointer",
-    textDecoration: "underline",
-    textUnderlineOffset: 3,
-    textDecorationColor: "color-mix(in oklab, var(--nv-muted, #6B7280) 55%, transparent)",
+    textDecoration: "none",
     display: "inline-flex",
     alignItems: "center",
-    lineHeight: 1.4,
+    gap: 6,
+    lineHeight: 1,
     whiteSpace: "nowrap",
     ...AR,
   };
+}
+
+/** «في طلباتي ›» → «افتح في طلباتي»: a verb on the button, the arrow drawn as an icon. */
+function sectionActionLabel(label, ar) {
+  const clean = String(label || "").replace(/\s*[›‹]\s*$/, "").trim();
+  if (ar && /^في\s/.test(clean)) return `افتح ${clean}`;
+  if (!ar && /^In\s/.test(clean)) return `Open ${clean.slice(3)}`;
+  return clean;
 }
 
 function dutyCardHasStatute(card) {
@@ -290,22 +305,26 @@ export default function DutyStripAlertCard({
       ) : null}
 
       {hasActions ? (
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", paddingTop: 2 }}>
+        <div data-duty-actions="1" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", paddingTop: 10, marginTop: 2, borderTop: `1px solid ${BORDER}` }}>
+          {sectionLinks.map((link) => (
+            <Link key={link.href} to={link.href} data-section-link={link.section} style={dutyAlertActionStyle("go")}>
+              {sectionActionLabel(link.label, ar)}
+              {ar ? <ArrowLeft size={14} aria-hidden /> : <ArrowRight size={14} aria-hidden />}
+            </Link>
+          ))}
           {hasStatute ? (
             <button
               type="button"
+              data-read-statute="1"
               onClick={() => setReadOpen((v) => !v)}
               aria-expanded={readOpen}
               style={dutyAlertActionStyle()}
             >
-              {readOpen ? (ar ? "اختصر النص" : "Show less") : (ar ? "اقرأ النص" : "Read the text")}
+              {readOpen ? <ChevronUp size={14} aria-hidden /> : <BookOpen size={14} aria-hidden />}
+              {readOpen ? (ar ? "إخفاء النص" : "Hide the text") : (ar ? "اقرأ النص النظامي" : "Read the statute")}
             </button>
           ) : null}
-          {sectionLinks.map((link) => (
-            <Link key={link.href} to={link.href} data-section-link={link.section} style={dutyAlertActionStyle()}>
-              {link.label}
-            </Link>
-          ))}
+          {children ? <span style={{ display: "contents" }}>{children}</span> : null}
           {ordinaryApply ? (
             <>
               <button type="button" onClick={() => onApplyOrdinary("morning")} style={dutyAlertActionStyle()}>
@@ -407,9 +426,6 @@ export default function DutyStripAlertCard({
         </div>
       ) : null}
 
-      {children ? (
-        <div style={{ width: "100%" }}>{children}</div>
-      ) : null}
 
       {readOpen && hasStatute ? (
         <span style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 4 }}>

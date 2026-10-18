@@ -27,8 +27,8 @@ function QuietProductNote({ ar }) {
   );
 }
 
-function OfficialStatuteBlock({ title, body, rest, ar, link }) {
-  const [open, setOpen] = useState(false);
+function OfficialStatuteBlock({ title, body, rest, ar, link, source, startOpen = false, hideToggle = false }) {
+  const [open, setOpen] = useState(startOpen || hideToggle);
   const full = rest ? `${body}\n\n${rest}` : body;
   if (!body) return null;
   return (
@@ -37,64 +37,87 @@ function OfficialStatuteBlock({ title, body, rest, ar, link }) {
       style={{
         display: "flex",
         flexDirection: "column",
-        alignItems: "flex-start",
+        alignItems: "stretch",
         gap: 6,
         minWidth: 0,
-        maxWidth: "min(100%, 28rem)",
+        maxWidth: hideToggle ? "100%" : "min(100%, 32rem)",
         width: "100%",
       }}
     >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        style={{
-          fontFamily: "inherit",
-          fontSize: 11,
-          fontWeight: 600,
-          padding: "3px 0",
-          border: "none",
-          background: "transparent",
-          color: NAVY,
-          cursor: "pointer",
-          textDecoration: "underline",
-          textUnderlineOffset: 3,
-        }}
-      >
-        {open ? (ar ? "اختصر النص" : "Show less") : (ar ? "اقرأ النص" : "Read the text")}
-      </button>
-      {open ? (
-        <div
+      {hideToggle ? null : (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
           style={{
-            boxSizing: "border-box",
-            width: "100%",
-            maxWidth: "100%",
-            minWidth: 0,
-            background: SURFACE,
+            alignSelf: "flex-start",
+            fontFamily: "inherit",
+            fontSize: 12,
+            fontWeight: 600,
+            height: 30,
+            padding: "0 12px",
+            borderRadius: 8,
             border: "1px solid var(--nv-line)",
-            padding: "8px 10px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
+            background: "var(--nv-card, #fff)",
+            color: NAVY,
+            cursor: "pointer",
           }}
         >
-          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", color: NAVY }}>
-            {title}
-          </span>
-          <p style={{ margin: 0, fontSize: 12, color: NAVY, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+          {open ? (ar ? "إخفاء النص" : "Hide the text") : (ar ? "اقرأ النص النظامي" : "Read the statute")}
+        </button>
+      )}
+      {open ? (
+        <figure
+          data-statute-text="1"
+          style={{
+            margin: 0,
+            boxSizing: "border-box",
+            width: "100%",
+            minWidth: 0,
+            background: "var(--nv-card, #fff)",
+            border: "1px solid var(--nv-line)",
+            borderRadius: 10,
+            overflow: "hidden",
+          }}
+        >
+          <figcaption
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              padding: "8px 12px",
+              background: SURFACE,
+              borderBottom: "1px solid var(--nv-line)",
+            }}
+          >
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700, color: NAVY }}>
+              <span aria-hidden style={{ width: 12, height: 2, background: "#C8A45A", display: "inline-block" }} />
+              {title}
+            </span>
+            {source ? <span style={{ fontSize: 10.5, color: MUTED, whiteSpace: "nowrap" }}>{source}</span> : null}
+          </figcaption>
+          <blockquote
+            style={{
+              margin: 0,
+              padding: "12px 14px",
+              fontFamily: "'Noto Naskh Arabic', 'IBM Plex Sans Arabic', serif",
+              fontSize: 14,
+              color: NAVY,
+              lineHeight: 2,
+              whiteSpace: "pre-wrap",
+            }}
+          >
             {full}
-          </p>
+          </blockquote>
           {link?.href ? (
-            <a
-              href={link.href}
-              target="_blank"
-              rel="noreferrer"
-              style={{ fontSize: 11, fontWeight: 600, color: NAVY, textDecoration: "underline", textUnderlineOffset: 3 }}
-            >
-              {link.label}
-            </a>
+            <div style={{ padding: "8px 12px", borderTop: "1px solid var(--nv-line)" }}>
+              <a href={link.href} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, fontWeight: 600, color: NAVY }}>
+                {link.label}
+              </a>
+            </div>
           ) : null}
-        </div>
+        </figure>
       ) : null}
     </div>
   );
@@ -125,6 +148,7 @@ export default function LaborArticleCite({
   warn,
   glow = "off",
   showChip = true,
+  hideToggle = false,
 }) {
   const [open, setOpen] = useState(false);
   const appliedId = ruleId || (leaveType ? leaveCiteRuleId(leaveType, profile, onDate) : null);
@@ -286,7 +310,11 @@ export default function LaborArticleCite({
       body={officialBody}
       rest={officialRest}
       ar={ar}
-      link={null}
+      hideToggle={hideToggle}
+      source={heatRule || !canRead
+        ? (ar ? "قرار وزاري" : "Ministerial decision")
+        : (ar ? "نظام العمل · هيئة الخبراء" : "Labour Law · Bureau of Experts")}
+      link={canRead ? { href: official?.sourceUrl || BOE_LABOUR_LAW_URL, label: ar ? "النص في هيئة الخبراء ↗" : "Official text at the BOE ↗" } : null}
     />
   ) : (showOfficial && isProduct && !hasStatute ? <QuietProductNote ar={ar} /> : null);
   if (!mark && !essay && !officialBlock) return reader || null;

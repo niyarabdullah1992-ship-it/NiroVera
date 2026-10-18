@@ -93,6 +93,11 @@ const GLYPHS = {
     ["path", { d: "M9.5 6 8 9v9.5A2.5 2.5 0 0 0 10.5 21h3a2.5 2.5 0 0 0 2.5-2.5V9l-1.5-3" }],
     ["path", { d: "M8 13h3M8 16.5h3" }],
   ],
+  // Sun ban (Decision 3337) — a disc with eight short rays on the same margin.
+  sun: [
+    ["circle", { cx: 12, cy: 12, r: 4 }],
+    ["path", { d: "M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6 18 18M6 18l1.4-1.4M16.6 7.4 18 6" }],
+  ],
 };
 
 /** Arabic names, in sheet order (the rights scale first — it is the reference). */
@@ -116,6 +121,7 @@ export const NV_ICON_LABELS = {
   "checkbox-off": "غير محدد",
   prayer: "وقت الصلاة",
   nursing: "ساعة الرضاعة",
+  sun: "حظر الشمس",
 };
 
 export const NV_ICON_NAMES = Object.keys(NV_ICON_LABELS);

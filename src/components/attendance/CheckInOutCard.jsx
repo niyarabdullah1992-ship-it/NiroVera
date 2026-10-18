@@ -34,7 +34,8 @@ import RightHint from "@/components/shared/RightHint";
 import { attRightHint } from "@/lib/rightHints.att.js";
 import { citeRule, isRamadanDay, ruleValue } from "@/lib/laborRules";
 import NvIcon from "@/components/shared/NvIcon";
-import { employeeShiftOnDay, isWeekDayPublished, prayerBreakHint, prayersInShift, rosterBreakWindows, sunExposureMark, SUN_FIELD } from "@/lib/shiftWeek";
+import { employeeShiftOnDay, isWeekDayPublished, prayerBreakHint, prayersInShift, rosterBreakWindows, sunExposureMark, SUN_FIELD, SUN_OFFICE } from "@/lib/shiftWeek";
+import { heatBanClockState, heatBanWindow, isHeatBanDate } from "@/lib/contractLawDerivations";
 import { stationPrayerTimes } from "@/lib/prayerTimes";
 import { deriveDutyAlerts, minutesAr } from "@/lib/dutyAlerts";
 import { breakClockOf, countdownLabel, dutyContextOf } from "@/lib/dutyTicker";
@@ -945,6 +946,53 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     }
   }
 
+  // Decision 3337: the midday sun ban sits on «مسار اليوم» whenever the shift touches its hours — every day of
+  // the year. Outside its season it reads as reference; in season it says what the day's sun mark means and
+  // gives the way: refuse exposed work and report it from طلباتي («بلاغ عمل مكشوف»).
+  if (band && dutyShift) {
+    const win = heatBanWindow(dutyDay);
+    const banFrom = win.startHour * 60;
+    const banTo = win.endHour * 60;
+    const shiftEnd = band.start + (band.spanMin || band.targetMin || 0);
+    const touches = [0, 1440].some((d) => Math.min(shiftEnd, d + banTo) > Math.max(band.start, d + banFrom));
+    if (touches) {
+      const inSeason = isHeatBanDate(dutyDay);
+      const sunMark = sunExposureMark(dutySchedule, currentUser?.id, dutyDay, dutyShift).mark;
+      const clockState = inSeason ? heatBanClockState({ dayKey: dutyDay, minutes: riyadhMinutesOf(new Date()) }) : "off_season";
+      const heatCite = citeRule("hours.heat.startHour", dutyDay);
+      let note;
+      let tone = "cite";
+      let action = null;
+      if (!inSeason) {
+        note = ar ? `خارج موسمه — يُطبَّق ${win.seasonAr}. لا قيد اليوم.` : `Out of season — it applies ${win.seasonEn}. No limit today.`;
+      } else if (sunMark === SUN_FIELD) {
+        tone = clockState === "in_window" ? "block" : "alert";
+        note = clockState === "in_window"
+          ? (ar ? `الآن ساعات الحظر وورديتك «مكشوف» — لا عمل تحت الشمس المباشرة حتى ${win.endLabel}. يحق لك رفض العمل المكشوف والانتقال إلى مكان مظلّل.` : `Ban hours now and your shift is marked exposed — no work in direct sun until ${win.endLabel}. You may refuse exposed work and move to shade.`)
+          : (ar ? `ورديتك اليوم «مكشوف» — لا عمل تحت الشمس المباشرة في هذه الساعات. يحق لك رفض العمل المكشوف.` : `Your shift today is marked exposed — no work in direct sun in these hours. You may refuse exposed work.`);
+        action = { to: "/app/requests?kind=heat_report", label: ar ? "بلّغ عن عمل مكشوف ›" : "Report exposed work ›" };
+      } else if (sunMark === SUN_OFFICE) {
+        tone = "ok";
+        note = ar ? "يومك «مظلّل» — لا عمل تحت الشمس في هذه الساعات." : "Your day is marked shaded — no sun work in these hours.";
+      } else {
+        tone = "alert";
+        note = ar ? "في موسم الحظر ولم يُحدَّد يومك «مكشوف / مظلّل». إن شُغّلت تحت الشمس في هذه الساعات فبلّغ." : "In the ban season and your day has no exposed/shaded mark. If you are put in the sun in these hours, report it.";
+        action = { to: "/app/requests?kind=heat_report", label: ar ? "بلّغ عن عمل مكشوف ›" : "Report exposed work ›" };
+      }
+      placeByTime({
+        key: "heat-ban",
+        kind: "heat",
+        at: banFrom,
+        tone,
+        label: ar ? "حظر العمل تحت الشمس" : "Midday sun ban",
+        value: `${win.startLabel}–${win.endLabel}`,
+        badge: heatCite?.article ? (ar ? `م ${heatCite.article}` : `Art. ${heatCite.article}`) : (ar ? "القرار 3337" : "Dec. 3337"),
+        note,
+        action,
+      }, banFrom);
+    }
+  }
+
   return (
     <section
       style={{
@@ -1124,19 +1172,23 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             <ol className="nv-punch-steps" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" }}>
               {steps.map((step, index) => {
                 const last = index === steps.length - 1;
-                if (step.kind === "prayer" || step.kind === "limit" || step.kind === "nursing") {
+                if (step.kind === "prayer" || step.kind === "limit" || step.kind === "nursing" || step.kind === "heat") {
+                  const heatInk = step.kind === "heat"
+                    ? (step.tone === "block" ? "var(--nv-bad-ink)" : step.tone === "alert" ? "var(--nv-warn-ink)" : step.tone === "ok" ? "var(--nv-ok-ink)" : "var(--nv-muted)")
+                    : null;
                   return (
                     <li key={step.key} data-step={step.key} data-state={step.kind} style={{ display: "grid", gridTemplateColumns: "22px minmax(0,1fr) auto", gap: 12, alignItems: "start", position: "relative", paddingBottom: last ? 0 : 12 }}>
                       {!last ? <span aria-hidden style={{ position: "absolute", insetInlineStart: 10, top: 18, bottom: 0, width: 2, background: "var(--nv-line2, #EEF1EF)", borderRadius: 2 }} /> : null}
-                      <span aria-hidden style={{ width: 22, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1, color: step.kind === "limit" ? "var(--nv-ink2)" : step.kind === "nursing" ? "var(--nv-ok-ink)" : "var(--nv-muted)", background: "var(--nv-card)" }}>
-                        <NvIcon name={step.kind === "limit" ? "clock" : step.kind === "nursing" ? "nursing" : "prayer"} size={12} inline={false} />
+                      <span aria-hidden style={{ width: 22, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1, color: heatInk || (step.kind === "limit" ? "var(--nv-ink2)" : step.kind === "nursing" ? "var(--nv-ok-ink)" : "var(--nv-muted)"), background: "var(--nv-card)" }}>
+                        <NvIcon name={step.kind === "heat" ? "sun" : step.kind === "limit" ? "clock" : step.kind === "nursing" ? "nursing" : "prayer"} size={12} inline={false} />
                       </span>
                       <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                           <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink2)" }}>{step.label}</span>
                           {step.badge ? <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--nv-ink2)", background: "var(--nv-soft)", border: "1px solid var(--nv-line)", borderRadius: 999, padding: "0 7px", lineHeight: "17px", whiteSpace: "nowrap" }}>{step.badge}</span> : null}
                         </span>
-                        {step.note ? <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.6 }}>{step.note}</span> : null}
+                        {step.note ? <span data-heat-tone={step.kind === "heat" ? step.tone : undefined} style={{ fontSize: 11, color: heatInk && step.tone !== "cite" ? heatInk : "var(--nv-muted)", fontWeight: heatInk && (step.tone === "block" || step.tone === "alert") ? 600 : 400, lineHeight: 1.6 }}>{step.note}</span> : null}
+                        {step.action ? <Link to={step.action.to} data-heat-action="1" style={{ alignSelf: "flex-start", fontSize: 11.5, fontWeight: 700, color: "var(--nv-ok-ink)", textDecoration: "none" }}>{step.action.label}</Link> : null}
                         {step.hint ? <RightHint ar={ar} hint={step.hint} style={{ alignSelf: "flex-start" }} /> : null}
                       </span>
                       <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: 12, fontWeight: 500, color: "var(--nv-ink2)", whiteSpace: "nowrap", paddingTop: 1 }}>{step.value}</span>

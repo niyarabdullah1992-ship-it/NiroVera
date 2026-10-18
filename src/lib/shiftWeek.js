@@ -765,6 +765,7 @@ export function prayerBreakHint({ shift, onDate, prayers, employee, company, pub
   const tailEn = published ? " A published break never moves by itself." : "";
   return {
     prayerKey: p.key,
+    windowIndex: index,
     prayerAr: p.ar,
     prayerEn: p.en,
     clock: p.clock,

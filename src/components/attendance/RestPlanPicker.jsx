@@ -88,6 +88,11 @@ export default function RestPlanPicker({ ar = true, shift, onDate, continuous103
   return (
     <RestCard ar={ar} note={note}>
       <div data-rest-plan="edit" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <span data-rest-rule="1" style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.6 }}>
+          {ar
+            ? "كل جزء نصف ساعة على الأقل، ولا تعمل أكثر من 5 ساعات متصلة قبل الراحة أو بعدها."
+            : "Each part is at least half an hour, and never more than 5 hours of work in a row before or after it."}
+        </span>
         {flex.splitEffective ? (
           <span style={{ display: "inline-flex", gap: 6 }}>
             {[[false, ar ? "مرة واحدة" : "One block"], [true, ar ? "جزءان" : "Two parts"]].map(([value, text]) => (

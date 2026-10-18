@@ -878,7 +878,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             return ar
               ? `${restMin} دقيقة لا تُحسب من ساعات عملك — عملك اليوم ${hm(band.targetMin - restMin)} من ${hm(band.targetMin)}`
               : `${restMin} min not counted as work — your work today is ${hm(band.targetMin - restMin)} of ${hm(band.targetMin)}`;
-          })(), sub: list.length === 1 && breakHint ? (ar ? breakHint.textAr : breakHint.textEn) : "", value: win ? `${win.start}–${win.end}` : band.label, hint: wi === 0 ? attRightHint("rest", {}, { view: "employee", ar }) : null }))
+          })(), sub: breakHint && (breakHint.windowIndex ?? 0) === wi ? (ar ? breakHint.textAr : breakHint.textEn) : "", value: win ? `${win.start}–${win.end}` : band.label, hint: wi === 0 ? attRightHint("rest", {}, { view: "employee", ar }) : null }))
           : []),
         ...(flexOn ? flexSteps(flexDay, { ar, hint: attRightHint("rest", {}, { view: "employee", ar }), plan: restPlan?.parts ? checkRestPlanGate({ shift: dutyShift, onDate: dutyDay, parts: restPlan.parts, continuous103 }) : null }) : []),
         { key: "end", kind: "plan", at: (band?.start ?? 0) + (band?.targetMin ?? 0), label: ar ? "نهاية الوردية" : "Shift ends", note: ar ? "من الجدول المنشور" : "From the published rota", value: endClock },
@@ -1084,14 +1084,30 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
               }}
             />
   ) : (!flexOn && !continuous103 && band && !done) ? (
-    <RestCard ar={ar} note={ar ? "قرار تشغيلي من المنشأة: إذا كان دوامك أكثر من 8 ساعات تكون لك ساعة راحة تكتب وقتها بنفسك هنا." : "An operational decision of the company: past 8 hours you get a one-hour break whose time you write here."}>
-      <div data-rest-plan="info" style={{ display: "flex", gap: 8, alignItems: "center", padding: "8px 12px", border: "1px dashed var(--nv-line)", borderRadius: 10 }}>
-        <NvIcon name="lock" size={13} inline={false} style={{ color: "var(--nv-muted)" }} />
-        <span style={{ fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.6 }}>
-          {ar
-            ? `يُفتح عند 9 ساعات فأعلى — ورديتك اليوم ${band.targetMin % 60 ? band.targetLabel : band.targetMin / 60} ساعات${band.label ? ` وراحتها ${band.label} من الجدول` : ""}.`
-            : `Opens at 9 hours or more — today's shift is ${band.targetLabel}${band.label ? `, break ${band.label} from the roster` : ""}.`}
-        </span>
+    <RestCard ar={ar} note={ar ? "من الجدول المنشور — لا تُحسب من ساعات عملك." : "From the published roster — not counted as working time."}>
+      <div data-rest-plan="fixed" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {band.windows?.length ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {band.windows.map((win, wi) => (
+              <span key={wi} dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, fontWeight: 700, padding: "4px 10px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-soft, #F7F9F8)", color: "var(--nv-ink)" }}>{win.start}–{win.end}</span>
+            ))}
+          </div>
+        ) : null}
+        {/* How the platform lays the rest out — the rule in plain words (Arts. 101–102). */}
+        <ul data-rest-rule="1" style={{ margin: 0, paddingInlineStart: 18, listStyle: "disc", display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.6 }}>
+          <li>{ar ? "لا تعمل أكثر من 5 ساعات متصلة — فإن طال الدوام قُسّمت الراحة فترات." : "Never more than 5 hours in a row — a long day splits the rest into periods."}</li>
+          <li>{ar ? "كل فترة نصف ساعة على الأقل «في المرة الواحدة»." : "Each period is at least half an hour «at a time»."}</li>
+          <li>{ar ? "الفترة للراحة والصلاة والطعام معاً، ولا تُحسب من عملك." : "Each period holds rest, prayer and food together, and is not counted as work."}</li>
+          <li>{ar ? "لا يزيد بقاؤك في مكان العمل على 12 ساعة." : "No more than 12 hours at the workplace."}</li>
+        </ul>
+        <div data-rest-plan="info" style={{ display: "flex", gap: 8, alignItems: "center", padding: "7px 10px", border: "1px dashed var(--nv-line)", borderRadius: 10 }}>
+          <NvIcon name="lock" size={13} inline={false} style={{ color: "var(--nv-muted)" }} />
+          <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.6 }}>
+            {band.targetMin > 480
+              ? (ar ? "اختار مديرك لهذه الوردية راحة ثابتة من الجدول، فلا تُحدَّد بنفسك." : "Your manager set a fixed break for this shift on the roster, so you do not set it yourself.")
+              : (ar ? "تحديد وقت راحتك بنفسك يُفتح حين يكون دوامك أكثر من 8 ساعات (قرار تشغيلي من المنشأة)." : "Setting your own break time opens when your duty is longer than 8 hours (the company's operational decision).")}
+          </span>
+        </div>
       </div>
     </RestCard>
   ) : null;

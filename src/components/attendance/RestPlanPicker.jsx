@@ -60,8 +60,8 @@ export default function RestPlanPicker({ ar = true, shift, onDate, continuous103
   const minClock = hmOf(flex.shiftStart);
   const maxClock = hmOf(flex.shiftStart + flex.span);
   const note = ar
-    ? `دوامك ${Math.round(flex.span / 60)} ساعات منها ${minutesAr(flex.minutes)} راحة لا تُحسب من عملك — تكتب وقتها بنفسك بين ${minClock} و${maxClock}.`
-    : `Your duty is ${Math.round(flex.span / 60)} hours with ${flex.minutes} min of rest not counted as work — write its time yourself between ${minClock} and ${maxClock}.`;
+    ? `قرار تشغيلي من المنشأة: ${Math.round((flex.span - flex.minutes) / 60)} ساعات عمل و${minutesAr(flex.minutes)} راحة، فدوامك ${Math.round(flex.span / 60)} ساعات. تكتب وقت راحتك بنفسك بين ${minClock} و${maxClock}.`
+    : `An operational decision of the company: ${Math.round((flex.span - flex.minutes) / 60)} hours of work and ${flex.minutes} min of rest, so your duty is ${Math.round(flex.span / 60)} hours. Write your break time yourself between ${minClock} and ${maxClock}.`;
 
   if (savedGate?.ok && !editing) {
     return (

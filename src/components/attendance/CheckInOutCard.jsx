@@ -1072,7 +1072,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
               }}
             />
   ) : (!flexOn && !continuous103 && band && !done) ? (
-    <RestCard ar={ar} note={ar ? "إذا كان دوامك أكثر من 8 ساعات تكون لك ساعة راحة تكتب وقتها بنفسك هنا." : "When your duty is longer than 8 hours you get a one-hour break whose time you write here."}>
+    <RestCard ar={ar} note={ar ? "قرار تشغيلي من المنشأة: إذا كان دوامك أكثر من 8 ساعات تكون لك ساعة راحة تكتب وقتها بنفسك هنا." : "An operational decision of the company: past 8 hours you get a one-hour break whose time you write here."}>
       <div data-rest-plan="info" style={{ display: "flex", gap: 8, alignItems: "center", padding: "8px 12px", border: "1px dashed var(--nv-line)", borderRadius: 10 }}>
         <NvIcon name="lock" size={13} inline={false} style={{ color: "var(--nv-muted)" }} />
         <span style={{ fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.6 }}>
@@ -1582,17 +1582,9 @@ export function workedClock(checkIn, checkOut, now, band, flexDay = null) {
 export function flexSteps(day, { ar = true, hint = null, plan = null } = {}) {
   const flex = day?.flex;
   if (!flex) return [];
-  const steps = [{
-    key: "rest-window",
-    kind: "plan",
-    at: flex.fromMin,
-    label: ar ? "نافذة الراحة" : "Break window",
-    note: ar
-      ? `راحتك بيدك: ${minutesAr(flex.minutes)} تختار وقتها داخل هذه النافذة${flex.splitEffective ? `، ويمكن تقسيمها جزأين (${minutesAr(flex.minPart)} على الأقل لكل جزء)` : ""} — تبدؤها وتنهيها ببصمة`
-      : `Flex break ${flex.minutes} min${flex.splitEffective ? " · may split" : ""} — you punch its start and end`,
-    value: `${flex.from}–${flex.to}`,
-    hint,
-  }];
+  // No «نافذة الراحة» row: the break's time is his to write (card «وقت راحتك»), so the day shows only what is
+  // fixed — his planned parts, his punched parts, or the assumed one. The five-hour mark says the limit.
+  const steps = [];
   const parts = day.rows.filter((row) => row.source === "punch");
   // His own plan, before he punches it: «راحتك المخطّطة» in time order (one row per part).
   if (!parts.length && plan?.ok && !day.rows.some((row) => row.source === "assumed")) {
@@ -1601,7 +1593,7 @@ export function flexSteps(day, { ar = true, hint = null, plan = null } = {}) {
       kind: "plan",
       at: row.startMin,
       label: plan.rows.length > 1 ? (ar ? `راحتك المخطّطة · الجزء ${i + 1}` : `Planned break · part ${i + 1}`) : (ar ? "راحتك المخطّطة" : "Your planned break"),
-      note: ar ? `${minutesAr(row.minutes)} اخترتها أنت — اضغط «بدأت راحتي» عند بدايتها` : `${row.minutes} min you chose — tap “I started my break” when it starts`,
+      note: ar ? `${minutesAr(row.minutes)} اخترتها أنت (قرار تشغيلي من المنشأة) — اضغط «بدأت راحتي» عند بدايتها` : `${row.minutes} min you chose (the company's operational decision) — tap “I started my break” when it starts`,
       value: `${row.start}–${row.end}`,
     }));
   }

@@ -853,7 +853,15 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           hint: inn && isLate && lateMinutes ? attRightHint("lateness", { date: dutyDateKey, minutes: lateMinutes }, { view: "employee", ar }) : null,
         },
         ...(band?.label
-          ? [{ key: "rest", kind: "plan", at: band.start + band.offset, label: ar ? "الراحة" : "Break", note: ar ? "تُخصم من المنجز" : "Excluded from worked time", sub: breakHint ? (ar ? breakHint.textAr : breakHint.textEn) : "", value: band.label, hint: attRightHint("rest", {}, { view: "employee", ar }) }]
+          ? [{ key: "rest", kind: "plan", at: band.start + band.offset, label: ar ? "الراحة" : "Break", note: (() => {
+            // Plain words: the rest is not working time (Art. 102), so the day's work is the shift minus it.
+            const restMin = Number(band.rest) || 0;
+            const hm = (m) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+            if (!restMin) return ar ? "لا تُحسب من ساعات عملك" : "Not counted as working time";
+            return ar
+              ? `${restMin} دقيقة لا تُحسب من ساعات عملك — عملك اليوم ${hm(band.targetMin - restMin)} من ${hm(band.targetMin)}`
+              : `${restMin} min not counted as work — your work today is ${hm(band.targetMin - restMin)} of ${hm(band.targetMin)}`;
+          })(), sub: breakHint ? (ar ? breakHint.textAr : breakHint.textEn) : "", value: band.label, hint: attRightHint("rest", {}, { view: "employee", ar }) }]
           : []),
         ...(flexOn ? flexSteps(flexDay, { ar, hint: attRightHint("rest", {}, { view: "employee", ar }) }) : []),
         { key: "end", kind: "plan", at: (band?.start ?? 0) + (band?.targetMin ?? 0), label: ar ? "نهاية الوردية" : "Shift ends", note: ar ? "من الجدول المنشور" : "From the published rota", value: endClock },
@@ -1345,12 +1353,12 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
               {flexOn
                 ? (flexDay.rows.length
                   ? (flexDay.assumed
-                    ? (ar ? "الجزء المخطّط راحة مفترضة — لم تُثبت ببصمة، وتُخصم من المنجز (المادة 102)." : "The hatched part is an assumed break — not punched, still excluded (Art. 102).")
+                    ? (ar ? "الجزء المخطّط راحة مفترضة — لم تُثبت ببصمة، ولا تُحسب من ساعات عملك (المادة 102)." : "The hatched part is an assumed break — not punched, still excluded (Art. 102).")
                     : (ar ? "الجزء المخطّط راحتك كما بصمتها — لا تُحتسب ساعات عمل." : "The hatched part is your break as punched — not counted as work."))
                   : (ar ? "راحتك المرنة تُخصم حين تبصمها — لا تُحتسب ساعات عمل." : "Your flex break is excluded once you punch it."))
                 : band?.label
                   ? (ar ? "الجزء المخطّط هو الراحة — لا تُحتسب ساعات عمل." : "The hatched part is the break — not counted as work.")
-                  : (ar ? "راحة الوردية تُخصم من المنجز" : "Shift rest is excluded from worked time")}
+                  : (ar ? "راحة الوردية لا تُحسب من ساعات عملك" : "Shift rest is not counted as working time")}
               {nursingCredit.minutes ? (
                 <span data-nursing-credit={nursingCredit.minutes}>
                   {ar ? " · يشمل ساعة الرضاعة " : " · includes the nursing hour "}

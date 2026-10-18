@@ -155,7 +155,7 @@ export function attendanceMinistryRows({ d, employee, today, ar = true, lane = "
     title: T(ar, "الراحة والصلاة والطعام لا تُحسب من ساعات العمل", "Rest, prayer and meals are not working time"),
     note: citeRule("hours.rest.notWorkingHours.cite", day)?.[ar ? "hintAr" : "hintEn"] || "",
     status: continuous ? "void" : "settled",
-    pill: continuous ? T(ar, "تُنظَّم أثناء العمل (المادة 103)", "Organised during work (Art. 103)") : T(ar, "تُخصم من المنجز", "Deducted from worked time"),
+    pill: continuous ? T(ar, "تُنظَّم أثناء العمل (المادة 103)", "Organised during work (Art. 103)") : T(ar, "لا تُحسب من ساعات العمل", "Not counted as working time"),
   });
 
   // Art. 103 — continuous work by the Minister's decision.

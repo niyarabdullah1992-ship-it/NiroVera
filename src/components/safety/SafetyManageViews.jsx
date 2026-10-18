@@ -78,7 +78,7 @@ function Kpi({ label, value, sub, tone }) {
   );
 }
 
-export function SafetyDashboard({ ar, stations, recFor, onOpenRegister, data = null, companyId = "", canEdit = false }) {
+export function SafetyDashboard({ ar, stations, recFor, onOpenRegister, data = null, companyId = "", canEdit = false, command = null }) {
   const L = (a, e) => (ar ? a : e);
   const now = Date.now();
   const openReports = [];
@@ -148,14 +148,17 @@ export function SafetyDashboard({ ar, stations, recFor, onOpenRegister, data = n
   });
   const readyKnown = readyRows.filter((row) => row.pct != null);
   const readyAvg = readyKnown.length ? Math.round(readyKnown.reduce((sum, row) => sum + row.pct, 0) / readyKnown.length) : null;
-  const daysClear = lastInjuryAt ? Math.max(0, Math.floor((now - lastInjuryAt) / 86400000)) : null;
+  // The board reads the inspection rounds and the lost-time register (lib/safetyOps) when they are given.
+  const daysClear = command ? command.daysClear : (lastInjuryAt ? Math.max(0, Math.floor((now - lastInjuryAt) / 86400000)) : null);
+  const readiness = command ? command.readiness : readyAvg;
+  const livePermits = command ? command.permits.live : activePermits;
 
   const goalPct = daysClear == null ? 0 : Math.min(100, Math.round((daysClear / 180) * 100));
   return (
     <div data-hse="admin-board" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
         <Kpi label={L("مخاطر مفتوحة", "Open hazards")} value={openHazards} sub={L("في نطاقك", "In your scope")} tone={openHazards ? "bad" : "ok"} />
-        <Kpi label={L("تصاريح عمل سارية", "Live permits")} value={activePermits} sub={expiringWeek ? (ar ? `${expiringWeek} تنتهي هذا الأسبوع` : `${expiringWeek} expire this week`) : "—"} tone={expiringWeek ? "warn" : "ok"} />
+        <Kpi label={L("تصاريح عمل سارية", "Live permits")} value={livePermits} sub={expiringWeek ? (ar ? `${expiringWeek} تنتهي هذا الأسبوع` : `${expiringWeek} expire this week`) : "—"} tone={expiringWeek ? "warn" : "ok"} />
         {(() => {
           const scopeIds = new Set(stations.map((s) => String(s.id)));
           const scoped = (data?.employees || []).filter((e) => scopeIds.has(String(e.stationId || e.station_id || "")));
@@ -165,7 +168,7 @@ export function SafetyDashboard({ ar, stations, recFor, onOpenRegister, data = n
             ? <Kpi label={L("إتمام تدريب السلامة", "Safety training")} value={`${Math.round(reg.safetyShare * 100)}%`} sub={ar ? `${reg.trained} من ${reg.headcount} تدرّبوا هذا العام · المواد 42–44` : `${reg.trained} of ${reg.headcount} trained this year`} tone={reg.safetyShare >= 0.8 ? "ok" : "warn"} />
             : <Kpi label={L("إتمام تدريب السلامة", "Safety training")} value="—" sub={L("لا سجل تدريب في النطاق — يُسجَّل من ملف العامل", "No training record in scope — add it on the worker's file")} />;
         })()}
-        <Kpi label={L("جاهزية الفروع", "Branch readiness")} value={readyAvg == null ? "—" : `${readyAvg}%`} sub={L("الإسعاف · الإطفاء · الإخلاء", "First aid · fire · evacuation")} tone={readyAvg == null ? null : readyAvg >= 80 ? "ok" : "warn"} />
+        <Kpi label={L("جاهزية الفروع", "Branch readiness")} value={readiness == null ? "—" : `${readiness}%`} sub={command ? L("من آخر جولة تفتيش لكل فرع", "From each branch's last inspection round") : L("الإسعاف · الإطفاء · الإخلاء", "First aid · fire · evacuation")} tone={readiness == null ? null : readiness >= 80 ? "ok" : "warn"} />
       </div>
 
       {data ? <TrainingMedicalPanel data={data} companyId={companyId} ar={ar} canEdit={canEdit} /> : null}
@@ -178,7 +181,7 @@ export function SafetyDashboard({ ar, stations, recFor, onOpenRegister, data = n
               <strong style={{ font: `700 40px ${MONO}`, lineHeight: 1, direction: "ltr" }}>{daysClear == null ? "—" : daysClear}</strong>
               <span style={{ fontSize: 13, fontWeight: 600 }}>{L("يوماً بلا إصابة مُضيِّعة للوقت", "days without a lost-time injury")}</span>
             </div>
-            <span style={{ fontSize: 11.5, color: "#C5DBCD" }}>{daysClear == null ? "—" : L("من آخر إصابة مسجّلة في النطاق", "Since the last recorded injury in scope")}</span>
+            <span style={{ fontSize: 11.5, color: "#C5DBCD" }}>{daysClear == null ? L("لا إصابة مضيّعة للوقت مسجّلة في النطاق", "No lost-time injury on record in scope") : L("من آخر إصابة مضيّعة للوقت في النطاق", "Since the last lost-time injury in scope")}</span>
             <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,.18)", overflow: "hidden", marginTop: 4 }}>
               <div style={{ height: "100%", borderRadius: 999, background: "#C8A45A", width: `${goalPct}%` }} />
             </div>
@@ -255,7 +258,7 @@ export function SafetyDashboard({ ar, stations, recFor, onOpenRegister, data = n
         </article>
       </div>
 
-      <article style={shell}>
+      {command ? null : <article style={shell}>
         <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line)" }}>
           <strong style={{ fontSize: 13.5, color: "var(--nv-ink)" }}>{L("جاهزية الفروع", "Branch readiness")}</strong>
         </div>
@@ -280,7 +283,7 @@ export function SafetyDashboard({ ar, stations, recFor, onOpenRegister, data = n
             )) : <p style={{ margin: 0, padding: 18, textAlign: "center", color: "var(--nv-ink3)" }}>—</p>}
           </div>
         </div>
-      </article>
+      </article>}
     </div>
   );
 }

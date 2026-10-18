@@ -34,7 +34,7 @@ export default function HrStructurePane({ ar = true, lang = "ar", data, currentU
   // «الهيكل» opens as the full-page chart (SAP); the other panes live here. ?pane=chart&stay=1 keeps the embedded one.
   const openFull = pane === "chart" && searchParams.get("stay") !== "1" && !searchParams.get("hire");
   useEffect(() => {
-    if (openFull) navigate("/app/org/chart", { replace: true, state: { from: "/app/hr" } });
+    if (openFull) navigate("/app/org/chart?lane=manage", { replace: true, state: { from: "/app/hr" } });
   }, [openFull, navigate]);
   const chartMode = searchParams.get("chart") === "entry" ? "entry" : "tree";
   const [query, setQuery] = useState("");
@@ -76,7 +76,7 @@ export default function HrStructurePane({ ar = true, lang = "ar", data, currentU
     setSearchParams(params, { replace: true });
   }, [searchParams, setSearchParams]);
   const setPane = useCallback((next) => {
-    if (next === "chart") { navigate("/app/org/chart", { state: { from: "/app/hr" } }); return; }
+    if (next === "chart") { navigate("/app/org/chart?lane=manage", { state: { from: "/app/hr" } }); return; }
     setParams((p) => p.set("pane", next));
   }, [setParams, navigate]);
   const setChartMode = (next) => setParams((p) => {

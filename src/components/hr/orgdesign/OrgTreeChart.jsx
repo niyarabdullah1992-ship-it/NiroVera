@@ -1480,6 +1480,7 @@ export default function OrgTreeChart({
 
   const openFull = () => {
     const params = new URLSearchParams();
+    params.set("lane", hrScope ? "manage" : "employee");
     if (branches) params.set("view", "branches");
     else if (selected && selected !== tree.viewerKey) params.set("focus", selected);
     navigate(`/app/org/chart${params.toString() ? `?${params}` : ""}`, { state: { from: `${location.pathname}${location.search}` } });

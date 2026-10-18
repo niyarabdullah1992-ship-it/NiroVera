@@ -29,16 +29,23 @@ export default function OrgChart() {
   const [searchParams] = useSearchParams();
   const from = typeof location.state?.from === "string" && location.state.from.startsWith("/app") ? location.state.from : "";
 
-  const canWrite = Boolean(currentUser && (currentUser.id === data?.ownerId || HR_ROLES.includes(currentUser.role)));
+  const hrRole = Boolean(currentUser && (currentUser.id === data?.ownerId || HR_ROLES.includes(currentUser.role)));
+  // Two separate charts of one tree. ?lane=employee (the rail's «الهيكل») is the employee's: read-only,
+  // no HR tools even for HR people, and «خروج» goes back to the employee side. ?lane=manage (from
+  // «الموارد البشرية») carries the management tools and exits to HR. No lane → by role.
+  const laneParam = searchParams.get("lane");
+  const lane = laneParam === "manage" || laneParam === "employee" ? laneParam : (hrRole ? "manage" : "employee");
+  const canWrite = hrRole && lane === "manage";
   // Everyone reads the whole company: every branch and every person (cards carry names, titles,
-  // units and seat states only — never file data). HR alone edits. ?scope=mine keeps the pruned view.
+  // units and seat states only — never file data). ?scope=mine keeps the pruned view.
   const scope = searchParams.get("scope") === "mine" ? "mine" : "all";
 
   const onBack = useCallback(() => {
     // «رجوع» returns into «الموارد البشرية › الهيكل» (or the employee's own place)
-    // «خروج»: back to wherever the person came from, else the HR overview (HR) or home
-    navigate(from && !from.startsWith("/app/org/chart") ? from : (canWrite ? "/app/hr" : "/app"));
-  }, [navigate, from, scope]);
+    // «خروج»: back to where the person came from on the same side; else HR (manage) or the employee's first section
+    const sameSide = from && !from.startsWith("/app/org/chart") && (lane === "manage") === /lane=manage|tab=manage|view=manage|\/manage(?:$|[/?])|\/app\/hr|^\/app(?:$|\?)/.test(from);
+    navigate(sameSide ? from : (lane === "manage" ? "/app/hr" : "/app/attendance"));
+  }, [navigate, from, lane]);
 
   const onHire = useCallback((detail = {}) => {
     const params = new URLSearchParams({ tab: "org", hire: "1" });
@@ -64,9 +71,9 @@ export default function OrgChart() {
   return (
     <TrialExpiryGate company={company}>
       <div className="powercare-shell" dir={ar ? "rtl" : "ltr"} lang={ar ? "ar" : "en"}>
-        <PageErrorBoundary resetKey={`tree:${scope}`}>
+        <PageErrorBoundary resetKey={`tree:${scope}:${lane}`}>
           <OrgTreeChart
-            key={`${scope}:${currentUser?.id || ""}`}
+            key={`${scope}:${lane}:${currentUser?.id || ""}`}
             ar={ar}
             data={data}
             user={currentUser}

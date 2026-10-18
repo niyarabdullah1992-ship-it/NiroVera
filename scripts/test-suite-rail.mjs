@@ -171,7 +171,7 @@ assert.equal(sideItems(employeeSide).find((item) => item.section === "requests")
 assert.equal(sideItems(employeeSide).find((item) => item.section === "daily").to, "/app/tasks");
 assert.equal(sideItems(employeeSide).find((item) => item.section === "daily").label, "مهامي");
 assert.equal(sideItems(manageSide).find((item) => item.section === "daily").to, "/app/tasks?lane=manage");
-assert.equal(sideItems(employeeSide).find((item) => item.section === "org").to, "/app/org/chart");
+assert.equal(sideItems(employeeSide).find((item) => item.section === "org").to, "/app/org/chart?lane=employee");
 assert.equal(sideItems(manageSide).some((item) => item.section === "ministry"), false, "ministry compliance lives inside HR, not on the rail");
 assert.equal(sideItems(manageSide).find((item) => item.section === "signing").to, "/app/signing?lane=manage");
 assert.equal(sideItems(manageSide).find((item) => item.section === "hse").to, "/app/safety?lane=manage");
@@ -274,7 +274,7 @@ const reader = buildSuiteRailClusters(
   { user: { id: "hr1", role: "employee", hrLevelId: "view1" }, data: { ownerId: "other", hrLevels: [{ id: "view1", active: true, permissions: ["view_employees"] }] } },
 );
 assert.deepEqual(reader.map((row) => row.id), ["employee"]);
-assert.deepEqual(sideItems(reader[0]).map((item) => item.to), ["/app/org/chart"]);
+assert.deepEqual(sideItems(reader[0]).map((item) => item.to), ["/app/org/chart?lane=employee"]);
 assert.equal(railFooter({ id: "hr1", role: "employee", hrLevelId: "view1" }, { ownerId: "other", employees: [{ id: "hr1", role: "employee" }] }, "ar", "employee").to, "/app/employees/hr1");
 assert.equal(sideItems(reader[0]).some((item) => item.section === "people" || item.section === "workforce" || item.section === "hr"), false);
 

@@ -20,7 +20,7 @@ export default function OrgChartEntry({ ar, data, user, scope = "mine" }) {
   const chain = hood ? [...hood.chain, hood.focus] : [];
   const shown = chain.length > 5 ? [chain[0], null, ...chain.slice(-3)] : chain;
   const from = `${location.pathname}${location.search}`;
-  const to = scope === "mine" ? "/app/org/chart?scope=mine" : "/app/org/chart";
+  const to = scope === "mine" ? "/app/org/chart?lane=employee&scope=mine" : "/app/org/chart?lane=employee";
 
   return (
     <Slab

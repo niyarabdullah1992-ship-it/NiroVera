@@ -36,7 +36,7 @@ function OpenAction({ ar, item, onOpenSeat }) {
     return <button type="button" style={style} onClick={() => onOpenSeat(item.seatId)}>{ar ? "افتح المنصب" : "Open seat"}{arrow}</button>;
   }
   if (item.employeeId) {
-    return <Link to={`/app/org/chart?focus=${encodeURIComponent(item.employeeId)}`} state={{ from: `${location.pathname}${location.search}` }} style={style}>{ar ? "افتح في المخطط" : "Open on chart"}{arrow}</Link>;
+    return <Link to={`/app/org/chart?lane=manage&focus=${encodeURIComponent(item.employeeId)}`} state={{ from: `${location.pathname}${location.search}` }} style={style}>{ar ? "افتح في المخطط" : "Open on chart"}{arrow}</Link>;
   }
   return null;
 }

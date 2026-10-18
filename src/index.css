@@ -4391,3 +4391,12 @@ html.dark .nv-cic, .dark .nv-cic { background: var(--nv-card, #1C2922); }
 @media (max-width: 640px) {
   .nv-cmp-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 }
+
+/* Decision 3337 — the sun-ban marks glow in season; while the ban hours run the glow breathes. */
+.nv-heat-glow[data-heat-season="live"] { animation: nv-heat-breathe 2.4s ease-in-out infinite; }
+@keyframes nv-heat-breathe {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(214,138,0,.55), 0 0 14px rgba(232,163,23,.30); }
+  50% { box-shadow: 0 0 0 1px rgba(214,138,0,.75), 0 0 24px rgba(232,163,23,.55); }
+}
+@media (prefers-reduced-motion: reduce) { .nv-heat-glow[data-heat-season="live"] { animation: none; } }
+html.dark .nv-heat-glow { background: linear-gradient(270deg, rgba(232,163,23,.20), rgba(232,163,23,.06)) !important; }

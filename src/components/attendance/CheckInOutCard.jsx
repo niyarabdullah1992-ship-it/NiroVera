@@ -985,6 +985,8 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         kind: "heat",
         at: banFrom,
         tone,
+        season: inSeason,
+        live: clockState === "in_window",
         label: ar ? "بداية حظر الشمس" : "Sun ban starts",
         value: win.startLabel,
         badge: heatBadge,
@@ -1002,6 +1004,8 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           key: "heat-ban-end",
           kind: "heat",
           at: banTo,
+          season: inSeason,
+          live: clockState === "in_window",
           tone: !inSeason ? "cite" : (clockState === "after_window" ? "ok" : "cite"),
           label: ar ? "نهاية حظر الشمس" : "Sun ban ends",
           value: win.endLabel,
@@ -1195,10 +1199,12 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                   const heatInk = step.kind === "heat"
                     ? (step.tone === "block" ? "var(--nv-bad-ink)" : step.tone === "alert" ? "var(--nv-warn-ink)" : step.tone === "ok" ? "var(--nv-ok-ink)" : "var(--nv-muted)")
                     : null;
+                  // In season the sun-ban marks glow in the sun's own amber — brighter while the ban hours run.
+                  const glow = step.kind === "heat" && step.season;
                   return (
-                    <li key={step.key} data-step={step.key} data-state={step.kind} style={{ display: "grid", gridTemplateColumns: "22px minmax(0,1fr) auto", gap: 12, alignItems: "start", position: "relative", paddingBottom: last ? 0 : 12 }}>
-                      {!last ? <span aria-hidden style={{ position: "absolute", insetInlineStart: 10, top: 18, bottom: 0, width: 2, background: "var(--nv-line2, #EEF1EF)", borderRadius: 2 }} /> : null}
-                      <span aria-hidden style={{ width: 22, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1, color: heatInk || (step.kind === "limit" ? "var(--nv-ink2)" : step.kind === "nursing" ? "var(--nv-ok-ink)" : "var(--nv-muted)"), background: "var(--nv-card)" }}>
+                    <li key={step.key} data-step={step.key} data-state={step.kind} data-heat-season={glow ? (step.live ? "live" : "on") : undefined} className={glow ? "nv-heat-glow" : undefined} style={{ display: "grid", gridTemplateColumns: "22px minmax(0,1fr) auto", gap: 12, alignItems: "start", position: "relative", paddingBottom: last ? 0 : 12, ...(glow ? { padding: "8px 8px", marginBottom: last ? 0 : 12, marginInline: -8, borderRadius: 10, background: `linear-gradient(${ar ? 270 : 90}deg, rgba(232,163,23,.18), rgba(232,163,23,.05))`, boxShadow: step.live ? "0 0 0 1px rgba(214,138,0,.55), 0 0 18px rgba(232,163,23,.38)" : "0 0 0 1px rgba(214,138,0,.32), 0 0 12px rgba(232,163,23,.18)" } : {}) }}>
+                      {!last && !glow ? <span aria-hidden style={{ position: "absolute", insetInlineStart: 10, top: 18, bottom: 0, width: 2, background: "var(--nv-line2, #EEF1EF)", borderRadius: 2 }} /> : null}
+                      <span aria-hidden style={{ width: 22, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1, color: glow ? "#B86E00" : (heatInk || (step.kind === "limit" ? "var(--nv-ink2)" : step.kind === "nursing" ? "var(--nv-ok-ink)" : "var(--nv-muted)")), background: glow ? "#FFE9B8" : "var(--nv-card)", ...(glow ? { borderRadius: 999, boxShadow: "0 0 10px rgba(232,163,23,.55)" } : {}) }}>
                         <NvIcon name={step.kind === "heat" ? "sun" : step.kind === "limit" ? "clock" : step.kind === "nursing" ? "nursing" : "prayer"} size={12} inline={false} />
                       </span>
                       <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>

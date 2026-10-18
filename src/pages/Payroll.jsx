@@ -40,6 +40,7 @@ import PayrollCycleReview from "@/components/payroll/PayrollCycleReview";
 import { stationWithSite } from "@/lib/siteRemoteness";
 import { previousMonth } from "@/lib/payrollReview";
 import MyPayslipArchive from "@/components/payroll/MyPayslipArchive";
+import CompensationRing from "@/components/payroll/CompensationRing";
 import MyRightsList, { PAY_RIGHT_IDS } from "@/components/dashboard/MyRightsList";
 import PayrollSlipBoard from "@/components/payroll/PayrollSlipBoard";
 import PayrollArchiveBoard, { shiftMonthKey } from "@/components/payroll/PayrollArchiveBoard";
@@ -299,7 +300,6 @@ export default function Payroll() {
         : (ar
           ? "الحضور يغذّي المسير، والمسير يُقفل قبل ملف مدد. العهدة غير المسلّمة تُحسم في التصفية النهائية وحدها (المادة 91)."
           : "Attendance feeds the run, and the run closes before the Mudad file. Unreturned custody is set off only in the final settlement (Art. 91).")}
-      tabTone={view === SELF ? "gold" : "white"}
       viewNote={view === SELF ? "" : hints[tab]}
       legal={view === SELF && tab === "slip" ? "" : (ar
         ? "دورة نظامية: تجهيز البنود · المواد 90 و92 و93 و107 · الاعتماد · حماية الأجور خلال 30 يوماً من الاستحقاق."
@@ -497,33 +497,41 @@ export default function Payroll() {
         const me = myItem ? employeeForItem(myItem) : requestSelfEmployee(currentUser, data.employees || []);
         const station = stationWithSite(data, me?.stationId);
         return (
-          <div data-my-payslip="1" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <MyRightsList employee={me} data={data} ar={ar} only={PAY_RIGHT_IDS} title={ar ? "حقوق راتبي" : "My pay rights"} lede={ar ? "موعد راتبك وحد الخصم منه — من ملفك." : "Your payday and the deduction cap — from your file."} />
-            {myItem ? (
-              <PayrollSlipBoard
-                monthLabel={monthLabel}
-                month={month}
-                items={visible}
-                employeeForItem={employeeForItem}
-                data={data}
-                ar={ar}
-                personal
-                onExport={exportPayslip}
-              />
-            ) : me ? (
-              <PayslipEstimateCard
-                employee={me}
-                ar={ar}
-                monthLabel={monthLabel}
-                month={month}
-                stationName={station.name || ""}
-                note={ar
-                  ? "لا بند لك في مسير هذا الشهر بعد — تقدير من ملفك حتى يُجهَّز المسير ويُقفل الحضور."
-                  : "No line for you in this month's run yet — an estimate from your file until the run is prepared and attendance locks."}
-              />
-            ) : (
-              <p style={{ margin: 0, fontSize: 13, color: MUTED }}>{ar ? "لا ملف موظف مرتبط بحسابك بعد." : "No employee file is linked to your account yet."}</p>
-            )}
+          <div data-my-payslip="1" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* the same two-column face as طلباتي: the slip on the start side, the ring and the rights beside it */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))", gap: 16, alignItems: "start" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+                {myItem ? (
+                  <PayrollSlipBoard
+                    monthLabel={monthLabel}
+                    month={month}
+                    items={visible}
+                    employeeForItem={employeeForItem}
+                    data={data}
+                    ar={ar}
+                    personal
+                    onExport={exportPayslip}
+                  />
+                ) : me ? (
+                  <PayslipEstimateCard
+                    employee={me}
+                    ar={ar}
+                    monthLabel={monthLabel}
+                    month={month}
+                    stationName={station.name || ""}
+                    note={ar
+                      ? "لا بند لك في مسير هذا الشهر بعد — تقدير من ملفك حتى يُجهَّز المسير ويُقفل الحضور."
+                      : "No line for you in this month's run yet — an estimate from your file until the run is prepared and attendance locks."}
+                  />
+                ) : (
+                  <p style={{ margin: 0, fontSize: 13, color: MUTED }}>{ar ? "لا ملف موظف مرتبط بحسابك بعد." : "No employee file is linked to your account yet."}</p>
+                )}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+                {me ? <CompensationRing employee={me} ar={ar} line={myItem || null} month={month} onHistory={() => setTab("archive")} /> : null}
+                <MyRightsList employee={me} data={data} ar={ar} only={PAY_RIGHT_IDS} title={ar ? "حقوق راتبي" : "My pay rights"} lede={ar ? "موعد راتبك وحد الخصم منه — من ملفك." : "Your payday and the deduction cap — from your file."} />
+              </div>
+            </div>
             {me ? <AllowanceLedgerCard employee={me} ar={ar} /> : null}
             {me ? <SiteConditionsCard employee={me} station={station} ar={ar} /> : null}
             {me ? <PayrollMinistryPanel ar={ar} data={data} month={month} items={myItem ? [myItem] : []} self /> : null}

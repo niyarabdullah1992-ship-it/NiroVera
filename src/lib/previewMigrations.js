@@ -539,11 +539,17 @@ export function seedPreviewWrittenConsent(data, today = previewTodayKey()) {
   return true;
 }
 
-function ensurePreviewWage(person, wage) {
-  if (!person || Number(person.profile?.baseSalary) > 0) return false;
+function ensurePreviewWage(person, wage, parts = null) {
+  if (!person) return false;
   person.profile = person.profile && typeof person.profile === "object" ? person.profile : {};
-  assignWageFields(person.profile, { baseSalary: wage });
-  return true;
+  let changed = false;
+  if (!(Number(person.profile.baseSalary) > 0)) { assignWageFields(person.profile, { baseSalary: wage }); changed = true; }
+  // a named split (housing / transport) so قسيمتي reads a real composition, not one lump
+  if (parts && !(Number(person.profile.allowances) > 0) && !(Number(person.profile.housingAllowance) > 0)) {
+    assignWageFields(person.profile, { housingAllowance: parts.housing, transportAllowance: parts.transport, allowances: parts.housing + parts.transport });
+    changed = true;
+  }
+  return changed;
 }
 
 export function seedPreviewDiscipline(data, today = previewTodayKey()) {
@@ -552,7 +558,7 @@ export function seedPreviewDiscipline(data, today = previewTodayKey()) {
   const manager = data.employees.find((row) => row.id === "emp_manager_preview") || data.employees.find((row) => row.role === "station_manager");
   const field = data.employees.find((row) => row.id === "emp_field_preview") || data.employees.find((row) => row.role === "employee");
   if (!owner || !field) return false;
-  const wages = ensurePreviewWage(owner, 15500) || ensurePreviewWage(field, 9000) || ensurePreviewWage(manager, 12800);
+  const wages = [ensurePreviewWage(owner, 15500, { housing: 3875, transport: 1200 }), ensurePreviewWage(field, 9000, { housing: 2250, transport: 900 }), ensurePreviewWage(manager, 12800, { housing: 3200, transport: 1000 })].some(Boolean);
   if (data.previewDisciplineSeeded) return wages;
   const cases = Array.isArray(data.disciplinaryCases) ? data.disciplinaryCases : [];
   if (cases.some((row) => String(row.id || "").startsWith("dsc_preview_"))) {

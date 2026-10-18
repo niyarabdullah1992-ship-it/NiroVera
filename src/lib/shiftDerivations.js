@@ -487,10 +487,31 @@ export function restPlanStarts({ shift, onDate, minutes, step = 15, continuous10
  * The plan's choices, already lawful: `single` — every start for the whole break in one block;
  * `pairs` — for a split break, each first-part start with the second-part starts that keep Art. 101.
  */
-export function restPlanChoices({ shift, onDate, continuous103 = false, step = 15 } = {}) {
+export function restPlanChoices({ shift, onDate, continuous103 = false, step = 15, avoid = [] } = {}) {
   const flex = shiftBreakMode(shift, { continuous103 }) === "flex" ? flexBreakOf(shift, onDate) : null;
-  if (!flex) return { flex: null, single: [], pairs: [] };
-  const ok = (parts) => checkRestPlanGate({ shift, onDate, parts, continuous103 }).ok;
+  if (!flex) return { flex: null, single: [], pairs: [], avoided: 0 };
+  // Times already taken in the day (a prayer, a nursing hour) are left out of the choices, so the worker's
+  // own rest does not swallow them. If avoiding them would leave nothing, they are offered after all.
+  const busy = (Array.isArray(avoid) ? avoid : [])
+    .map((row) => ({ from: Number(row?.from), to: Number(row?.to ?? row?.from) }))
+    .filter((row) => Number.isFinite(row.from));
+  const lift = (m) => (m + 720 < flex.shiftStart ? m + 1440 : m);
+  const clashes = (parts) => parts.some((part) => {
+    const a = lift(clockOfHm(part.start));
+    const b = a + part.minutes;
+    return busy.some((row) => {
+      const from = lift(row.from);
+      const to = Math.max(from + 1, lift(row.to));
+      return from < b && to > a;
+    });
+  });
+  const lawful = (parts) => checkRestPlanGate({ shift, onDate, parts, continuous103 }).ok;
+  let avoided = 0;
+  const ok = (parts) => {
+    if (!lawful(parts)) return false;
+    if (busy.length && clashes(parts)) { avoided += 1; return false; }
+    return true;
+  };
   const single = restPlanStarts({ shift, onDate, minutes: flex.minutes, step, continuous103 })
     .filter((start) => ok([{ start, minutes: flex.minutes }]));
   const pairs = [];
@@ -503,7 +524,8 @@ export function restPlanChoices({ shift, onDate, continuous103 = false, step = 1
       if (seconds.length) pairs.push({ first, seconds, firstMinutes: half, secondMinutes: rest });
     }
   }
-  return { flex, single, pairs };
+  if (busy.length && !single.length && !pairs.length) return restPlanChoices({ shift, onDate, continuous103, step });
+  return { flex, single, pairs, avoided };
 }
 
 /**

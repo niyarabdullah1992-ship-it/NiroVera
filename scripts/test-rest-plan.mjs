@@ -35,3 +35,13 @@ assert.equal(longShiftRestPatch({ start: "07:00", end: "15:00" }, DAY), null, "8
 assert.equal(longShiftRestPatch({ start: "07:00", end: "16:00", breakMode: "fixed" }, DAY), null, "a fixed break chosen by the manager stays");
 assert.equal(longShiftRestPatch({ start: "19:00", end: "07:00" }, DAY).breakMode, "flex", "a 12-hour night opens it too");
 console.log("PASS long shift opens a one-hour flex rest");
+
+// A prayer inside the day is left out of the choices (Dhuhr 11:38 → no one-hour block covering it).
+const withDhuhr = restPlanChoices({ shift, onDate: DAY, avoid: [{ from: 11 * 60 + 38, to: 11 * 60 + 53 }] });
+assert.ok(!withDhuhr.single.includes("11:00"), "11:00–12:00 would cover the Dhuhr prayer");
+assert.ok(withDhuhr.single.includes("10:00") && withDhuhr.single.includes("12:00"));
+assert.ok(withDhuhr.avoided > 0);
+// Avoiding everything falls back to the lawful list.
+const all = restPlanChoices({ shift, onDate: DAY, avoid: [{ from: 7 * 60, to: 16 * 60 }] });
+assert.ok(all.single.length > 0, "never leaves the worker with nothing to pick");
+console.log("PASS rest plan avoids the prayer");

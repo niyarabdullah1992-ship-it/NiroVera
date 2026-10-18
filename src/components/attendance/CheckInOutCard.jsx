@@ -1188,6 +1188,48 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           ) : null}
           {error ? <span style={{ fontSize: 12, color: "var(--nv-bad-ink)", textAlign: "center", lineHeight: 1.7 }}>{error}</span> : null}
           {onApprovedLeave && !inn ? <LeaveCutOffer ar={ar} companyId={company?.id} employee={currentUser} onDone={async () => { setError(""); setLeaveCut(false); await refresh?.(); }} /> : null}
+          {/* «وقت راحتك» — a side card under the punch, apart from «مسار اليوم»: open at 9 hours and more. */}
+          {(flexOn && !done && !flexDay.punched.length) || (!flexOn && !continuous103 && band && !done) ? (
+            <div data-rest-plan-side="1" style={{ width: "100%", maxWidth: 360, alignSelf: "center", display: "flex", flexDirection: "column" }}>
+          {!flexOn && !continuous103 && band && !done ? (
+            // The option is shown as information on a day of 8 hours or less: it opens at 9 hours and more.
+            <div data-rest-plan="info" style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "8px 12px", border: "1px dashed var(--nv-line)", borderRadius: 10, background: "var(--nv-card)", textAlign: "start" }}>
+              <NvIcon name="lock" size={13} inline={false} style={{ color: "var(--nv-muted)", marginTop: 2 }} />
+              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-ink2)" }}>{ar ? "حدّد وقت راحتك — عند 9 ساعات فأعلى" : "Set your break time — at 9 hours or more"}</span>
+                <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.6 }}>
+                  {ar
+                    ? `ورديتك اليوم ${band.targetMin % 60 ? band.targetLabel : band.targetMin / 60} ساعات${band.label ? ` وراحتها ${band.label} من الجدول` : ""}.`
+                    : `When your duty is longer than 8 hours you get a one-hour break you place yourself here. Today's shift is ${band.targetLabel}${band.label ? `, its break set by the roster at ${band.label}` : ""}.`}
+                </span>
+              </span>
+            </div>
+          ) : null}
+          {flexOn && !done && !flexDay.punched.length ? (
+            <RestPlanPicker
+              key={`${dutyDay}:${restPlan?.at || ""}`}
+              ar={ar}
+              shift={dutyShift}
+              onDate={dutyDay}
+              continuous103={continuous103}
+              saved={restPlan}
+              avoid={[
+                ...prayerPoints.map((p) => ({ from: p.minutes, to: p.minutes + 15 })),
+                ...(nursingToday && band ? nursingWindowsOf(nursingToday, band.start, band.start + band.targetMin).filter((w) => w.to != null).map((w) => ({ from: w.from, to: w.to })) : []),
+              ]}
+              avoidNames={[
+                ...prayerPoints.map((p) => (ar ? p.ar : p.en)),
+                ...(nursingToday ? [ar ? "ساعة الرضاعة" : "nursing hour"] : []),
+              ]}
+              locked={!!flexDay.assumed && !flexDay.assumedRunning}
+              onSave={async (parts) => {
+                setRestPlan(company.id, currentUser.id, dutyDay, parts);
+                await refresh?.();
+              }}
+            />
+          ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="nv-punch-day" style={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
@@ -1388,41 +1430,6 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           </div>
         </div>
       </div>
-
-      {/* «وقت راحتك» — its own band under the day: open at 9 hours and more, information below that. */}
-      {(flexOn && !done && !flexDay.punched.length) || (!flexOn && !continuous103 && band && !done) ? (
-        <div data-rest-plan-band="1" style={{ padding: "16px 22px", borderTop: "1px solid var(--nv-line2, #EEF1EF)", display: "flex", flexDirection: "column", gap: 10 }}>
-          {!flexOn && !continuous103 && band && !done ? (
-            // The option is shown as information on a day of 8 hours or less: it opens at 9 hours and more.
-            <div data-rest-plan="info" style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", border: "1px dashed var(--nv-line)", borderRadius: 10, background: "var(--nv-card)" }}>
-              <NvIcon name="lock" size={14} inline={false} style={{ color: "var(--nv-muted)", marginTop: 2 }} />
-              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--nv-ink2)" }}>{ar ? "حدّد وقت راحتك — يُفتح عند 9 ساعات فأعلى" : "Set your break time — opens at 9 hours or more"}</span>
-                <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>
-                  {ar
-                    ? `إذا كان دوامك أكثر من 8 ساعات تكون لك ساعة راحة تختار وقتها بنفسك هنا. ورديتك اليوم ${band.targetMin % 60 ? band.targetLabel : band.targetMin / 60} ساعات${band.label ? `، وراحتها من الجدول ${band.label}` : ""}.`
-                    : `When your duty is longer than 8 hours you get a one-hour break you place yourself here. Today's shift is ${band.targetLabel}${band.label ? `, its break set by the roster at ${band.label}` : ""}.`}
-                </span>
-              </span>
-            </div>
-          ) : null}
-          {flexOn && !done && !flexDay.punched.length ? (
-            <RestPlanPicker
-              key={`${dutyDay}:${restPlan?.at || ""}`}
-              ar={ar}
-              shift={dutyShift}
-              onDate={dutyDay}
-              continuous103={continuous103}
-              saved={restPlan}
-              locked={!!flexDay.assumed && !flexDay.assumedRunning}
-              onSave={async (parts) => {
-                setRestPlan(company.id, currentUser.id, dutyDay, parts);
-                await refresh?.();
-              }}
-            />
-          ) : null}
-        </div>
-      ) : null}
 
       <div style={{ padding: "12px 22px 16px", display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid var(--nv-line2, #EEF1EF)", background: "var(--nv-soft, #FAFBFA)" }}>
         <button

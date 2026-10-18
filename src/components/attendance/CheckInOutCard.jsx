@@ -25,8 +25,8 @@ import {
   localCheckOut,
 } from "@/lib/localAttendanceFallback";
 import { BORDER, CARD, MUTED, NAVY, SURFACE, ui } from "@/lib/platformStyles";
-import { closeAttendanceDay, setRestPlan, submitOtherRequest } from "@/lib/store";
-import RestPlanPicker, { RestCard } from "@/components/attendance/RestPlanPicker";
+import { closeAttendanceDay, submitOtherRequest } from "@/lib/store";
+import { RestCard } from "@/components/attendance/RestPlanPicker";
 import { checkSubmitOtherRequestGate } from "@/lib/otherRequestDerivations";
 import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import { parsePunchClock, riyadhNowClock } from "@/lib/attendancePunch";
@@ -554,7 +554,8 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const continuous103 = hoursPolicyOf(data, dutyEmployee).continuousWork103 === true;
   const prayerPolicy = hoursPolicyOf(data, dutyEmployee);
   // The worker's own rest plan for the day (he places his break where it suits him) — lib/shiftDerivations.
-  const restPlan = data?.restPlans?.[`${currentUser?.id}:${dutyDay}`] || null;
+  // The break time is no longer set ahead — a reminder only; an older saved plan is ignored.
+  const restPlan = null;
   const flexDay = resolveDayBreaks({
     plan: restPlan?.parts || null,
     shift: dutyShift,
@@ -1062,27 +1063,16 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
 
   // «وقت راحتك» — its own card under «سلسلة البصمة» on بصمتي (portal into the side slot); inline elsewhere.
   const restCardEl = (flexOn && !done && !flexDay.punched.length) ? (
-            <RestPlanPicker
-              key={`${dutyDay}:${restPlan?.at || ""}`}
-              ar={ar}
-              shift={dutyShift}
-              onDate={dutyDay}
-              continuous103={continuous103}
-              saved={restPlan}
-              avoid={[
-                ...prayerPoints.map((p) => ({ from: p.minutes, to: p.minutes + (prayerPolicy.prayerMinutes || 20) })),
-                ...(nursingToday && band ? nursingWindowsOf(nursingToday, band.start, band.start + band.targetMin).filter((w) => w.to != null).map((w) => ({ from: w.from, to: w.to })) : []),
-              ]}
-              avoidNames={[
-                ...prayerPoints.map((p) => (ar ? p.ar : p.en)),
-                ...(nursingToday ? [ar ? "ساعة الرضاعة" : "nursing hour"] : []),
-              ]}
-              locked={!!flexDay.assumed && !flexDay.assumedRunning}
-              onSave={async (parts) => {
-                setRestPlan(company.id, currentUser.id, dutyDay, parts);
-                await refresh?.();
-              }}
-            />
+    // A reminder only — no time to set: he rests when he chooses and proves it by the break punch.
+    <RestCard ar={ar} note={ar
+      ? `${flexDay.flex?.minutes === 60 ? "ساعة راحة" : `${minutesAr(flexDay.flex?.minutes || 0)} راحة`} (قرار تشغيلي من المنشأة) — ترتاح متى شئت، وتبصم لبدايتها ونهايتها.`
+      : `A ${flexDay.flex?.minutes || 0}-min break (the company's operational decision) — rest when you choose, and punch its start and end.`}>
+      <ul data-rest-rule="1" style={{ margin: 0, paddingInlineStart: 18, listStyle: "disc", display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.6 }}>
+        <li>{ar ? "ننبّهك قبل أن تكمل 5 ساعات عمل متصلة." : "We remind you before you reach 5 hours of work in a row."}</li>
+        {flexDay.flex?.splitEffective ? <li>{ar ? `يمكن أن تأخذها جزأين، كل جزء ${minutesAr(flexDay.flex.minPart)} على الأقل.` : `You may take it in two parts, each at least ${flexDay.flex.minPart} min.`}</li> : null}
+        <li>{ar ? "الراحة للصلاة والطعام والراحة معاً، ولا تُحسب من عملك." : "The break holds prayer, food and rest together, and is not counted as work."}</li>
+      </ul>
+    </RestCard>
   ) : (!flexOn && !continuous103 && band && !done) ? (
     <RestCard ar={ar} note={ar ? "من الجدول المنشور — لا تُحسب من ساعات عملك." : "From the published roster — not counted as working time."}>
       <div data-rest-plan="fixed" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1104,8 +1094,8 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           <NvIcon name="lock" size={13} inline={false} style={{ color: "var(--nv-muted)" }} />
           <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.6 }}>
             {band.targetMin > 480
-              ? (ar ? "اختار مديرك لهذه الوردية راحة ثابتة من الجدول، فلا تُحدَّد بنفسك." : "Your manager set a fixed break for this shift on the roster, so you do not set it yourself.")
-              : (ar ? "تحديد وقت راحتك بنفسك يُفتح حين يكون دوامك أكثر من 8 ساعات (قرار تشغيلي من المنشأة)." : "Setting your own break time opens when your duty is longer than 8 hours (the company's operational decision).")}
+              ? (ar ? "اختار مديرك لهذه الوردية راحة ثابتة من الجدول." : "Your manager set a fixed break for this shift on the roster.")
+              : (ar ? "الراحة المرنة — ترتاح متى شئت — تُفتح حين يكون دوامك أكثر من 8 ساعات (قرار تشغيلي من المنشأة)." : "The flexible break — rest when you choose — opens when your duty is longer than 8 hours (the company's operational decision).")}
           </span>
         </div>
       </div>

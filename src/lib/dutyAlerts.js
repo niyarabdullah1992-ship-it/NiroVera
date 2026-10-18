@@ -264,8 +264,8 @@ export function deriveDutyAlerts({
       // The worker's own break: he chooses when, inside the window, and proves it by punch.
       alerts.push(alert("flex_break_yours", "info", "hours.rest.duringShiftMinutes", onDate, {
         atMinutes: flex.fromMin,
-        textAr: `راحتك ${minutesAr(flex.minutes)} (قرار تشغيلي من المنشأة) تحدد وقتها بنفسك من بطاقة «وقت راحتك»${flex.splitEffective ? `، ويمكن تقسيمها جزأين` : ""} — بشرط ألا تعمل أكثر من ${consecMax / 60} ساعات متواصلة.`,
-        textEn: `Your ${flex.minutes}-min break is yours to set in the «Your break time» card${flex.splitEffective ? ", in up to two parts" : ""} — as long as you never work more than ${consecMax / 60} hours in a row.`,
+        textAr: `راحتك ${minutesAr(flex.minutes)} (قرار تشغيلي من المنشأة) — ترتاح متى شئت وتبصم لها${flex.splitEffective ? "، ويمكن أن تكون جزأين" : ""}، قبل أن تكمل ${consecMax / 60} ساعات عمل متصلة.`,
+        textEn: `Your ${flex.minutes}-min break (the company's operational decision) — rest when you choose and punch it${flex.splitEffective ? ", in up to two parts" : ""}, before ${consecMax / 60} hours of work in a row.`,
         hint: { kind: "rest", item: { date: onDate } },
       }));
     } else if (flexDay.assumed) {

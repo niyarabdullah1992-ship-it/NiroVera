@@ -41,15 +41,19 @@ assert.equal(envelopeBucket(awaitingRelease, NOW), "waiting", "answered but not 
 assert.deepEqual([...ENVELOPE_PILLS], ["all", "action", "waiting", "done", "draft", "declined", "archive"]);
 const rows = [needsMe, waiting, done, refused, voided, awaitingRelease];
 const counts = envelopePillCounts(rows, NOW);
-assert.equal(counts.all, 3, "الكل is the open desk: needs me, waiting, awaiting release");
+// The archive rule: a released envelope stays on its face («مكتملة» / «مرفوضة») for 30 days, then «الأرشيف» only;
+// a voided one goes to the archive at once.
+assert.equal(counts.all, 5, "الكل is everything not archived yet");
 assert.equal(counts.action, 1);
 assert.equal(counts.waiting, 2);
 assert.equal(counts.done, 1);
 assert.equal(counts.draft, 0, "no saved drafts exist");
-assert.equal(counts.declined, 2, "refused and voided share one pill");
-assert.equal(counts.archive, 3, "what closed: done, refused, voided");
-assert.equal(envelopeMatches(done, "all", NOW), false, "a closed envelope leaves الكل");
-assert.equal(envelopeMatches(done, "archive", NOW), true);
+assert.equal(counts.declined, 1, "a fresh refusal stays under «مرفوضة»");
+assert.equal(counts.archive, 1, "the voided envelope is archived at once");
+assert.equal(envelopeMatches(done, "archive", NOW), false, "a fresh completion is not archived yet");
+const oldDone = { ...done, id: "old", releasedAt: iso(31) };
+assert.equal(envelopeMatches(oldDone, "archive", NOW), true, "after 30 days it moves to the archive");
+assert.equal(envelopeMatches(oldDone, "done", NOW), false, "and leaves «مكتملة»");
 assert.deepEqual(envelopePillCounts(null, NOW).all, 0);
 
 // ── Signing order ─────────────────────────────────────────────────────────────

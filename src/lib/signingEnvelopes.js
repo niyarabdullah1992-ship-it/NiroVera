@@ -21,11 +21,12 @@ export function envelopeBucket(request, now = Date.now()) {
   return "waiting";
 }
 
-/** True when the row belongs under the pill. «الكل» is the open desk; the archive is what closed. */
+/** True when the row belongs under the pill — one place at a time: its face until the archive rule moves it. */
 export function envelopeMatches(request, pill, now = Date.now()) {
   if (pill === "draft") return false;
   if (pill === "archive") return isArchivedSigningEnvelope(request, now);
-  if (pill === "all") return !isArchivedSigningEnvelope(request, now);
+  if (isArchivedSigningEnvelope(request, now)) return false;
+  if (pill === "all") return true;
   return envelopeBucket(request, now) === pill;
 }
 

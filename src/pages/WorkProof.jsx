@@ -1,3 +1,4 @@
+import { isPastArchiveDue } from "@/lib/archiveRule";
 import React, { useEffect, useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -122,8 +123,8 @@ function toLocalInput(value) {
 
 function normalizeWorkProofFilter(value) {
   const raw = String(value || "").toLowerCase();
-  if (raw === "sealed" || raw === "completed") return "archive";
-  if (raw === "await" || raw === "ready" || raw === "archive") return raw;
+  if (raw === "completed") return "sealed";
+  if (raw === "await" || raw === "ready" || raw === "sealed" || raw === "archive") return raw;
   return "all";
 }
 
@@ -635,8 +636,12 @@ export default function WorkProof() {
 
   const scopedProofs = proofs.filter((p) => matchesStationScope(p.stationId, headerScope, data?.stations));
   const scopedCounts = useMemo(() => deriveProofCounts(scopedProofs), [scopedProofs]);
-  const liveProofs = scopedProofs.filter((p) => !isWorkProofArchived(p));
-  const archiveProofs = scopedProofs.filter((p) => isWorkProofArchived(p));
+  // The archive rule (lib/archiveRule), in this section's terms: a sealed proof stays under «مختومة» 30 days —
+  // the time it is shared with the client by its verify link — then moves to «الأرشيف» only.
+  const closedRecently = (p) => isWorkProofArchived(p) && !isPastArchiveDue({ settledAt: workProofArchiveDate(p) });
+  const liveProofs = scopedProofs.filter((p) => !isWorkProofArchived(p) || closedRecently(p));
+  const sealedProofs = scopedProofs.filter(closedRecently);
+  const archiveProofs = scopedProofs.filter((p) => isWorkProofArchived(p) && !closedRecently(p));
   const stationName = (id) => stations.find((s) => String(s.id) === String(id))?.name || id || "—";
   const matchesQuery = (p) => {
     const q = query.trim().toLowerCase();
@@ -653,7 +658,8 @@ export default function WorkProof() {
   const visible = scopedProofs.filter((p) => {
     if (boardFilter === "archive") return false;
     const stage = p.stage || deriveProofStage(p);
-    if (boardFilter === "all") return !isWorkProofArchived(p) && matchesQuery(p);
+    if (boardFilter === "all") return (!isWorkProofArchived(p) || closedRecently(p)) && matchesQuery(p);
+    if (boardFilter === "sealed") return closedRecently(p) && matchesQuery(p);
     if (boardFilter !== "all" && stage !== boardFilter) return false;
     return matchesQuery(p);
   });
@@ -679,6 +685,7 @@ export default function WorkProof() {
     { id: "all", label: ar ? "الكل" : "All", n: liveProofs.length },
     { id: "await", label: ar ? STAGE_LABEL.await.ar : STAGE_LABEL.await.en, n: scopedCounts.await },
     { id: "ready", label: ar ? STAGE_LABEL.ready.ar : STAGE_LABEL.ready.en, n: scopedCounts.ready },
+    { id: "sealed", label: ar ? "مختومة" : "Sealed", n: sealedProofs.length },
     { id: "archive", label: ar ? "الأرشيف" : "Archive", n: archiveProofs.length },
   ];
 

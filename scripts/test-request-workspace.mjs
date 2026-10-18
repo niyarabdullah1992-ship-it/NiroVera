@@ -121,6 +121,7 @@ import {
   leaveDecisionNoticeText,
 } from "../src/lib/leaveEntitlementCycle.js";
 import { cleanNotificationText, formatNotificationText } from "../src/lib/notificationKind.js";
+const LATER = Date.parse("2031-01-01T00:00:00Z"); // past every 30-day archive window in these fixtures
 
 function canManageRequests(user, data) {
   if (!user || !data) return false;
@@ -270,8 +271,8 @@ const archivePeople = [{
     { id: "w1", type: "written_consent", status: "yes", titleAr: "ليلي", titleEn: "Night", answeredAt: "2026-04-02", seal: { signatureId: "PWC-SEAL-1" }, paper: { name: "ack.jpg", hash: "AA11", url: "data:text/plain,ok" }, senderFile: { name: "form.pdf", hash: "FF01", url: "/signing-preview-pumps.pdf" } },
   ],
 }];
-assert.equal(collectRequestArchive(archivePeople).rows.length, 3);
-assert.ok(collectRequestArchive(archivePeople).groups.some((group) => group.year === "2026"));
+assert.equal(collectRequestArchive(archivePeople, "ar", LATER).rows.length, 3);
+assert.ok(collectRequestArchive(archivePeople, "ar", LATER).groups.some((group) => group.year === "2026"));
 assert.ok(collectRequestFiles(archivePeople).some((row) => row.side === "out" && row.ref === "PWC-TEST-1"));
 assert.ok(collectRequestFiles([{
   id: "e-iss",
@@ -311,18 +312,21 @@ assert.ok(collectRequestFiles(archivePeople).some((row) => row.side === "out" &&
 assert.ok(!collectRequestInbox(archivePeople, [], "e1", "ar").some((row) => row.href === "/verify"), "settled letter is archive-only");
 assert.ok(collectRequestFiles(archivePeople).every((row) => !row.signHref));
 {
-  // ملفات طلباتي follows the list filter: open files under «بانتظار», settled ones under «الأرشيف».
+  // ملفات طلباتي follows the list filter and the archive rule (lib/archiveRule): open files under «بانتظار»,
+  // a decided request's files on its face for 30 days, then «الأرشيف» only — one place at a time.
+  const recent = new Date(Date.now() - 2 * 86400000).toISOString();
   const filePeople = [{ id: "f1", otherRequests: [
     { id: "op1", type: "document", status: "pending", files: [{ name: "open.pdf" }] },
     { id: "ok1", type: "night_consent", status: "approved", decision: "agree", createdAt: "2026-10-01", senderFile: { name: "night.pdf" } },
-    { id: "no1", type: "document", status: "rejected", files: [{ name: "refused.pdf" }] },
+    { id: "no1", type: "document", status: "rejected", reviewedAt: "2026-01-01", files: [{ name: "refused.pdf" }] },
+    { id: "no2", type: "document", status: "rejected", reviewedAt: recent, files: [{ name: "fresh-refused.pdf" }] },
   ] }];
   const files = collectRequestFiles(filePeople, "ar");
   const names = (f) => files.filter((row) => requestFileInFilter(row, f)).map((row) => row.name).sort().join(",");
-  assert.equal(names("archive"), "night.pdf,refused.pdf");
+  assert.equal(names("archive"), "refused.pdf", "only a decision older than 30 days is archived");
   assert.equal(names("pending"), "night.pdf,open.pdf", "a live night consent stays in بانتظار with its form");
-  assert.equal(names("rejected"), "refused.pdf");
-  assert.equal(names("all"), "night.pdf,open.pdf", "a settled request's files leave «الكل» for «الأرشيف»");
+  assert.equal(names("rejected"), "fresh-refused.pdf", "a fresh refusal stays under «مرفوضة»");
+  assert.equal(names("all"), "fresh-refused.pdf,night.pdf,open.pdf", "«الكل» is everything not yet archived");
   const night = files.find((row) => row.name === "night.pdf");
   assert.equal(night.kindAr, "نموذج من الإدارة");
   assert.equal(night.refTag, "رقم الطلب");
@@ -401,8 +405,8 @@ const nightPeople = [{ id: "e-night", name: "عمر", otherRequests: [nightAgree
 assert.equal(isLiveInboxRequest({ ...nightAgreed, family: "other" }), true, "agreed 18632 stays live so the worker can withdraw");
 assert.equal(isEndedInboxRequest({ ...nightWithdrawn, family: "other" }), true, "withdrawn 18632 is ended");
 assert.equal(liveInboxRows(nightPeople).map((row) => row.id).join(","), "nc_live");
-assert.ok(collectRequestArchive(nightPeople).rows.some((row) => row.id === "other-nc_wd"));
-assert.ok(!collectRequestArchive(nightPeople).rows.some((row) => row.id === "other-nc_live"));
+assert.ok(collectRequestArchive(nightPeople, "ar", LATER).rows.some((row) => row.id === "other-nc_wd"));
+assert.ok(!collectRequestArchive(nightPeople, "ar", LATER).rows.some((row) => row.id === "other-nc_live"));
 assert.ok(!collectRequestInbox(nightPeople, [], "e-night", "ar").some((row) => /سُحب|withdrawn/i.test(row.head)));
 assert.ok(collectRequestInbox(nightPeople, [{
   userId: "mgr1",
@@ -1062,8 +1066,9 @@ assert.equal(collectRequestArchive([afterApprove]).rows.length, 0, "unseen appro
 const afterSeen = { ...emptySelf, leaveRequests: [{ ...approvedLeave, decisionSeenAt: "2026-09-13T13:00:00.000Z" }] };
 assert.equal(isLiveInboxRequest(flattenWorkspaceRows([afterSeen])[0]), false, "after the worker sees the decision the card leaves ملفي");
 assert.equal(isEndedInboxRequest(flattenWorkspaceRows([afterSeen])[0]), true, "seen approved leave is ended for the inbox");
-assert.equal(collectRequestArchive([afterSeen]).rows.length, 1, "seen approved leave sits in الأرشيف");
-assert.equal(collectRequestArchive([afterSeen]).rows[0].withdrawOpen, true, "archive still knows the Art. 109 withdraw window");
+// The archive rule: a seen approved leave stays under «معتمدة» until its last day + 30 days, then «الأرشيف».
+assert.equal(collectRequestArchive([afterSeen]).rows.length, 0, "seen approved leave stays under «معتمدة» before it ends");
+assert.equal(collectRequestArchive([afterSeen], "ar", LATER).rows.length, 1, "after the window it sits in الأرشيف");
 
 const examSeenNoSat = {
   ...emptySelf,
@@ -1920,7 +1925,7 @@ assert.ok(refuseLogs.some((row) => row.decisionId === "18632" && /أرفض/.test
 assert.ok(refuseLogs.some((row) => /تعارض/.test(row.reason) && row.by === "أحمد السالم"));
 const fileView = buildEmployeeFileView({ employee: refusePerson, currentUser: { id: "e-file" }, ar: true });
 assert.ok((fileView.auditTop || []).some((row) => /رُفض/.test(row.text) && /تعارض|أرفض/.test(row.text)), "employee file shows the refuse audit");
-assert.ok(collectRequestArchive([refusePerson]).rows.some((row) => row.status === "rejected" && /تعارض|أرفض/.test(row.meta || "")));
+assert.ok(collectRequestArchive([refusePerson], "ar", LATER).rows.some((row) => row.status === "rejected" && /تعارض|أرفض/.test(row.meta || "")));
 
 const refuseStreak = {
   ownerId: "emp_owner_preview",
@@ -2129,7 +2134,7 @@ assert.ok(trailLogs.some((row) => row.verb === "approve" && /اعتُمد/.test(
 assert.ok(trailLogs.some((row) => row.verb === "refuse" && /رُفض/.test(row.text) && /تعارض/.test(row.reason)));
 assert.ok(hasRequestRefuseAudit(trailPerson.leaveRequests[1]));
 
-const packedArchive = collectRequestArchive([trailPerson, coworker]);
+const packedArchive = collectRequestArchive([trailPerson, coworker], "ar", LATER);
 assert.ok(packedArchive.rows.every((row) => row.status !== "pending"), "archive lists only settled");
 assert.ok(!packedArchive.rows.some((row) => row.requestId === "lv-live"), "pending stays out of archive");
 assert.ok(packedArchive.rows.some((row) => row.requestId === "lv-ok" && row.status === "approved"));
@@ -2156,7 +2161,7 @@ assert.equal(noHit.ok, false);
 assert.equal(noHit.error, "NO_MATCH");
 assert.equal(noHit.rows.length, 0);
 
-const mineOnly = mineArchiveRows([trailPerson, coworker], { id: "e-trail" }, "ar");
+const mineOnly = mineArchiveRows([trailPerson, coworker], { id: "e-trail" }, "ar", LATER);
 assert.equal(mineOnly.ok, true);
 assert.ok(mineOnly.rows.every((row) => row.employeeId === "e-trail"), "employee archive is scoped to self");
 assert.ok(!mineOnly.rows.some((row) => row.employeeId === "e-fahd"));
@@ -2173,7 +2178,7 @@ const archiveByDate = filterRequestArchive({ rows: packedArchive.rows, query: "2
 assert.equal(archiveByDate.ok, true);
 assert.ok(archiveByDate.rows.some((row) => row.requestId === "lv-ok"), "search by close date");
 
-const manageKhf = manageArchiveRows([trailPerson, coworker], "ar", {
+const manageKhf = manageArchiveRows([trailPerson, coworker], "ar", { now: LATER,
   stations: [{ id: "khf", name: "الخفجي" }, { id: "rbg", name: "رابغ" }],
   stationId: "khf",
 });
@@ -2181,7 +2186,7 @@ assert.equal(manageKhf.ok, true);
 assert.ok(manageKhf.rows.every((row) => row.stationId === "khf"), "إدارة archive is station-scoped");
 assert.ok(!manageKhf.rows.some((row) => row.employeeId === "e-fahd"));
 
-const manageAll = manageArchiveRows([trailPerson, coworker], "ar");
+const manageAll = manageArchiveRows([trailPerson, coworker], "ar", { now: LATER });
 assert.ok(manageAll.rows.some((row) => row.employeeId === "e-fahd"), "إدارة without a station sees the managed roster");
 
 const smart = requestArchiveSmartItems(mineOnly.rows, { lang: "ar", hideEmployeeName: true });

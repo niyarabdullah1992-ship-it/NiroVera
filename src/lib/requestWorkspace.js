@@ -22,6 +22,8 @@ import {
 import { officialHolidayList } from "./ummAlQuraCalendar.js";
 import { approvedLeaveWithdrawWindow, computeLeaveDays, examSatState, HOLIDAY_REQUEST_NOT_NEEDED, hasExamSatProof, holidayNotNeededLabel, isRealSupportingFile, LEAVE_TYPES, voidLegacyHolidayRequest } from "./leaveDerivations.js";
 import { nightRotateStage } from "./nightRotateCycle.js";
+import { isPastArchiveDue } from "./archiveRule.js";
+import { leaveCoverRange } from "./leaveTypes.js";
 import { LEAVE_TOPUP_TYPE, checkLeaveGrantGate, NIGHT_FITNESS_LABEL_AR, NIGHT_FITNESS_LABEL_EN, NIGHT_FITNESS_PERMANENT_AR, NIGHT_FITNESS_TYPE, buildRequestAudit, buildRequestRefuseAudit, checkAdminLeaveCreditGate, checkRefuseRequestReasonGate, checkSubmitStudyConsentGate, collectRequestAuditLogs, collectRequestRefuseLogs, hasRequestRefuseAudit, isManagerDecideOtherRequest, LEAVE_CREDIT_POOLS, nightFitnessState, otherRequestTypeLabel, reconstructRequestAudit, requestAuditEventType, requestAuditFileLog, resolveStudyConsentFields, STUDY_CONSENT_FILE_REQUIRED_AR, STUDY_CONSENT_FILE_REQUIRED_EN, STUDY_CONSENT_LABEL_AR, STUDY_CONSENT_LABEL_EN, STUDY_CONSENT_TYPE, studyConsentState } from "./otherRequestDerivations.js";
 import { nightMedicalReportOf } from "./decision18632.js";
 import {
@@ -965,6 +967,26 @@ export function isEndedInboxRequest(row) {
   return true;
 }
 
+/** When the decision on a request was taken — the archive clock starts here. */
+export function requestSettledAt(row) {
+  return row?.reviewedAt || row?.answeredAt || row?.withdrawnAt || row?.decidedAt || row?.acknowledgedAt || row?.updatedAt || row?.createdAt || "";
+}
+
+const ARCHIVE_AT_ONCE = new Set(["withdrawn", "lapsed", HOLIDAY_REQUEST_NOT_NEEDED]);
+
+/**
+ * The archive rule (lib/archiveRule) on a طلباتي row: ended requests stay under «معتمدة» / «مرفوضة» for
+ * 30 days from the decision — and an approved leave until its last day — then move to «الأرشيف» only.
+ * Withdrawn, lapsed and not-needed rows go to the archive at once.
+ */
+export function isArchivedRequestRow(row, now = Date.now()) {
+  if (!row || !isEndedInboxRequest(row)) return false;
+  const status = row.status || "pending";
+  const immediate = ARCHIVE_AT_ONCE.has(status);
+  const holdUntil = isLeaveInboxRow(row) && status === "approved" ? leaveCoverRange(row).end : "";
+  return isPastArchiveDue({ settledAt: requestSettledAt(row), holdUntil, immediate }, now);
+}
+
 /** Still needs a worker or manager act — ملفي / إدارة. extras.lane === "manage" is only items awaiting that manager's decision. */
 export function isLiveInboxRequest(row, extras = {}) {
   if (!row || isEndedInboxRequest(row)) return false;
@@ -1241,6 +1263,8 @@ export function collectRequestFiles(employees = [], lang = "ar") {
     ...row,
     requestStatus: current?.status || "pending",
     live: nightRotateStage(current) === "agreed_month",
+    // The archive rule moves a file with its request: on the decided face for 30 days, then «الأرشيف».
+    archived: isArchivedRequestRow(current),
   });
   for (const employee of employees || []) {
     for (const request of employee.leaveRequests || []) {
@@ -1451,12 +1475,14 @@ export function collectRequestFiles(employees = [], lang = "ar") {
 export function requestFileInFilter(row, filter = "all") {
   const st = String(row?.requestStatus || "pending");
   const settled = !isPendingDecideStatus(st) && st !== "open";
-  if (filter === "archive") return settled;
+  const archived = settled && (row?.archived === undefined ? true : !!row.archived);
+  if (filter === "archive") return archived;
+  if (archived && !row?.live) return false;
   if (filter === "approved") return st === "approved" || st === "yes";
   if (filter === "rejected") return st === "rejected" || st === "no" || st === "refused_by_employee";
   if (filter === "pending") return !settled || !!row?.live;
-  // «الكل» is the live view: once a request settles, its files move with it to «الأرشيف».
-  return !settled || !!row?.live;
+  // «الكل» is everything not yet in «الأرشيف» — one place per file, the same as its request.
+  return true;
 }
 
 export function requestArchiveStatusLabel(status, ar = true) {
@@ -1527,11 +1553,11 @@ function groupArchiveRows(rows = [], lang = "ar") {
   return groups;
 }
 
-export function collectRequestArchive(employees = [], lang = "ar") {
+export function collectRequestArchive(employees = [], lang = "ar", now = Date.now()) {
   const ar = lang === "ar";
   const rows = [];
   for (const row of flattenWorkspaceRows(employees, lang)) {
-    if (isLiveInboxRequest(row) || !isEndedInboxRequest(row)) continue;
+    if (isLiveInboxRequest(row) || !isArchivedRequestRow(row, now)) continue;
     const at = row.reviewedAt || row.answeredAt || row.withdrawnAt || row.createdAt;
     const cite = requestStatuteCite(row);
     const reason = row.status === "rejected"
@@ -1731,13 +1757,13 @@ export function filterRequestArchive({
   return { ok: true, rows: hits, groups: groupArchiveRows(hits, lang) };
 }
 
-export function mineArchiveRows(employees = [], viewer, lang = "ar") {
-  const packed = collectRequestArchive(employees, lang);
+export function mineArchiveRows(employees = [], viewer, lang = "ar", now = Date.now()) {
+  const packed = collectRequestArchive(employees, lang, now);
   return filterRequestArchive({ rows: packed.rows, viewer, lane: "mine", lang });
 }
 
 export function manageArchiveRows(employees = [], lang = "ar", extras = {}) {
-  const packed = collectRequestArchive(employees, lang);
+  const packed = collectRequestArchive(employees, lang, extras.now ?? Date.now());
   return filterRequestArchive({
     rows: packed.rows,
     stations: extras.stations || [],

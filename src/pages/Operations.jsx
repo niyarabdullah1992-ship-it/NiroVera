@@ -1,3 +1,4 @@
+import { isPastArchiveDue } from "@/lib/archiveRule";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -1878,10 +1879,16 @@ export default function Operations() {
   // The employee rail is «مهامي»: a director still only opens tasks assigned to them.
   const seeAsManager = isOpsManager && !employeeRail;
   const liveTasks = tasks.filter((t) => !isOpsTaskArchived(t) && canSeeOpsTask(t, currentUser, { isManager: seeAsManager }));
-  const archivedTasks = tasks.filter((t) => isOpsTaskArchived(t) && canSeeOpsTask(t, currentUser, { isManager: seeAsManager }));
-  const boardFilter = filter === "done" ? "archive" : filter;
+  // The archive rule (lib/archiveRule), in this section's terms: an approved task stays under «منجزة» 30 days —
+  // the time its proof is stamped and sent to the client — then moves to «الأرشيف» only; a deleted task goes at once.
+  const doneSettledAt = (t) => t.approvedAt || t.completedAt || t.updatedAt || t.createdAt;
+  const inArchive = (t) => isOpsTaskDeleted(t) || isPastArchiveDue({ settledAt: doneSettledAt(t) });
+  const seen = (t) => canSeeOpsTask(t, currentUser, { isManager: seeAsManager });
+  const doneTasks = tasks.filter((t) => isOpsTaskArchived(t) && !inArchive(t) && seen(t));
+  const archivedTasks = tasks.filter((t) => isOpsTaskArchived(t) && inArchive(t) && seen(t));
+  const boardFilter = filter;
   const visible = liveTasks.filter((t) => {
-    if (boardFilter === "archive") return false;
+    if (boardFilter === "archive" || boardFilter === "done") return false;
     if (boardFilter === "all") return true;
     if (boardFilter === "overdue") return isOverdue(t);
     if (boardFilter === "today") return t.dueAt && String(t.dueAt).slice(0, 10) === todayKey;
@@ -1902,6 +1909,7 @@ export default function Operations() {
     { id: "overdue", label: ar ? "متأخرة" : "Overdue", n: c.overdue },
     { id: "escalated", label: ar ? "صُعّدت" : "Escalated", n: c.escalated || 0 },
     { id: "awaiting", label: employeeRail ? (ar ? "عند المشرف" : "With supervisor") : (ar ? "بانتظار الاعتماد" : "Awaiting"), n: c.awaiting },
+    { id: "done", label: ar ? "منجزة" : "Done", n: doneTasks.length },
     { id: "archive", label: ar ? "الأرشيف" : "Archive", n: archivedTasks.length },
   ] : [];
 
@@ -1941,7 +1949,7 @@ export default function Operations() {
     const open = (t.qualityObjections || []).some((o) => String(o.employeeId) === String(viewerId) && !o.decision);
     return `${ar ? "الجودة" : "Quality"}: ${q.level} — ${ar ? q.label.ar : q.label.en}${q.reason ? ` (${q.reason})` : ""}${open ? (ar ? " · اعتراضك بانتظار البتّ" : " · objection pending") : ""}`;
   };
-  const archiveItems = archivedTasks.map((t) => {
+  const toArchiveItem = (t) => {
     const doneN = Math.max(0, Number(t.completedCount) || 0);
     const targetN = Math.max(1, Number(t.targetCount) || 1);
     return {
@@ -1965,7 +1973,9 @@ export default function Operations() {
         ? (ar ? "محذوفة" : "Deleted")
         : (t.status === "completed" || t.approvedAt ? (ar ? "مكتملة" : "Done") : (ar ? "مؤرشفة" : "Archived")),
     };
-  });
+  };
+  const archiveItems = archivedTasks.map(toArchiveItem);
+  const doneItems = doneTasks.map(toArchiveItem);
   const STATUS_LABEL = {
     active: { ar: "نشطة", en: "Active" },
     awaiting_approval: { ar: "بانتظار الاعتماد", en: "Awaiting" },
@@ -2346,12 +2356,20 @@ export default function Operations() {
         </div>
       )}
 
-      {boardFilter === "archive" ? (
+      {boardFilter === "done" ? (
+        <RecordSmartArchive
+          items={doneItems}
+          lang={lang}
+          dir={dir}
+          emptyLabel={ar ? "لا مهام منجزة خلال آخر 30 يوماً — بعدها تنتقل إلى «الأرشيف»." : "No tasks done in the last 30 days — after that they move to the archive."}
+          onOpen={(item) => setOpenTaskId(item.id)}
+        />
+      ) : boardFilter === "archive" ? (
         <RecordSmartArchive
           items={archiveItems}
           lang={lang}
           dir={dir}
-          emptyLabel={ar ? "لا مهام مؤرشفة بعد — المكتملة تُنقل إلى هنا تلقائياً بعد الاعتماد." : "No archived tasks yet — completed tasks move here automatically after approval."}
+          emptyLabel={ar ? "لا مهام مؤرشفة بعد — المنجزة تنتقل إلى هنا بعد 30 يوماً من اعتمادها." : "No archived tasks yet — done tasks move here 30 days after approval."}
           onOpen={(item) => setOpenTaskId(item.id)}
         />
       ) : viewMode === "plan" ? (

@@ -108,6 +108,8 @@ import {
   mineArchiveRows,
   manageArchiveRows,
   isOwnMineLaneRow,
+  isArchivedRequestRow,
+  isEndedInboxRequest,
   requestRegardingLine,
   employeeStationName,
   isAllowedSupportingFile,
@@ -1325,8 +1327,9 @@ export default function RequestsWorkspace({
     [employees, lang, stations, company?.id],
   );
   const selectedRegister = registerBoard.rows.find((row) => String(row.id) === String(registerId || employeeId));
+  // The archive rule: a decided request stays under «معتمدة» / «مرفوضة» until it moves to «الأرشيف» — never both.
   const mineOwned = mode === "mine"
-    ? flattenWorkspaceRows(employees, lang).filter((row) => isOwnMineLaneRow(row, currentUser || self))
+    ? flattenWorkspaceRows(employees, lang).filter((row) => isOwnMineLaneRow(row, currentUser || self) && !isArchivedRequestRow(row))
     : [];
   const rows = mode === "mine"
     ? mineInboxRows(employees, currentUser || self, lang)
@@ -1335,13 +1338,27 @@ export default function RequestsWorkspace({
   const scopedRows = mode === "manage" && selectedPersonId
     ? rows.filter((row) => String(row.employee?.id) === String(selectedPersonId))
     : rows;
+  // إدارة الطلبات: what the manager decided stays under «معتمدة» / «مرفوضة» until the archive rule moves it.
+  const manageDecided = mode === "manage"
+    ? flattenWorkspaceRows(employees, lang).filter((row) => isEndedInboxRequest(row) && !isArchivedRequestRow(row)
+      && (!selectedPersonId || String(row.employee?.id) === String(selectedPersonId)))
+    : [];
+  const manageBucket = (row) => {
+    const st = row.status || "pending";
+    if (st === "approved" || st === "yes") return "ok";
+    if (st === "rejected" || st === "refused_by_employee" || st === "no") return "no";
+    return "";
+  };
   const mineStatus = mineStatusBucket;
   const mineList = mode === "mine" && (stFilter === "all" || stFilter === "approved" || stFilter === "rejected")
     ? mineOwned
-    : scopedRows;
+    : mode === "manage" && (stFilter === "ok" || stFilter === "no")
+      ? manageDecided
+      : scopedRows;
   const filtered = mineList.filter((row) => {
     const st = row.status || "pending";
     if (stFilter === "all") return true;
+    if (mode === "manage" && (stFilter === "ok" || stFilter === "no")) return manageBucket(row) === stFilter;
     if (stFilter === "approved") return mineStatus(row) === "approved";
     if (stFilter === "rejected") return mineStatus(row) === "rejected";
     if (stFilter === "pending") {
@@ -2100,7 +2117,7 @@ export default function RequestsWorkspace({
       ? manageArchiveRows(employees, lang, { stations, stationId: focusStationId || "all" }).rows.length
       : mineArchiveRows(employees, currentUser || self, lang).rows.length;
     if (mode !== "manage") {
-      const owned = flattenWorkspaceRows(employees, lang).filter((row) => isOwnMineLaneRow(row, currentUser || self));
+      const owned = flattenWorkspaceRows(employees, lang).filter((row) => isOwnMineLaneRow(row, currentUser || self) && !isArchivedRequestRow(row));
       const bucket = (row) => {
         const st = row.status || "pending";
         if (st === "rejected" || st === "refused_by_employee" || st === "no") return "rejected";
@@ -2120,10 +2137,15 @@ export default function RequestsWorkspace({
       ["all", ar ? "الكل" : "All"],
       ["pending", ar ? "بانتظار قرار" : "Pending"],
       ["revise", ar ? "يحتاج تعديلاً" : "Needs a change"],
+      ["ok", ar ? "معتمدة" : "Approved"],
+      ["no", ar ? "مرفوضة" : "Refused"],
       ["archive", ar ? "الأرشيف" : "Archive"],
     ].map(([id, label]) => {
       if (id === "archive") {
         return { id, label, n: archiveCount };
+      }
+      if (id === "ok" || id === "no") {
+        return { id, label, n: manageDecided.filter((row) => manageBucket(row) === id).length };
       }
       const n = id === "all" ? scopedRows.length : scopedRows.filter((row) => {
         const st = row.status || "pending";
@@ -2135,7 +2157,7 @@ export default function RequestsWorkspace({
       }).length;
       return { id, label, n };
     }));
-  }, [ar, scopedRows, mode, employees, lang, stations, focusStationId, currentUser, self, initialFilter]);
+  }, [ar, scopedRows, manageDecided, mode, employees, lang, stations, focusStationId, currentUser, self, initialFilter]);
 
   const withdrawArchivedLeave = (row) => {
     if (!company?.id || !row.employeeId || !row.requestId) return;

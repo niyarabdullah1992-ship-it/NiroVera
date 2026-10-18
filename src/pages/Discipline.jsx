@@ -50,6 +50,7 @@ import { useRailSide, useSetRailSide } from "@/lib/railSide";
 import { checkPublishRegulationGate, planRegulationAck, regulationDate, regulationNextStep, regulationOf, regulationRef, regulationStepFor } from "@/lib/workRegulation";
 import { disciplineDeadlines } from "@/lib/disciplineDeadlines";
 import { ruleValue } from "@/lib/laborRules";
+import { isPastArchiveDue } from "@/lib/archiveRule";
 import { saveDisciplineOnServer } from "@/lib/disciplineServer";
 import { regulationVersionEntry } from "@/lib/syncLaw";
 import { checkUniformSanctionGate, planUniformAck, uniformOf } from "@/lib/uniformPolicy";
@@ -250,7 +251,16 @@ export default function Discipline() {
   // Signed is archive-settled for the company, but stays live for the employee so he can object.
   // Model Arts. 69 · 61: nothing leaves the record; a signed penalty past the fold date (discipline.record.eraseDays,
   // never under the 180-day cooloff) is marked «سابقة» on its line.
-  const mineAllLive = mineCards.filter((card) => card.face.id === "signed" || !isDisciplineSettled(card.item));
+  // The archive rule (lib/archiveRule), in this section's terms: a signed penalty stays under «سارية» while the
+  // worker may still object (discipline.appeal.internalDays) and 30 days after signing, then moves to «الأرشيف».
+  const signedInForce = (item) => {
+    const signedOn = String(item?.signedAt || item?.decidedAt || "").slice(0, 10);
+    if (!signedOn) return true;
+    const appealDays = Number(ruleValue("discipline.appeal.internalDays", board.today)) || 0;
+    const appealEnds = new Date(Date.parse(`${signedOn}T12:00:00Z`) + appealDays * 86400000).toISOString().slice(0, 10);
+    return !isPastArchiveDue({ settledAt: signedOn, holdUntil: item?.appealedAt ? "" : appealEnds }, Date.parse(`${board.today}T12:00:00Z`) || Date.now());
+  };
+  const mineAllLive = mineCards.filter((card) => (card.face.id === "signed" ? signedInForce(card.item) : !isDisciplineSettled(card.item)));
   const foldedOf = (card) => sanctionRecordState(card.item, { today: board.today }).foldedForWorker;
   const kindSpec = listedPenaltyKind(penaltyKind) || DISCIPLINE_PENALTY_KINDS[0];
   const cutDays = kindSpec.days.includes(0) && kindSpec.days.length === 1 ? 0 : Number(penaltyDays) || kindSpec.days[0] || 0;
@@ -539,12 +549,16 @@ export default function Discipline() {
   const sanctionBucket = (card) => (card.face.id === "signed" ? "force" : card.face.id === "notified" ? "reply" : card.face.id === "objected" ? "grieved" : "");
   const openGrievances = myGrievances.filter((row) => !grievanceSettled(row));
   const openObjections = myObjections.filter((row) => !objectionSettled(row));
-  const settledRights = [...myGrievances.filter(grievanceSettled), ...myObjections.filter(objectionSettled)].sort(byNewest);
+  // A ruled grievance or objection stays under «متظلَّم منها» 30 days from its ruling, then «الأرشيف» only.
+  const rightsArchived = (row) => isPastArchiveDue({ settledAt: row.reviewedAt || row.decidedAt || row.ruledAt || row.updatedAt || row.createdAt });
+  const ruledRights = [...myGrievances.filter(grievanceSettled), ...myObjections.filter(objectionSettled)].sort(byNewest);
+  const settledRights = ruledRights.filter(rightsArchived);
+  const recentRights = ruledRights.filter((row) => !rightsArchived(row));
   const mineCount = {
-    all: mineAllLive.length + openGrievances.length + openObjections.length + myDamageOpen.length,
+    all: mineAllLive.length + openGrievances.length + openObjections.length + myDamageOpen.length + recentRights.length,
     force: mineAllLive.filter((c) => sanctionBucket(c) === "force").length,
     reply: mineAllLive.filter((c) => sanctionBucket(c) === "reply").length + myDamageOpen.length,
-    grieved: mineAllLive.filter((c) => sanctionBucket(c) === "grieved").length + openGrievances.length + openObjections.length,
+    grieved: mineAllLive.filter((c) => sanctionBucket(c) === "grieved").length + openGrievances.length + openObjections.length + recentRights.length,
     archive: (mineCards.length - mineAllLive.length) + settledRights.length,
   };
   const showMine = (bucket) => mineFace === "all" || mineFace === bucket;
@@ -555,6 +569,7 @@ export default function Discipline() {
     ...(showMine("reply") ? myDamageOpen.map((row) => `line:${row.line.id}`) : []),
     ...(showMine("grieved") ? openGrievances.map((row) => `grievance:${row.id}`) : []),
     ...(showMine("grieved") ? openObjections.map((row) => `damage:${row.id}`) : []),
+    ...(showMine("grieved") ? recentRights.map(rightsKey) : []),
   ];
   const mineFold = useCollapsibleItems(mineVisibleKeys, "");
   const grievanceStageText = (row) => {
@@ -977,7 +992,7 @@ export default function Discipline() {
                 />
                 {mineFace === "archive" ? (
                   <>
-                    <DisciplineArchiveBoard cases={mine} employees={employees} stations={stations} ar={ar} today={board.today} scope="mine" selfOnly userId={currentUser?.id} />
+                    <DisciplineArchiveBoard cases={mine.filter((item) => !mineAllLive.some((card) => String(card.item.id) === String(item.id)))} employees={employees} stations={stations} ar={ar} today={board.today} scope="mine" selfOnly userId={currentUser?.id} />
                     {settledRights.length ? (
                       <DisciplineRowList dataKey="mine-rights-archive">
                         {settledRights.map((row) => rightsLine(row, row.type === GRIEVANCE_TYPE ? "grievance" : "damage"))}
@@ -990,6 +1005,7 @@ export default function Discipline() {
                     {showMine("reply") ? myDamageOpen.map(damageLine) : null}
                     {showMine("grieved") ? openGrievances.map((row) => rightsLine(row, "grievance")) : null}
                     {showMine("grieved") ? openObjections.map((row) => rightsLine(row, "damage")) : null}
+                    {showMine("grieved") ? recentRights.map((row) => rightsLine(row, row.type === GRIEVANCE_TYPE ? "grievance" : "damage")) : null}
                   </DisciplineRowList>
                 )}
               </ListStack>

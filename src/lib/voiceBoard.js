@@ -1,3 +1,4 @@
+import { isPastArchiveDue } from "./archiveRule.js";
 import { formatDate } from "./dateFormat.js";
 import {
   buildVoiceAuditTimeline,
@@ -288,6 +289,9 @@ export function decorateVoiceItem(item, {
   const lastReply = (item.replies || []).slice(-1)[0];
   const note = lastReply?.text || item.rulingNote || item.decisionNote || "";
   const decidedAt = lastReply?.createdAt || item.closedAt || item.decidedAt || "";
+  // The archive rule (lib/archiveRule): a ruled voice stays under «معتمدة» / «مُعادة» 30 days — time for the
+  // worker to read the ruling and appeal — then moves to «الأرشيف» only.
+  const archived = settled && isPastArchiveDue({ settledAt: item.closedAt || item.decidedAt || lastReply?.createdAt || item.updatedAt || item.createdAt }, nowMs);
   const label = outcome === "adopt"
     ? (item.channel === "anonymous" ? (ar ? "عُولِج" : "Handled") : (ar ? "اعتُمد" : "Adopted"))
     : outcome === "return"
@@ -323,6 +327,7 @@ export function decorateVoiceItem(item, {
     station,
     outcome,
     settled,
+    archived,
     left,
     overdue,
     title: item.title,

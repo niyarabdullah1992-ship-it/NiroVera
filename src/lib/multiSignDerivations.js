@@ -10,6 +10,8 @@
  * currentSignerIndex are placement / progress only.
  */
 
+import { isPastArchiveDue } from "./archiveRule.js";
+
 export const emailValid = (value) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(value || "").trim());
 export const MAX_PARALLEL_SIGNERS = 100;
 
@@ -27,9 +29,19 @@ export function isOpenSigningState(state) {
   return state === "pending" || state === "awaiting_release";
 }
 
-/** Completed, refused, and voided envelopes leave the active desk. */
+/**
+ * The archive rule (lib/archiveRule) on an envelope: a completed or refused envelope stays under
+ * «مكتملة» / «مرفوضة» for 30 days from its release — time to download and share the signed copy —
+ * then moves to «الأرشيف» only. A voided (deleted) envelope goes to the archive at once.
+ */
+export function signingSettledAt(request) {
+  return request?.releasedAt || request?.completedAt || request?.closedAt || request?.deletedAt || request?.updatedAt || request?.createdAt || "";
+}
+
 export function isArchivedSigningEnvelope(request, now = Date.now()) {
-  return !isOpenSigningState(settledState(request, now).state);
+  const { state } = settledState(request, now);
+  if (isOpenSigningState(state)) return false;
+  return isPastArchiveDue({ settledAt: signingSettledAt(request), immediate: state === "deleted" }, now);
 }
 
 export function splitSigningDesk(requests = [], now = Date.now()) {

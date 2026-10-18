@@ -168,7 +168,7 @@ export default function Complaints() {
     [allItems, queueItems, employees, stations, ar, canManage, currentUser?.id, currentUser?.stationId, chain, data?.branchEscalationChains, data?.orgTree, data?.stations],
   );
   const mineSettled = useMemo(
-    () => (canManage ? board.mine.filter((card) => card.settled) : board.settled),
+    () => (canManage ? board.mine.filter((card) => card.archived) : board.settled.filter((card) => card.archived)),
     [board.mine, board.settled, canManage],
   );
 
@@ -257,7 +257,9 @@ export default function Complaints() {
     : [
       { key: "mine", num: "01", ar: "ملفي", en: "My file", count: board.mineOpen },
     ], railSide);
-  const manageSettledCount = board.settled.length;
+  // The archive rule: a ruled voice stays under «قُرّرت» 30 days, then «الأرشيف» only.
+  const manageDecided = board.settled.filter((card) => !card.archived);
+  const manageSettledCount = board.settled.filter((card) => card.archived).length;
 
   const pickChannel = (id) => {
     const next = id === "abuse" ? ABUSE_VOICE_CHANNEL : channelOf(id);
@@ -484,7 +486,7 @@ export default function Complaints() {
 
   const dueSoon = board.open.filter((card) => card.left != null && card.left <= 24);
   const queue = board.open.filter((card) => {
-    if (queueFilter === "archive") return false;
+    if (queueFilter === "archive" || queueFilter === "decided") return false;
     if (queueFilter === "due") return card.left != null && card.left <= 24;
     if (queueFilter === "over") return card.overdue;
     if (queueFilter === "anon") return card.item.channel === "anonymous";
@@ -496,6 +498,7 @@ export default function Complaints() {
     ["due", ar ? "ضاق وقتها" : "Due soon", dueSoon.length],
     ["over", ar ? "تجاوزت" : "Overdue", board.overdue.length],
     ...(hrReceiver ? [["anon", ar ? "سرية" : "Confidential", board.open.filter((card) => card.item.channel === "anonymous").length]] : []),
+    ["decided", ar ? "قُرّرت" : "Ruled", manageDecided.length],
     ["archive", ar ? "الأرشيف" : "Archive", manageSettledCount],
   ];
 
@@ -517,8 +520,8 @@ export default function Complaints() {
       ? `المهلة ${picked.hours} ساعة عند كل مستوى. ما لا يُراجع فيها يُرفع للمستوى التالي تلقائياً حتى الموارد البشرية، ولا يُغلق بلا قرار مكتوب.`
       : `The window is ${picked.hours} hours at each level. What is not reviewed in time climbs automatically up to HR, and nothing closes without a written ruling.`);
   const mineBreaches = board.mine.filter((card) => card.overdue).length;
-  // «أصواتي» filters the same way as طلباتي: all, pending, adopted, returned — settled ones also sit in «الأرشيف».
-  const mineOwn = board.mine;
+  // «أصواتي» filters the same way as طلباتي: all, pending, adopted, returned — then «الأرشيف» after 30 days, one place at a time.
+  const mineOwn = board.mine.filter((card) => !card.archived);
   const mineShown = mineOwn.filter((card) => {
     if (mineFace === "pending") return !card.settled;
     if (mineFace === "adopted") return card.settled && card.outcome === "adopt";
@@ -686,7 +689,9 @@ export default function Complaints() {
                     items={queueFilters.map(([id, label, n]) => ({ id, label, n }))}
                   />
                   {queueFilter === "archive" ? (
-                    <VoiceArchiveBoard cards={board.cards} ar={ar} canManage scope="manage" />
+                    <VoiceArchiveBoard cards={board.cards.filter((card) => card.archived)} ar={ar} canManage scope="manage" />
+                  ) : queueFilter === "decided" ? (
+                    <VoiceArchiveBoard cards={manageDecided} ar={ar} canManage scope="manage" />
                   ) : (
                     <VoiceQueueList
                       cards={queue}

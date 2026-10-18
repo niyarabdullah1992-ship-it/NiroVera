@@ -1,12 +1,12 @@
+import PersonSearchAdd from "@/components/shared/PersonSearchAdd";
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Loader2, Search, X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import SubTypeOption, { SubTypeGrid } from "@/components/requests/SubTypeOption";
 import NvIcon from "@/components/shared/NvIcon";
 import { SectionHead, slab } from "@/components/schedules/scheduleChrome";
 import { BORDER, CARD, CONTROL_RADIUS, MUTED } from "@/lib/platformStyles";
 import { formatDate } from "@/lib/dateFormat";
-import { peopleQueryMatches } from "@/lib/peopleTreeGraph";
 
 /**
  * The task dialogs (توكيل · نقل · مكان التنفيذ · حذف) speak the طلباتي raise frame exactly — the same as
@@ -104,13 +104,11 @@ const personStation = (emp, stations) => {
 
 /** One person from the visible scope as SubTypeOption rows (name, then title · branch); searchable when long. */
 export function TaskPersonPicker({ ar, options = [], value, onChange, stations = [], label }) {
-  const [q, setQ] = useState("");
   const rows = useMemo(() => options.map((emp) => {
     const id = String(emp.employeeId || emp.id || "");
     const sub = [personTitle(emp), personStation(emp, stations)].filter(Boolean).join(" · ");
     return { id, name: emp.name || id, sub, hay: [emp.name, emp.nameEn, sub, id].filter(Boolean).join(" ") };
   }), [options, stations]);
-  const shown = rows.filter((row) => peopleQueryMatches(row.hay, q));
   if (!rows.length) {
     return (
       <span data-task-people-empty="1" style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.7, color: "var(--nv-warn-ink, #8A5A12)" }}>
@@ -118,33 +116,23 @@ export function TaskPersonPicker({ ar, options = [], value, onChange, stations =
       </span>
     );
   }
+  // Search, then pick — the scope list stays folded; the chosen person reads as one row.
+  const chosen = rows.find((row) => String(value) === row.id) || null;
   return (
-    <>
-      {rows.length > 6 ? (
-        <label style={{ position: "relative", display: "block" }}>
-          <Search aria-hidden size={14} strokeWidth={1.75} style={{ position: "absolute", insetInlineStart: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }} />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={ar ? "ابحث بالاسم أو المسمى أو الفرع" : "Search by name, title or branch"}
-            aria-label={ar ? "ابحث عن موظف" : "Search an employee"}
-            style={{ ...reqField, padding: undefined, paddingBlock: 10, paddingInlineEnd: 12, paddingInlineStart: 32, "--nv-input-start": "32px" }}
-          />
-        </label>
-      ) : null}
-      <div style={{ maxHeight: 248, overflowY: "auto" }}>
+    <div data-task-person-picker="1" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {chosen ? (
         <SubTypeGrid label={label}>
-          {shown.map((row) => (
-            <SubTypeOption key={row.id} dataKey={row.id} on={String(value) === row.id} title={row.name} sub={row.sub || undefined} onClick={() => onChange(row.id)} />
-          ))}
+          <SubTypeOption dataKey={chosen.id} on title={chosen.name} sub={chosen.sub || undefined} onClick={() => {}} />
         </SubTypeGrid>
-        {!shown.length ? (
-          <span style={{ display: "block", padding: "8px 2px", fontSize: 11.5, color: MUTED }}>
-            {ar ? `لا أحد يطابق «${q}».` : `Nobody matches “${q}”.`}
-          </span>
-        ) : null}
-      </div>
-    </>
+      ) : null}
+      <PersonSearchAdd
+        ar={ar}
+        dataKey="task"
+        rows={rows.filter((row) => !chosen || row.id !== chosen.id)}
+        actionLabel={chosen ? (ar ? "بدّل" : "Switch") : (ar ? "اختر" : "Pick")}
+        onPick={(row) => onChange(row.id)}
+      />
+    </div>
   );
 }
 

@@ -1,12 +1,12 @@
+import PersonSearchAdd from "@/components/shared/PersonSearchAdd";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, GripVertical, Loader2, Search, X } from "lucide-react";
+import { ArrowDown, ArrowUp, GripVertical, Loader2, X } from "lucide-react";
 import AttachDropzone from "@/components/shared/AttachDropzone";
 import SectionBackLink from "@/components/shared/SectionBackLink";
 import SubTypeOption, { SubTypeGrid } from "@/components/requests/SubTypeOption";
 import NvIcon from "@/components/shared/NvIcon";
 import { SectionHead, mono, slab } from "@/components/schedules/scheduleChrome";
 import { BORDER, CARD, CONTROL_RADIUS, MUTED } from "@/lib/platformStyles";
-import { peopleQueryMatches } from "@/lib/peopleTreeGraph";
 import { formatUiNumber } from "@/lib/dateFormat";
 import { PDF_NEEDS_PASSWORD,
   ENVELOPE_DOC_ACCEPT,
@@ -111,7 +111,6 @@ export default function EnvelopeSetup({
   const [message, setMessage] = useState(initial?.message || "");
   const [reminderEveryDays, setReminderEveryDays] = useState(Number(initial?.reminderEveryDays) || 0);
   const [expiryDays, setExpiryDays] = useState(Number(initial?.expiryDays) || DEFAULT_EXPIRY_DAYS);
-  const [q, setQ] = useState("");
   const [extName, setExtName] = useState("");
   const [extEmail, setExtEmail] = useState("");
   const [extError, setExtError] = useState("");
@@ -174,10 +173,7 @@ export default function EnvelopeSetup({
       };
     }), [employees, stations, me.email]);
   const taken = new Set(recipients.map((row) => row.email));
-  const shownPeople = roster
-    .filter((person) => !taken.has(person.email))
-    .filter((person) => peopleQueryMatches([person.name, person.sub, person.email].join(" "), q))
-    .slice(0, q.trim() ? 12 : 6);
+  const availablePeople = roster.filter((person) => !taken.has(person.email));
 
   const nextColor = () => RECIPIENT_COLORS[(recipients.length + 1) % RECIPIENT_COLORS.length];
   const addPerson = (person) => {
@@ -193,7 +189,6 @@ export default function EnvelopeSetup({
       stamp: false,
       color: nextColor(),
     }]);
-    setQ("");
   };
   const addExternal = () => {
     setExtError("");
@@ -395,19 +390,14 @@ export default function EnvelopeSetup({
             <>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 4 }}>
                 <span style={label}>{ar ? "أضف من المنشأة" : "Add from the company"}</span>
-                <label style={{ position: "relative", display: "block" }}>
-                  <Search aria-hidden size={14} strokeWidth={1.75} style={{ position: "absolute", insetInlineStart: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }} />
-                  <input data-people-search="1" value={q} onChange={(event) => setQ(event.target.value)} placeholder={ar ? "ابحث بالاسم أو المسمى أو الفرع" : "Search by name, title or branch"} style={{ ...field, padding: undefined, paddingBlock: 10, paddingInlineEnd: 12, paddingInlineStart: 34, "--nv-input-start": "34px" }} />
-                </label>
-                {shownPeople.length ? (
-                  <SubTypeGrid label={ar ? "موظفون" : "Employees"}>
-                    {shownPeople.map((person) => (
-                      <SubTypeOption key={person.id} dataKey={`person-${person.id}`} title={person.name} sub={person.sub || person.email} onClick={() => addPerson(person)} />
-                    ))}
-                  </SubTypeGrid>
-                ) : (
-                  <span style={{ fontSize: 11.5, color: MUTED }}>{q.trim() ? (ar ? `لا أحد يطابق «${q.trim()}».` : `Nobody matches “${q.trim()}”.`) : (ar ? "لا موظف آخر ببريد في نطاقك." : "No other employee with an email in your scope.")}</span>
-                )}
+                {/* Search, then add — the company list stays folded until a name is typed. */}
+                <PersonSearchAdd
+                  ar={ar}
+                  dataKey="envelope"
+                  rows={availablePeople.map((person) => ({ ...person, sub: person.sub || person.email, hay: [person.name, person.sub, person.email].filter(Boolean).join(" ") }))}
+                  onPick={(person) => addPerson(person)}
+                  emptyScope={ar ? "لا موظف آخر ببريد في نطاقك." : "No other employee with an email in your scope."}
+                />
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 4 }}>
                 <span style={label}>{ar ? "أو مستلم من خارج المنشأة" : "Or a recipient outside the company"}</span>

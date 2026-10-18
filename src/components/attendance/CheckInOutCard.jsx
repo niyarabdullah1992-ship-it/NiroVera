@@ -920,7 +920,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       badge: prayerPolicy.prayerPaid ? (ar ? "سياسة المنشأة" : "Company policy") : lawBadge(restCite, notWorkCite),
       note: (prayerPolicy.prayerPaid
         ? (ar ? `${prayerPolicy.prayerMinutes} دقيقة للصلاة تُحسب من عملك ولا تُستقطع` : `${prayerPolicy.prayerMinutes} min for prayer counted as your work — company policy`)
-        : (ar ? "وقت الصلاة من فترة الراحة والصلاة والطعام — لا يُحسب من ساعات العمل" : "Prayer sits in the rest, prayer and meal period — not counted as work"))
+        : (ar ? "إن صلّيت في راحتك فهي منها. وإن صلّيت أثناء العمل فلا تُستقطع ولا يطول دوامك." : "Prayed in your break, it is part of it. Prayed during work, nothing is deducted and your day does not grow."))
         + (prayerApprox ? (ar ? " · الوقت تقريبي بتوقيت الرياض حتى تُحدَّد مدينة الفرع" : " · approximate (Riyadh) until the branch city is set") : ""),
       hint: prayerPolicy.prayerPaid ? null : attRightHint("rest", {}, { view: "employee", ar }),
     }, p.minutes);
@@ -1098,7 +1098,8 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         <ul data-rest-rule="1" style={{ margin: 0, paddingInlineStart: 18, listStyle: "disc", display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.6 }}>
           <li>{ar ? "لا تعمل أكثر من 5 ساعات متصلة — فإن طال الدوام قُسّمت الراحة فترات." : "Never more than 5 hours in a row — a long day splits the rest into periods."}</li>
           <li>{ar ? "كل فترة نصف ساعة على الأقل «في المرة الواحدة»." : "Each period is at least half an hour «at a time»."}</li>
-          <li>{ar ? "الفترة للراحة والصلاة والطعام معاً، ولا تُحسب من عملك." : "Each period holds rest, prayer and food together, and is not counted as work."}</li>
+          <li>{ar ? "الفترة للراحة والصلاة والطعام معاً، ولا تُحسب من عملك (المادة 102)." : "Each period holds rest, prayer and food together, and is not counted as work (Art. 102)."}</li>
+          <li>{ar ? "صلاة أثناء العمل خارج الراحة لا تُستقطع ولا تطيل دوامك." : "A prayer during work, outside the rest, is not deducted and does not lengthen your day."}</li>
           <li>{ar ? "لا يزيد بقاؤك في مكان العمل على 12 ساعة." : "No more than 12 hours at the workplace."}</li>
         </ul>
         <div data-rest-plan="info" style={{ display: "flex", gap: 8, alignItems: "center", padding: "7px 10px", border: "1px dashed var(--nv-line)", borderRadius: 10 }}>

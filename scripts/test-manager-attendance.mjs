@@ -31,10 +31,11 @@ const SHIFT = { id: "fix", label: "نهاري", start: "07:00", end: "15:00", re
 
 /* ── 1. manual punch request: decided at the asked time, refusal named, request closed ── */
 {
-  assert.deepEqual(manualPunchLateness({ clock: "07:05", shiftStart: "07:00" }), { status: "late", lateMinutes: 5 });
+  assert.deepEqual(manualPunchLateness({ clock: "07:15", shiftStart: "07:00" }), { status: "late", lateMinutes: 5 }, "15 past start less the 10-minute grace");
+  assert.deepEqual(manualPunchLateness({ clock: "07:05", shiftStart: "07:00" }), { status: "present", lateMinutes: 0 }, "inside the grace");
   assert.deepEqual(manualPunchLateness({ clock: "06:55", shiftStart: "07:00" }), { status: "present", lateMinutes: 0 });
   assert.deepEqual(manualPunchLateness({ clock: "07:20", shiftStart: "07:00", nursingStartMinutes: 30 }), { status: "present", lateMinutes: 0 }, "Art. 154 start minutes are not lateness");
-  assert.deepEqual(manualPunchLateness({ clock: "00:30", shiftStart: "22:00" }), { status: "late", lateMinutes: 150 }, "after midnight on an evening shift");
+  assert.deepEqual(manualPunchLateness({ clock: "00:30", shiftStart: "22:00" }), { status: "late", lateMinutes: 140 }, "after midnight on an evening shift (less the grace)");
   const row = buildManualAttendanceRow({ employee: { id: "e1", name: "سارة" }, date: DAY, time: "07:05", kind: "manual_punch", by: "نيار", reason: "البصمة معطلة", lateness: { status: "late", lateMinutes: 5 } });
   assert.equal(row.checkInAt, iso("07:05"), "stamped at the asked time, not the click time");
   assert.equal(row.status, "late");

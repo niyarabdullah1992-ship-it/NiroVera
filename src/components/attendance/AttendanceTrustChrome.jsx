@@ -4,17 +4,30 @@ import { BAD, BORDER, CARD, MUTED, NAVY, NAVY_FILL, OK, WARN } from "@/lib/platf
 import { dutyChip } from "@/components/schedules/dutyStatus";
 import { NvMark } from "@/components/shared/NvIcon";
 
-const STATE_PILL = { ok: OK, bad: BAD, wait: WARN, leave: WARN };
+const STATE_PILL = { ok: OK, bad: BAD, wait: WARN, leave: WARN, rest: { color: "var(--nv-muted)", background: "var(--nv-soft)", border: "1px solid var(--nv-line)", fontSize: 11, padding: "2px 9px", fontWeight: 600 } };
 
 const RING_TONE = {
   ok: { mark: "check", color: "var(--nv-ok-ink)", bg: "var(--nv-ok-soft)", border: "var(--nv-ok-line)", weight: 400 },
   bad: { mark: "cross", color: "var(--nv-bad-ink)", bg: "var(--nv-bad-soft)", border: "var(--nv-bad-line)", weight: 700 },
   wait: { mark: "—", color: "var(--nv-warn-ink)", bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)", weight: 600 },
   leave: { mark: "◌", color: "var(--nv-warn-ink)", bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)", weight: 700 },
+  rest: { mark: "—", color: "var(--nv-muted)", bg: "var(--nv-soft)", border: "var(--nv-line)", weight: 400 },
 };
 
-/** Real product chain — shift → punch → geofence → register. Not NFC / Passkey. */
+/**
+ * Real product chain — shift → punch → geofence → register. Not NFC / Passkey.
+ * A day with no published shift and no punch is a rest day: every link reads «rest», none is broken
+ * (no self-punch is owed, and no absence is counted without a shift).
+ */
 export function buildAttendanceRings({ ar, scheduled, punched, geofence, register, onLeave = false }) {
+  if (!onLeave && !scheduled && !punched) {
+    return [
+      { tag: "01", title: ar ? "وردية" : "Shift" },
+      { tag: "02", title: ar ? "بصمة" : "Punch" },
+      { tag: "03", title: ar ? "نطاق" : "Range" },
+      { tag: "04", title: ar ? "سجل" : "Register" },
+    ].map((item) => ({ ...item, state: "rest", ...RING_TONE.rest }));
+  }
   const geoState = onLeave ? "leave" : geofence === "inside" ? "ok" : geofence === "outside" ? "bad" : "wait";
   const punchState = onLeave ? "leave" : punched ? "ok" : scheduled ? "wait" : "bad";
   const shiftState = onLeave ? "leave" : scheduled ? "ok" : "bad";
@@ -38,6 +51,7 @@ export function brokeAtLabel(ar, rings) {
   if (shift?.state === "leave" || punch?.state === "leave") {
     return ar ? "أُغلق بإجازة معتمدة" : "Closed by approved leave";
   }
+  if (shift?.state === "rest") return "";
   if (shift?.state === "bad") return ar ? "انكسرت عند الوردية" : "Broke at the shift";
   if (punch?.state !== "ok") return ar ? "انكسرت عند البصمة" : "Broke at the punch";
   if (range?.state === "bad") return ar ? "انكسرت عند النطاق" : "Broke at the range";
@@ -117,7 +131,8 @@ const CHAIN_COPY = {
   ar: {
     sub: "أربع حلقات حقيقية. الموظف يلمس البصمة فقط.",
     by: { system: "النظام", employee: "الموظف", background: "الخلفية", register: "السجل" },
-    state: { ok: "مستوفاة", bad: "مكسورة", wait: "بانتظار", leave: "إجازة" },
+    state: { ok: "مستوفاة", bad: "مكسورة", wait: "بانتظار", leave: "إجازة", rest: "لا وردية" },
+    rest: "لا وردية لك اليوم — لا حلقة مطلوبة، ولا يُحتسب غياب.",
     items: {
       "01": {
         title: "الوردية",
@@ -155,7 +170,8 @@ const CHAIN_COPY = {
   en: {
     sub: "Four live links. The employee only touches the punch.",
     by: { system: "System", employee: "Employee", background: "Background", register: "Register" },
-    state: { ok: "Met", bad: "Broken", wait: "Waiting", leave: "Leave" },
+    state: { ok: "Met", bad: "Broken", wait: "Waiting", leave: "Leave", rest: "No shift" },
+    rest: "No shift for you today — no link is owed, and no absence is counted.",
     items: {
       "01": {
         title: "Shift",
@@ -197,21 +213,23 @@ export function AttendanceProofChain({ ar, scheduled, punched, geofence, registe
   const rings = buildAttendanceRings({ ar, scheduled, punched, geofence, register, onLeave });
   const met = rings.filter((item) => item.state === "ok").length;
   const broken = rings.some((item) => item.state === "bad");
+  const restDay = rings.every((item) => item.state === "rest");
   const MARK = {
     ok: { bg: "var(--nv-ok-fill, #3C7D50)", fg: "#fff", bd: "var(--nv-ok-fill, #3C7D50)", t: "check" },
     bad: { bg: "var(--nv-bad-soft)", fg: "var(--nv-bad-ink)", bd: "var(--nv-bad-line)", t: "cross" },
     wait: { bg: "var(--nv-card)", fg: "var(--nv-muted)", bd: "var(--nv-line)", t: "" },
+    rest: { bg: "var(--nv-soft)", fg: "var(--nv-muted)", bd: "var(--nv-line)", t: "" },
     leave: compact
       ? { bg: "var(--nv-shift-leave)", fg: "var(--nv-shift-holiday-ink)", bd: "var(--nv-shift-leave-line)", t: "◌" }
       : { bg: "var(--nv-warn-soft)", fg: "var(--nv-warn-ink)", bd: "var(--nv-warn-line)", t: "◌" },
   };
 
   return (
-    <section className="nv-att-card" data-proof-chain data-compact={compact ? "1" : undefined} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: compact ? "var(--nv-radius, 12px)" : 14, padding: compact ? "14px 18px" : "16px 18px", display: "flex", flexDirection: "column", gap: compact ? 8 : 10 }}>
+    <section className="nv-att-card" data-proof-chain data-chain-state={restDay ? "rest" : broken ? "broken" : met === rings.length ? "met" : "open"} data-compact={compact ? "1" : undefined} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: compact ? "var(--nv-radius, 12px)" : 14, padding: compact ? "14px 18px" : "16px 18px", display: "flex", flexDirection: "column", gap: compact ? 8 : 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
         <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
           <strong style={{ fontSize: 15, fontWeight: 700, color: "var(--nv-ink)", letterSpacing: 0 }}>{ar ? "سلسلة البصمة" : "Punch chain"}</strong>
-          <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{ar ? "أربع حلقات تثبت يومك — تلمس أنت البصمة فقط." : "Four links prove your day — you only touch the punch."}</span>
+          <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{restDay ? copy.rest : (ar ? "أربع حلقات تثبت يومك — تلمس أنت البصمة فقط." : "Four links prove your day — you only touch the punch.")}</span>
         </span>
         <span
           style={{
@@ -229,8 +247,12 @@ export function AttendanceProofChain({ ar, scheduled, punched, geofence, registe
             border: `1px solid ${met === rings.length ? "var(--nv-ok-line)" : broken ? "var(--nv-bad-line)" : "var(--nv-line)"}`,
           }}
         >
-          <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{met}/{rings.length}</span>
-          {ar ? "مستوفاة" : "met"}
+          {restDay ? (ar ? "يوم بلا وردية" : "No shift today") : (
+            <>
+              <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{met}/{rings.length}</span>
+              {ar ? "مستوفاة" : "met"}
+            </>
+          )}
         </span>
       </div>
       <div style={{ height: 4, borderRadius: 999, background: "var(--nv-line2, #EEF1EF)", overflow: "hidden", display: "flex", gap: 2 }}>
@@ -241,7 +263,7 @@ export function AttendanceProofChain({ ar, scheduled, punched, geofence, registe
       <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" }}>
         {rings.map((item) => {
           const text = copy.items[item.tag];
-          const note = text[item.state] || text.wait || text.ok;
+          const note = item.state === "rest" ? copy.rest : (text[item.state] || text.wait || text.ok);
           const mark = MARK[item.state] || MARK.wait;
           const RowTag = item.tag === "01" ? Link : "div";
           return (

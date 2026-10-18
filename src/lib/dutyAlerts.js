@@ -30,6 +30,8 @@ import { HEAT_BAN_DECISION } from "./heatBanDecision.js";
 import { actualDutyBreaches, effectiveDutyBreaks, punchClockMinutes, resolveDayBreaks } from "./actualDuty.js";
 import { prayersInShift, rosterBreakWindows } from "./shiftWeek.js";
 import { nursingHourOn } from "./dutyRequests.js";
+import { breakDayOf, isLateReturnOpen } from "./attendanceQueue.js";
+import { toRiyadhDateKey } from "./riyadhDate.js";
 
 /** Product lead times (minutes) — when a warning starts before its limit. Not statutory figures. */
 export const DUTY_ALERT_LEAD = Object.freeze({
@@ -459,6 +461,60 @@ export function deriveDutyAlerts({
 
   alerts.sort((a, b) => PRIORITY.indexOf(a.id) - PRIORITY.indexOf(b.id));
   return { alerts, current: alerts[0] || null, exempt, open: true };
+}
+
+/**
+ * «تنبيهاتي»: a flex break that closed past its minutes and waits on no decision — the same reading
+ * the manager's queue uses (attendanceQueue.isLateReturnOpen / breakDayOf). A late return (warn),
+ * never a legal breach: the rest was taken, only the return was late. null when none.
+ * `row` is the day record (check_in_at / check_out_at / breaks, as the punch card holds it).
+ */
+export function lateReturnAlertOf({ employee, row, data, now = new Date() } = {}) {
+  if (!employee?.id || !(row?.check_in_at || row?.checkInAt)) return null;
+  const record = { ...row, check_in_at: row.check_in_at || row.checkInAt, check_out_at: row.check_out_at || row.checkOutAt || null };
+  if (!isLateReturnOpen(employee, record, data, now)) return null;
+  const day = breakDayOf(employee, record, data, now);
+  const allowed = Math.max(0, Number(day.flex?.minutes) || 0);
+  const over = Math.max(0, Number(day.overMinutes) || 0);
+  const taken = Math.max(0, Number(day.taken) || allowed + over);
+  const onDate = String(record.date || record.dateKey || "").slice(0, 10) || toRiyadhDateKey(now);
+  return alert("flex_late_return", "warn", "hours.rest.duringShiftMinutes", onDate, {
+    atMinutes: null,
+    meta: { overMinutes: over, allowedMinutes: allowed, takenMinutes: taken },
+    textAr: `عدت من راحتك متأخراً ${minutesAr(over)} — أخذت ${minutesAr(taken)} من ${minutesAr(allowed)}.`,
+    textEn: `You came back from your break ${over} min late — ${taken} of ${allowed} min.`,
+    hint: { kind: "rest", item: { date: onDate } },
+  });
+}
+
+/** One live duty alert as a «تنبيهاتي» card (the rail's shape) — the employee's own, never a coworker's. */
+export function dutyAlertRailCard(row, { employee, ar = true } = {}) {
+  if (!row) return null;
+  return {
+    id: `duty:${row.id}:${row.ruleId}`,
+    employeeId: employee?.id || null,
+    name: String(employee?.name || "").trim(),
+    href: "/app/attendance",
+    classification: ar ? "تنبيه إداري" : "Administrative notice",
+    instrument: "",
+    // A late return is a manager's call, not a breach — said in the headline, since the rail shows only that.
+    headline: row.id === "flex_late_return"
+      ? (ar ? `${row.textAr} يقرّر فيها مديرك — ليست مخالفة نظامية.` : `${row.textEn} Your manager decides — not a legal breach.`)
+      : (ar ? row.textAr : row.textEn),
+    subject: "",
+    body: row.id === "flex_late_return"
+      ? (ar ? "يراها مديرك عودةً متأخرة ويقرّر فيها — ليست مخالفة نظامية، فراحتك أُخذت." : "Your manager sees it as a late return and decides on it — not a legal breach; your rest was taken.")
+      : "",
+    footer: "",
+    level: row.level === "block" ? "block" : "warn",
+    glow: "due",
+    audience: "employee",
+    decisionId: null,
+    // No article badge on a late return: «101» beside it reads as an Art. 101 breach.
+    ruleId: row.id === "flex_late_return" ? null : row.ruleId,
+    onDate: row.hint?.item?.date || null,
+    alertId: row.id,
+  };
 }
 
 function daysBetween(a, b) {

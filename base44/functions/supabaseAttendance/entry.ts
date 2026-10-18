@@ -10,7 +10,7 @@ import { checkAssumedBreakGate, checkFlexBreakPunchGate, resolveFlexDayBreaks } 
 import { readDayOvertimeCore, weekKeysOf, weekOrdinaryBeforeCore } from "../../shared/autoOvertime.ts";
 import { nursingEndExcuse, nursingStartExcuse } from "../../shared/nursingHour.ts";
 import { checkEarlyCheckInGate, earlyCheckInMinutesOf } from "../../shared/attendanceDerivations.ts";
-import { checkLateCheckInGate, isOvernightShift, overnightCarryOpen, previousDateKey } from "../../shared/attendanceDerivations.ts";
+import { checkLateCheckInGate, isOvernightShift, lateMinutesFromScheduledStart, overnightCarryOpen, previousDateKey } from "../../shared/attendanceDerivations.ts";
 
 const BREAK_ACTIONS = ["breakStart", "breakEnd", "reviewLateReturn"];
 const BREAKS_COLUMN_HINT = "ALTER TABLE attendance ADD COLUMN IF NOT EXISTS breaks jsonb DEFAULT '[]'::jsonb;";
@@ -473,9 +473,31 @@ Deno.serve(async (req) => {
       if (!auth?.admin && employeeId !== auth?.userId) {
         return Response.json({ error: "Forbidden" }, { status: 403 });
       }
-      const date = toRiyadhDateKey();
       const punchStationId = String(stationId || "").trim();
-      let scheduledShift = await getScheduledShift(companyId, employeeId);
+      const todayKey = toRiyadhDateKey();
+      const yesterdayKey = previousDateKey(todayKey);
+      const nowRiyadh = riyadhMinutes();
+      const policyEarly = (await getAttendancePolicy(companyId)).earlyCheckinMinutes;
+      const todayShift = await getScheduledShift(companyId, employeeId, todayKey);
+      const yesterdayShift = await getScheduledShift(companyId, employeeId, yesterdayKey);
+      const rowOn = async (key) => {
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/attendance?company_id=eq.${encodeURIComponent(companyId)}&employee_id=eq.${encodeURIComponent(employeeId)}&date=eq.${key}`, { headers });
+        const list = await r.json();
+        return Array.isArray(list) && list.length ? list[0] : null;
+      };
+      // After midnight, last night's overnight shift is still the duty day until it ends (+ grace) or
+      // today's own window opens — even with no punch yet: a late check-in is saved on ITS date, on the
+      // duty clock (+1440). Same rule as the card (overnightCarryOpen, shared twin).
+      const carry = overnightCarryOpen({
+        yesterdayRow: await rowOn(yesterdayKey),
+        yesterdayShift,
+        todayRow: await rowOn(todayKey),
+        todayShift,
+        nowMin: nowRiyadh,
+        earlyWindowMin: policyEarly,
+      });
+      const date = carry ? yesterdayKey : todayKey;
+      let scheduledShift = carry ? yesterdayShift : todayShift;
       if (!scheduledShift?.start) {
         return Response.json({ error: "NOT_SCHEDULED" }, { status: 400 });
       }
@@ -519,15 +541,16 @@ Deno.serve(async (req) => {
       const now = new Date();
       const startMinutes = toMinutes(scheduledShift.start);
       if (startMinutes == null) return Response.json({ error: "NOT_SCHEDULED" }, { status: 400 });
-      const nowMinutes = riyadhMinutes();
+      const nowMinutes = carry ? nowRiyadh + 1440 : nowRiyadh;
       // The same window the punch card shows: before it opens, the check-in is refused and names the hour.
-      const earlyGate = checkEarlyCheckInGate(scheduledShift, nowMinutes, (await getAttendancePolicy(companyId)).earlyCheckinMinutes);
+      const earlyGate = carry ? { ok: true } : checkEarlyCheckInGate(scheduledShift, nowMinutes, policyEarly);
       if (!earlyGate.ok) return Response.json({ error: earlyGate.error, reason: earlyGate.reason, reasonEn: earlyGate.reasonEn, opensAt: earlyGate.opensAt }, { status: 400 });
       // After the shift has ended (+ the forgotten hour) a self check-in is closed — a manual entry instead.
       const lateGate = checkLateCheckInGate(scheduledShift, nowMinutes);
       if (!lateGate.ok) return Response.json({ error: lateGate.error, reason: lateGate.reason, reasonEn: lateGate.reasonEn, endsAt: lateGate.endsAt }, { status: 400 });
       // Art. 154: arriving inside her nursing minutes at the start is not lateness (shared twin).
-      const lateMinutes = Math.max(0, nowMinutes - startMinutes - nursingStartExcuse(empsForLeave[0] || null, date));
+      // Minutes past start beyond the grace rule, less her nursing minutes — the shared reading.
+      const lateMinutes = lateMinutesFromScheduledStart(nowMinutes, scheduledShift.start, undefined, nursingStartExcuse(empsForLeave[0] || null, date)).lateMinutes;
       const timelyStatus = lateMinutes > 0 ? "late" : "present";
       // «لا يُحسب غياب بلا سجل»: تعذّر تحديد الموقع (خارج النطاق أو قياس غير حاسم)
       // لا يُنتج غياباً موثّقاً، بل حالة معلّقة تنتظر مراجعة المشرف.

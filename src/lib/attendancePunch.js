@@ -224,7 +224,8 @@ export function buildManualAttendanceRow({
  * Lateness of a manual check-in at `clock` on a shift starting `shiftStart` — measured from the published
  * start like a real punch (no grace), less her Art. 154 start minutes. null when there is no shift.
  */
-export function manualPunchLateness({ clock, shiftStart, nursingStartMinutes = 0 } = {}) {
+/** Same reading as the punch card and deriveActualDuty: minutes past start beyond the grace rule. */
+export function manualPunchLateness({ clock, shiftStart, nursingStartMinutes = 0, graceMinutes = ruleValue("hours.grace.minutes") || 0 } = {}) {
   const at = parsePunchClock(clock);
   const start = parsePunchClock(shiftStart);
   if (!at || !start) return null;
@@ -232,7 +233,7 @@ export function manualPunchLateness({ clock, shiftStart, nursingStartMinutes = 0
   let late = toM(at) - toM(start);
   if (late < -720) late += 1440; // after midnight on a shift that began the evening before
   if (late > 720) late -= 1440;
-  const minutes = Math.max(0, late - Math.max(0, Number(nursingStartMinutes) || 0));
+  const minutes = Math.max(0, late - Math.max(0, Number(graceMinutes) || 0) - Math.max(0, Number(nursingStartMinutes) || 0));
   return minutes > 0 ? { status: "late", lateMinutes: minutes } : { status: "present", lateMinutes: 0 };
 }
 

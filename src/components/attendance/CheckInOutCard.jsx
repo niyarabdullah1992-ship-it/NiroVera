@@ -1,5 +1,5 @@
 
-import { checkEarlyCheckInGate, checkLateCheckInGate, checkSelfCheckoutGate, dutyDayOf, earlyCheckInMinutes, earlyLeaveMinutesOf, getShiftOnDate, isOvernightShift } from "@/lib/attendanceDerivations";
+import { checkEarlyCheckInGate, checkLateCheckInGate, checkSelfCheckoutGate, dutyClockMinutes, dutyDayOf, earlyCheckInMinutes, earlyLeaveMinutesOf, getShiftOnDate, isOvernightShift, lateMinutesFromScheduledStart, overnightClosedLinger, previousDateKey, riyadhMinutesOf } from "@/lib/attendanceDerivations";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
@@ -50,6 +50,13 @@ const STATUS_PILL = {
   absent: { bg: "var(--nv-bad-soft)", fg: "var(--nv-bad-ink)", bd: "var(--nv-bad-line)", ar: "غائب", en: "Absent" },
 };
 
+/** A punch instant as a clock on the Riyadh time zone — the punch's own clock, never the device's. */
+function riyadhTime(iso, format, locale) {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return formatTime(iso, format, locale);
+  return at.toLocaleTimeString(locale || undefined, { timeZone: "Asia/Riyadh", hour: "2-digit", minute: "2-digit", hourCycle: format === "12" ? "h12" : "h23" });
+}
+
 function elapsedLabel(checkInAt, lang) {
   if (!checkInAt) return "";
   const ms = Date.now() - new Date(checkInAt).getTime();
@@ -70,8 +77,9 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const ar = lang === "ar";
   const { format } = useTimeFormat();
   const local = isLocalPreviewActive();
-  // The duty day: today, or yesterday while its overnight row is still open (after midnight).
-  const dutyNow = dutyDayOf(data, currentUser);
+  // The duty day: today, or last night's overnight shift after midnight — open, not punched yet
+  // (a late check-in lands on its own date), or just checked out (the closed day, not «لا وردية»).
+  const dutyNow = dutyDayOf(data, currentUser, new Date(), null, { includeClosed: true });
   const baseShift = dutyNow.shift;
   const defaultStationId = data?.stations?.[0]?.id || null;
   const scheduledStationId = baseShift?.stationId || currentUser?.stationId || defaultStationId;
@@ -84,10 +92,20 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const hasAssignedStation = assignedStationIds.some((id) => data?.stations?.some((station) => station.id === id));
   const [settings, setSettings] = useState(local ? localAttendanceSettings() : null);
   const [attendance, setAttendance] = useState(null);
-  // The cloud answers with the duty-day row; after midnight that may be yesterday's open overnight one.
+  // The cloud answers with the duty-day row; after midnight that may be yesterday's open overnight one,
+  // or — right after its checkout — that closed night (overnightClosedLinger, the local reading).
   const attDay = String(attendance?.date || "").slice(0, 10);
-  const cloudCarry = !!attDay && attDay !== dutyNow.dateKey && !!attendance?.check_in_at && !attendance?.check_out_at
-    && isOvernightShift(getShiftOnDate(data, currentUser, attDay));
+  const todayKeyNow = toRiyadhDateKey();
+  const attShift = attDay && attDay !== dutyNow.dateKey ? getShiftOnDate(data, currentUser, attDay) : null;
+  const cloudCarry = !!attShift && !!attendance?.check_in_at && isOvernightShift(attShift)
+    && (!attendance?.check_out_at || (attDay === previousDateKey(todayKeyNow) && overnightClosedLinger({
+      yesterdayRow: attendance,
+      yesterdayShift: attShift,
+      todayShift: getShiftOnDate(data, currentUser, todayKeyNow),
+      nowMin: riyadhMinutesOf(new Date()),
+      earlyWindowMin: earlyCheckInMinutes(data),
+      today: todayKeyNow,
+    })));
   const shift = cloudCarry ? getShiftOnDate(data, currentUser, attDay) : baseShift;
   const dutyDateKey = cloudCarry ? attDay : dutyNow.dateKey;
   const [confirmOut, setConfirmOut] = useState(null);
@@ -178,7 +196,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
 
   const punch = async (action) => {
     if (action === "in") {
-      const leaveGate = checkCheckInLeaveGate(currentUser, toRiyadhDateKey(), laborCalendarOf(data));
+      const leaveGate = checkCheckInLeaveGate(currentUser, dutyDateKey, laborCalendarOf(data));
       if (!leaveGate.ok) {
         setError(ar ? leaveGate.reason : leaveGate.reasonEn);
         setLeaveCut(leaveGate.error === "ON_APPROVED_LEAVE");
@@ -189,15 +207,20 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         setError(ar ? "لا يمكنك تسجيل الحضور لأنك غير مدرج في جدول اليوم." : "You cannot check in because you are not scheduled today.");
         return;
       }
-      // The check-in opens a set time before the published shift (policy, default 60 min).
-      const nowD = new Date();
-      const early = checkEarlyCheckInGate(shift, nowD.getHours() * 60 + nowD.getMinutes(), earlyCheckInMinutes(data));
+      // The check-in opens a set time before the published shift (policy, default 60 min) — on the
+      // Riyadh clock of the duty day (after midnight of an overnight shift: +1440), never the device's.
+      const dutyMin = dutyClockMinutes(dutyDateKey, new Date());
+      if (closedDay) {
+        setError(ar ? "انتهت ورديتك — يومك مسجّل." : "Your shift is over — the day is on file.");
+        return;
+      }
+      const early = checkEarlyCheckInGate(shift, dutyMin, earlyCheckInMinutes(data));
       if (!early.ok) {
         setError(ar ? early.reason : early.reasonEn);
         return;
       }
       // After the shift has ended the self check-in is closed — the day is a manual entry.
-      const lateGate = checkLateCheckInGate(shift, nowD.getHours() * 60 + nowD.getMinutes());
+      const lateGate = checkLateCheckInGate(shift, dutyMin);
       if (!lateGate.ok) {
         setError(ar ? lateGate.reason : lateGate.reasonEn);
         setManualOpen(true);
@@ -330,12 +353,12 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
 
   const locationFailed = /OUTSIDE_STATION|GPS_REQUIRED|STATION_LOCATION|location|موقع|النطاق/i.test(error || "");
   const forgotten = isForgottenCheckout(shift, attendance, tick);
-  const inTime = attendance?.check_in_at ? toWesternDigits(formatTime(attendance.check_in_at, format, "en-GB")) : "—";
-  const outTime = attendance?.check_out_at ? toWesternDigits(formatTime(attendance.check_out_at, format, "en-GB")) : "—";
+  const inTime = attendance?.check_in_at ? toWesternDigits(riyadhTime(attendance.check_in_at, format, "en-GB")) : "—";
+  const outTime = attendance?.check_out_at ? toWesternDigits(riyadhTime(attendance.check_out_at, format, "en-GB")) : "—";
   // Art. 154: arriving inside her nursing minutes at the start is on time — read from the punch clock,
   // so a row stored before the excuse (late) and one stored after it (present) read the same.
   const nursingEmployee = (data?.employees || []).find((row) => String(row.id) === String(currentUser?.id)) || currentUser;
-  const nursingToday = shift ? nursingHourOn(nursingEmployee, String(attendance?.date || toRiyadhDateKey()).slice(0, 10)) : null;
+  const nursingToday = shift ? nursingHourOn(nursingEmployee, String(attendance?.date || dutyDateKey).slice(0, 10)) : null;
   const shiftStartMin = shift?.start ? punchClockMinutes(shift.start) : null;
   const shiftEndMin = shift?.end && shiftStartMin != null ? (() => { const e = punchClockMinutes(shift.end); return e <= shiftStartMin ? e + 1440 : e; })() : null;
   const inClockMin = attendance?.check_in_at ? punchClockMinutes(attendance.check_in_at) : null;
@@ -347,14 +370,21 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     : storedLate;
   const isLate = !inNursing && (lateMinutes > 0 || (attendance?.status === "late" && !nursingToday?.startMinutes));
   // Before the check-in window the orb is closed and says when it opens — not a live button that refuses.
-  const tickDate = new Date(tick);
+  // Read on the duty day's Riyadh clock (dutyClockMinutes), never the device's.
+  const tickMin = dutyClockMinutes(dutyDateKey, new Date(tick));
   const earlyGate = phase === "awaiting_in" && shift
-    ? checkEarlyCheckInGate(shift, tickDate.getHours() * 60 + tickDate.getMinutes(), earlyCheckInMinutes(data))
+    ? checkEarlyCheckInGate(shift, tickMin, earlyCheckInMinutes(data))
     : { ok: true };
   // After the shift (+ the forgotten hour) the self check-in is closed and points to the manual request.
   const lateInGate = phase === "awaiting_in" && shift
-    ? checkLateCheckInGate(shift, tickDate.getHours() * 60 + tickDate.getMinutes())
+    ? checkLateCheckInGate(shift, tickMin)
     : { ok: true };
+  // A just-closed overnight day whose row this card does not hold (cloud reload): calm, never a new punch.
+  const closedDay = !!dutyNow.closed && !cloudCarry && phase === "awaiting_in";
+  // Not checked in past the start + grace: the lateness so far, said before the punch (deriveActualDuty's reading).
+  const lateSoFar = phase === "awaiting_in" && shift?.start && !closedDay && earlyGate.ok && lateInGate.ok
+    ? lateMinutesFromScheduledStart(tickMin, shift.start, ruleValue("hours.grace.minutes", dutyDateKey), nursingToday?.startMinutes || 0).lateMinutes
+    : 0;
   // The self checkout: closed while a «تثبيت الانصراف» request waits; early or forgotten asks once.
   const pendingFixRow = phase === "awaiting_out"
     ? ((data?.employees || []).find((row) => String(row.id) === String(currentUser?.id))?.otherRequests || [])
@@ -370,7 +400,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     })
     : { ok: true, confirm: null };
   const punchBlocked = loading
-    || (phase === "awaiting_in" && (scheduleBlocks || onLeaveToday || !earlyGate.ok || !lateInGate.ok))
+    || (phase === "awaiting_in" && (scheduleBlocks || onLeaveToday || closedDay || !earlyGate.ok || !lateInGate.ok))
     || (phase === "awaiting_out" && !outGate.ok)
     || phase === "done";
   /** Every punch goes through here: a checkout that is early or past the forgotten hour is confirmed once. */
@@ -420,7 +450,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     <button
       type="button"
       onClick={() => requestPunch(action)}
-      disabled={loading || (action === "in" && (scheduleBlocks || onLeaveToday || !lateInGate.ok)) || (action === "out" && !outGate.ok)}
+      disabled={loading || (action === "in" && (scheduleBlocks || onLeaveToday || closedDay || !lateInGate.ok)) || (action === "out" && !outGate.ok)}
       style={{
         ...ui.btnPrimary,
         height: compact ? 34 : 40,
@@ -606,9 +636,9 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                   : (ar ? "اكتملت ورديتك" : "Shift complete")}
             </p>
             <p style={{ margin: "3px 0 0", fontSize: 11, color: MUTED }}>
-              {ar ? "حضور" : "In"} {attendance?.check_in_at ? formatTime(attendance.check_in_at, format, lang) : "—"}
+              {ar ? "حضور" : "In"} {attendance?.check_in_at ? riyadhTime(attendance.check_in_at, format, lang) : "—"}
               {" · "}
-              {ar ? "انصراف" : "Out"} {attendance?.check_out_at ? formatTime(attendance.check_out_at, format, lang) : "—"}
+              {ar ? "انصراف" : "Out"} {attendance?.check_out_at ? riyadhTime(attendance.check_out_at, format, lang) : "—"}
               {elapsed ? ` · ${elapsed}` : ""}
             </p>
           </div>
@@ -648,7 +678,9 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const startClock = toWesternDigits(shift?.start || "—");
   const endClock = toWesternDigits(shift?.end || "—");
   // The header names the duty day — after midnight an open overnight shift still reads as its start day.
-  const pvDate = new Date(dutyDateKey && dutyDateKey !== toRiyadhDateKey(new Date(tick)) ? `${dutyDateKey}T12:00:00+03:00` : tick).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", {
+  const pastDuty = !!dutyDateKey && dutyDateKey !== toRiyadhDateKey(new Date(tick));
+  const pvDate = new Date(pastDuty ? `${dutyDateKey}T12:00:00+03:00` : tick).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", {
+    timeZone: "Asia/Riyadh",
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -706,7 +738,11 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     ? (ar ? "إجازة معتمدة اليوم" : "Approved leave today")
     : !shift && !inn
       ? (ar ? "لا وردية منشورة — لا بصمة" : "No published shift — no punch")
-      : !inn
+      : closedDay
+        ? (ar ? "انتهت ورديتك — يومك مسجّل" : "Your shift is over — the day is on file")
+        : !inn && lateSoFar > 0
+          ? (ar ? `لم تسجّل حضورك — متأخر ${lateSoFar} دقيقة عن ورديتك` : `Not checked in — ${lateSoFar} min late for your shift`)
+        : !inn
         ? (ar ? "لم تسجّل حضورك بعد" : "Not checked in yet")
         : isLate
           ? (ar ? `حضرت متأخراً ${lateMinutes || "—"} دقيقة — يُحسب من الجدول المنشور` : `Late by ${lateMinutes || "—"} min — measured from the published rota`)
@@ -717,7 +753,9 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             : inNursing
               ? (ar ? "حضرت في الوقت — ضمن ساعة الرضاعة" : "On time — inside your nursing hour")
               : (ar ? "حضرت في الوقت" : "Checked in on time");
-  const statusColor = (!inn || (onLeaveToday && !inn))
+  const statusColor = !inn && lateSoFar > 0
+    ? "var(--nv-warn-ink)"
+    : (!inn || (onLeaveToday && !inn))
     ? "var(--nv-muted)"
     : isLate
       ? "var(--nv-warn-ink)"
@@ -734,6 +772,8 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       ? (ar ? "إجازة اليوم — لا بصمة" : "On leave today — no punch")
       : !shift
         ? (ar ? "لا وردية لك اليوم" : "No shift for you today")
+        : closedDay
+          ? (ar ? `انتهت ورديتك ${endClock}` : `Shift ended ${endClock}`)
         : !earlyGate.ok
           ? (ar ? `يُفتح الحضور ${earlyGate.opensAt} · ورديتك ${startClock}` : `Opens ${earlyGate.opensAt} · shift ${startClock}`)
           : !lateInGate.ok
@@ -778,6 +818,10 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     ? { t: ar ? "إجازة" : "On leave", ...toned("leave") }
     : !shift && !inn
       ? { t: ar ? "لا وردية" : "No shift", ...toned("rest") }
+      : closedDay
+        ? { t: ar ? "انتهت" : "Ended", ...toned("rest") }
+      : !inn && lateSoFar > 0
+        ? { t: ar ? "متأخر" : "Late", ...toned("warn") }
       : !inn
         ? { t: ar ? "لم تبدأ" : "Not started", ...toned("rest") }
         : !done
@@ -801,9 +845,11 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
               : inNursing
                 ? (ar ? "في الوقت — ضمن ساعة الرضاعة" : "On time — inside your nursing hour")
                 : (ar ? "في الوقت" : "On time"))
-            : (ar ? "بانتظار ضغطتك" : "Waiting for your tap"),
+            : lateSoFar > 0
+              ? (ar ? `لم تُسجَّل — متأخر ${lateSoFar} دقيقة` : `Not punched — ${lateSoFar} min late`)
+              : (ar ? "بانتظار ضغطتك" : "Waiting for your tap"),
           value: inn ? inTime : "—",
-          hint: inn && isLate && lateMinutes ? attRightHint("lateness", { date: toRiyadhDateKey(), minutes: lateMinutes }, { view: "employee", ar }) : null,
+          hint: inn && isLate && lateMinutes ? attRightHint("lateness", { date: dutyDateKey, minutes: lateMinutes }, { view: "employee", ar }) : null,
         },
         ...(band?.label
           ? [{ key: "rest", kind: "plan", at: band.start + band.offset, label: ar ? "الراحة" : "Break", note: ar ? "تُخصم من المنجز" : "Excluded from worked time", sub: breakHint ? (ar ? breakHint.textAr : breakHint.textEn) : "", value: band.label, hint: attRightHint("rest", {}, { view: "employee", ar }) }]
@@ -917,7 +963,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     >
       <header className="nv-punch-head" style={{ background: "var(--nv-soft, #FAFBFA)", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", color: "var(--nv-ink)", padding: "16px 22px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: "1 1 220px" }}>
-          <span style={{ fontSize: 11.5, color: "var(--nv-muted)", fontWeight: 600 }}>{ar ? `ورديتك اليوم · ${pvDate}` : `Today's shift · ${pvDate}`}</span>
+          <span style={{ fontSize: 11.5, color: "var(--nv-muted)", fontWeight: 600 }}>{pastDuty ? (ar ? `ورديتك · ${pvDate}` : `Your shift · ${pvDate}`) : (ar ? `ورديتك اليوم · ${pvDate}` : `Today's shift · ${pvDate}`)}</span>
           <strong style={{ fontSize: 18, fontFamily: "var(--font-heading)", letterSpacing: 0, color: "var(--nv-ink)" }}>{shiftLine}</strong>
           {siteLine ? <span style={{ fontSize: 12, color: "var(--nv-ink3, var(--nv-muted))" }}>{siteLine}</span> : null}
         </div>
@@ -1374,9 +1420,10 @@ export function workedClock(checkIn, checkOut, now, band, flexDay = null) {
     const rest = (flexDay.rows || []).reduce((sum, row) => sum + Math.max(0, (row.endMin ?? row.startMin) - row.startMin), 0);
     minutes = Math.max(0, minutes - rest);
   } else if (band?.rest) {
-    const inMin = new Date(checkIn).getHours() * 60 + new Date(checkIn).getMinutes();
+    // On the Riyadh clock, never the device's.
+    const inMin = riyadhMinutesOf(checkIn);
     const outDate = checkOut ? new Date(checkOut) : new Date(now);
-    const outMin = outDate.getHours() * 60 + outDate.getMinutes() + (outDate.getDate() !== new Date(checkIn).getDate() ? 1440 : 0);
+    const outMin = riyadhMinutesOf(outDate) + (toRiyadhDateKey(outDate) !== toRiyadhDateKey(checkIn) ? 1440 : 0);
     const breakStart = band.start + band.offset;
     const breakEnd = breakStart + band.rest;
     const overlap = Math.max(0, Math.min(outMin, breakEnd) - Math.max(inMin, breakStart));

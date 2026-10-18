@@ -155,9 +155,11 @@ assert.equal(noShiftLate.error, "NOT_SCHEDULED");
 assert.equal(noShiftLate.lateMinutes, 0);
 assert.equal(noShiftLate.status, null);
 
+// Lateness is past the start beyond the grace — the reading deriveActualDuty and the reports use.
 const fromRota = lateMinutesFromScheduledStart(7 * 60 + 20, "07:00", 15);
-assert.equal(fromRota.lateMinutes, 20);
+assert.equal(fromRota.lateMinutes, 5);
 assert.equal(fromRota.status, "late");
+assert.deepEqual(lateMinutesFromScheduledStart(7 * 60 + 10, "07:00", 15), { lateMinutes: 0, status: "present" }, "inside the grace is on time");
 
 const notLateVsCompanyClock = lateMinutesFromScheduledStart(8 * 60 + 5, "09:00", 15);
 assert.equal(notLateVsCompanyClock.lateMinutes, 0);

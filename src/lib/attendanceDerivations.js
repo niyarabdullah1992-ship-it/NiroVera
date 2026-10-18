@@ -23,13 +23,19 @@ export function selfPunchScheduleGate(shift) {
   return { ok: true, start: shift.start, end: shift.end || null };
 }
 
-/** Late minutes from scheduled start only — never a company default clock. */
-export function lateMinutesFromScheduledStart(nowMinutes, scheduledStart, graceMinutes = 0) {
+/**
+ * Late minutes from the scheduled start only — never a company default clock. The same reading as
+ * deriveActualDuty: max(0, in − start − grace − excused), where `excused` is her Art. 154 nursing
+ * minutes at the start. `nowMinutes` is on the duty day's clock (dutyClockMinutes: ≥ 1440 after the
+ * midnight of an overnight shift). Twin: base44/shared/attendanceDerivations.ts.
+ */
+export function lateMinutesFromScheduledStart(nowMinutes, scheduledStart, graceMinutes = ruleValue("hours.grace.minutes"), excusedMinutes = 0) {
   const startMinutes = hmToMinutes(scheduledStart);
   if (startMinutes == null) return { error: "NOT_SCHEDULED", lateMinutes: 0, status: null };
-  const lateMinutes = Math.max(0, Number(nowMinutes) - startMinutes);
   const grace = Math.max(0, Number(graceMinutes) || 0);
-  return { lateMinutes, status: lateMinutes > grace ? "late" : "present" };
+  const excused = Math.max(0, Number(excusedMinutes) || 0);
+  const lateMinutes = Math.max(0, Number(nowMinutes) - startMinutes - grace - excused);
+  return { lateMinutes, status: lateMinutes > 0 ? "late" : "present" };
 }
 
 /** Early checkout only when the rota has an end. No invented clock. */
@@ -39,24 +45,33 @@ export function earlyCheckoutFromScheduledEnd(nowMinutes, scheduledEnd) {
   return { earlyCheckout: Number(nowMinutes) < endMinutes };
 }
 
-/** Open check-in still running more than an hour after the published shift end. */
+/**
+ * A punch instant on its shift's own clock (Riyadh minutes; an overnight shift's after-midnight
+ * minutes + 1440 — also a late check-in after midnight), and the shift end on that clock.
+ */
+function shiftClockOf(shift, instant) {
+  const start = hmToMinutes(shift?.start);
+  const end = hmToMinutes(shift?.end);
+  const m = riyadhMinutesOf(instant);
+  if (m == null || end == null) return null;
+  const overnight = start != null && end <= start;
+  return { at: overnight && m + 720 < start ? m + 1440 : m, end: overnight ? end + 1440 : end, overnight };
+}
+
+/** Open check-in still running more than an hour after the published shift end (Riyadh clock). */
 export function isForgottenCheckout(shift, attendance, now = Date.now()) {
   const checkIn = attendance?.check_in_at || attendance?.checkInAt;
   const checkOut = attendance?.check_out_at || attendance?.checkOutAt;
   if (!checkIn || checkOut || !shift?.end) return false;
-  const endMins = hmToMinutes(shift.end);
-  const startMins = hmToMinutes(shift.start);
-  if (endMins == null) return false;
-  const checkInAt = new Date(checkIn);
-  if (Number.isNaN(checkInAt.getTime())) return false;
-  const endAt = new Date(checkInAt);
-  endAt.setHours(Math.floor(endMins / 60), endMins % 60, 0, 0);
-  if (startMins != null && endMins <= startMins) {
-    if (endAt.getTime() <= checkInAt.getTime()) endAt.setDate(endAt.getDate() + 1);
-  } else if (endAt.getTime() < checkInAt.getTime()) {
-    endAt.setDate(endAt.getDate() + 1);
-  }
-  return now > endAt.getTime() + 60 * 60 * 1000;
+  const inMs = new Date(checkIn).getTime();
+  if (!Number.isFinite(inMs)) return false;
+  const clock = shiftClockOf(shift, checkIn);
+  if (!clock) return false;
+  let untilEnd = clock.end - clock.at;
+  // A day shift punched after its end (manual / late): the end is the next one.
+  if (!clock.overnight && untilEnd < 0) untilEnd += 1440;
+  const endAt = inMs - (inMs % 60000) + untilEnd * 60000;
+  return Number(now) > endAt + 60 * 60 * 1000;
 }
 
 /**
@@ -93,35 +108,85 @@ export function riyadhMinutesOf(value = new Date()) {
 
 const rowOpen = (row) => !!(row?.checkInAt || row?.check_in_at) && !(row?.checkOutAt || row?.check_out_at);
 const rowCheckedIn = (row) => !!(row?.checkInAt || row?.check_in_at);
+const rowCheckedOut = (row) => !!(row?.checkOutAt || row?.check_out_at);
 
 /**
- * Pure: is yesterday's overnight duty still the duty day? Yes while its row is open, its shift is
- * overnight, nothing is checked in today, and today's own check-in window has not opened.
+ * Pure: is yesterday's overnight duty still the duty day? Its shift is overnight, nothing is checked
+ * in today, today's own check-in window has not opened, and either
+ *   - its row is open (the checkout, breaks and ticker belong to it), or
+ *   - it was not punched at all and its end (+ the late check-in grace) has not passed — a late
+ *     check-in after midnight still belongs to the shift that began last night.
  * Twin: base44/shared/attendanceDerivations.ts.
  */
-export function overnightCarryOpen({ yesterdayRow, yesterdayShift, todayRow = null, todayShift = null, nowMin = null, earlyWindowMin = 60 } = {}) {
-  if (!rowOpen(yesterdayRow) || !isOvernightShift(yesterdayShift)) return false;
+export function overnightCarryOpen({ yesterdayRow, yesterdayShift, todayRow = null, todayShift = null, nowMin = null, earlyWindowMin = 60, lateGraceMin = LATE_CHECKIN_GRACE_MINUTES } = {}) {
+  if (!isOvernightShift(yesterdayShift)) return false;
   if (rowCheckedIn(todayRow)) return false;
   if (todayShift?.start && nowMin != null && checkEarlyCheckInGate(todayShift, nowMin, earlyWindowMin).ok) return false;
-  return true;
+  if (rowOpen(yesterdayRow)) return true;
+  if (rowCheckedIn(yesterdayRow) || rowCheckedOut(yesterdayRow) || nowMin == null) return false;
+  return nowMin <= hmToMinutes(yesterdayShift.end) + Math.max(0, Number(lateGraceMin) || 0);
 }
 
-/** { dateKey, shift, carried } — today, or yesterday while its overnight row is still open. */
-export function dutyDayOf(data, employee, now = new Date(), rows = null) {
+/**
+ * Pure: after the checkout of an overnight shift the card keeps that closed duty day for the same
+ * grace (from the later of the shift end and the checkout) — «اكتمل اليوم», not the next day's
+ * «لا وردية» — until today's own check-in window opens. Display only (dutyDayOf `includeClosed`).
+ */
+export function overnightClosedLinger({ yesterdayRow, yesterdayShift, todayRow = null, todayShift = null, nowMin = null, earlyWindowMin = 60, graceMin = LATE_CHECKIN_GRACE_MINUTES, today = "" } = {}) {
+  if (!isOvernightShift(yesterdayShift) || !rowCheckedIn(yesterdayRow) || !rowCheckedOut(yesterdayRow) || nowMin == null) return false;
+  if (rowCheckedIn(todayRow)) return false;
+  if (todayShift?.start && checkEarlyCheckInGate(todayShift, nowMin, earlyWindowMin).ok) return false;
+  const out = yesterdayRow.checkOutAt || yesterdayRow.check_out_at;
+  const outMin = today && toRiyadhDateKey(out) === today ? riyadhMinutesOf(out) : null;
+  const from = Math.max(hmToMinutes(yesterdayShift.end), outMin ?? 0);
+  return nowMin <= from + Math.max(0, Number(graceMin) || 0);
+}
+
+/**
+ * { dateKey, shift, carried, pending?, closed? } — today, or yesterday's overnight duty while
+ * overnightCarryOpen holds (`pending`: not punched yet, a late check-in lands on yesterday's date).
+ * `includeClosed` (the punch card) also keeps a just-closed overnight day (overnightClosedLinger).
+ */
+export function dutyDayOf(data, employee, now = new Date(), rows = null, { includeClosed = false } = {}) {
   const today = toRiyadhDateKey(now);
   const todayShift = getShiftOnDate(data, employee, today);
   if (!employee?.id) return { dateKey: today, shift: null, carried: false };
   const list = Array.isArray(rows) ? rows : (data?.personalAttendance || []);
   const yesterday = previousDateKey(today);
-  const mine = (key) => list.find((row) => String(row?.employeeId ?? row?.employee_id) === String(employee.id) && String(row?.date || row?.dateKey || "").slice(0, 10) === key) || null;
-  const yesterdayRow = mine(yesterday);
-  if (yesterdayRow) {
-    const yesterdayShift = getShiftOnDate(data, employee, yesterday);
-    if (overnightCarryOpen({ yesterdayRow, yesterdayShift, todayRow: mine(today), todayShift, nowMin: riyadhMinutesOf(now), earlyWindowMin: earlyCheckInMinutes(data) })) {
-      return { dateKey: yesterday, shift: yesterdayShift, carried: true };
+  const yesterdayShift = getShiftOnDate(data, employee, yesterday);
+  if (isOvernightShift(yesterdayShift)) {
+    const mine = (key) => list.find((row) => String(row?.employeeId ?? row?.employee_id) === String(employee.id) && String(row?.date || row?.dateKey || "").slice(0, 10) === key) || null;
+    const yesterdayRow = mine(yesterday);
+    const input = { yesterdayRow, yesterdayShift, todayRow: mine(today), todayShift, nowMin: riyadhMinutesOf(now), earlyWindowMin: earlyCheckInMinutes(data) };
+    if (overnightCarryOpen(input)) {
+      return { dateKey: yesterday, shift: yesterdayShift, carried: true, pending: !rowCheckedIn(yesterdayRow) };
+    }
+    if (includeClosed && overnightClosedLinger({ ...input, today })) {
+      return { dateKey: yesterday, shift: yesterdayShift, carried: true, closed: true };
     }
   }
   return { dateKey: today, shift: todayShift, carried: false };
+}
+
+/** «now» on a duty day's clock: Riyadh minutes, +1440 per day the duty day lies behind today. */
+export function dutyClockMinutes(dutyDateKey, now = new Date()) {
+  const nowMin = riyadhMinutesOf(now);
+  if (nowMin == null) return null;
+  const today = toRiyadhDateKey(now);
+  const behind = /^\d{4}-\d{2}-\d{2}$/.test(String(dutyDateKey || "")) ? Math.max(0, localDayDiff(dutyDateKey, today) || 0) : 0;
+  return nowMin + behind * 1440;
+}
+
+/**
+ * The day a self check-in lands on: yesterday's overnight shift while it is pending (not punched,
+ * its end + grace not passed) — a late check-in on the shift's own date — else today's own shift
+ * (never an open carried one, that day is awaiting its checkout). `nowMin` is on that day's clock.
+ */
+export function selfCheckInDay(data, employee, now = new Date(), rows = null) {
+  const duty = dutyDayOf(data, employee, now, rows);
+  const dateKey = duty.pending ? duty.dateKey : toRiyadhDateKey(now);
+  const shift = duty.pending ? duty.shift : getShiftOnDate(data, employee, dateKey);
+  return { dateKey, shift, pending: !!duty.pending, nowMin: dutyClockMinutes(dateKey, now) };
 }
 
 /** The published shift an employee holds on a given date (own station first, then coverage). */
@@ -648,13 +713,14 @@ export function checkEarlyCheckInGate(shift, nowMin, windowMin = EARLY_CHECKIN_D
 
 /**
  * Has today's shift (start date = today) ended, plus a grace? An overnight shift (end ≤ start) ends
- * tomorrow, so on its own start day it has never ended.
+ * tomorrow, so on its own start day it has never ended — read on the duty day's clock
+ * (dutyClockMinutes, ≥ 1440 after its midnight) it ends at end + 1440.
  */
 export function todaysShiftEnded(shift, nowMin, graceMin = 60) {
   const start = hmToMinutes(shift?.start);
   const end = hmToMinutes(shift?.end);
   if (end == null || nowMin == null) return false;
-  if (start != null && end <= start) return false;
+  if (start != null && end <= start) return nowMin >= 1440 && nowMin > end + 1440 + graceMin;
   return nowMin > end + graceMin;
 }
 
@@ -683,13 +749,11 @@ export function earlyLeaveMinutesOf({ shift, checkIn, checkOut, nursingEndMinute
   const inMin = checkIn ? riyadhMinutesOf(checkIn) : null;
   const outMin = checkOut ? riyadhMinutesOf(checkOut) : null;
   if (start == null || end == null || inMin == null || outMin == null) return 0;
-  const inDate = toRiyadhDateKey(checkIn);
-  const outDate = toRiyadhDateKey(checkOut);
-  const dayOff = inDate === outDate ? 0 : 1440;
-  // On the check-in's clock: the shift end is today, or tomorrow when it is overnight.
-  const endAbs = end <= start ? end + 1440 : end;
-  const outAbs = outMin + dayOff;
-  return Math.max(0, endAbs - outAbs - Math.max(0, Number(nursingEndMinutes) || 0));
+  // On the shift's own clock: an overnight shift's after-midnight punches (a late check-in too) + 1440.
+  const inClock = shiftClockOf(shift, checkIn);
+  const dayOff = toRiyadhDateKey(checkIn) === toRiyadhDateKey(checkOut) ? 0 : 1440;
+  const outAbs = inClock.at + (outMin + dayOff - inMin);
+  return Math.max(0, inClock.end - outAbs - Math.max(0, Number(nursingEndMinutes) || 0));
 }
 
 /**
@@ -712,11 +776,9 @@ export function checkSelfCheckoutGate({ shift, attendance, now = Date.now(), pen
   const early = earlyLeaveMinutesOf({ shift, checkIn, checkOut: nowIso, nursingEndMinutes });
   if (early > 0) return { ok: true, confirm: { kind: "early", minutes: early } };
   if (isForgottenCheckout(shift, attendance, new Date(now).getTime())) {
-    const start = hmToMinutes(shift.start);
-    const end = hmToMinutes(shift.end);
-    const nowMin = riyadhMinutesOf(nowIso) + (toRiyadhDateKey(checkIn) === toRiyadhDateKey(nowIso) ? 0 : 1440);
-    const endAbs = end <= start ? end + 1440 : end;
-    return { ok: true, confirm: { kind: "forgotten", minutes: Math.max(0, nowMin - endAbs) } };
+    const inClock = shiftClockOf(shift, checkIn);
+    const nowAbs = inClock.at + Math.round((new Date(now).getTime() - new Date(checkIn).getTime()) / 60000);
+    return { ok: true, confirm: { kind: "forgotten", minutes: Math.max(0, nowAbs - inClock.end) } };
   }
   return { ok: true, confirm: null };
 }

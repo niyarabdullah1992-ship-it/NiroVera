@@ -5,13 +5,13 @@
 import { checkCheckInLeaveGate } from "@/lib/attendanceGate";
 import { attendanceOnDate, checkPunchRecordGate, isEarlyCheckoutAt, toCloudAttendanceRow as punchCloudRow } from "@/lib/attendancePunch";
 import { updateCompany, getCompanyData, closeAttendanceDay } from "@/lib/store";
-import { checkLateCheckInGate, dutyDayOf, getShiftOnDate, getTodaysShift, lateMinutesFromScheduledStart, riyadhMinutesOf } from "@/lib/attendanceDerivations";
+import { checkLateCheckInGate, dutyDayOf, getTodaysShift, lateMinutesFromScheduledStart, riyadhMinutesOf, selfCheckInDay } from "@/lib/attendanceDerivations";
 import { nursingHourOn } from "@/lib/dutyRequests";
 import { checkFlexBreakPunchGate } from "@/lib/shiftDerivations";
 import { closeDayBreaks } from "@/lib/actualDuty";
 import { hoursPolicyOf } from "@/lib/laborHoursPolicy";
 import { stationPrayerTimes } from "@/lib/prayerTimes";
-import { isRamadanDay } from "@/lib/laborRules";
+import { isRamadanDay, ruleValue } from "@/lib/laborRules";
 import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 
 function todayKey() {
@@ -79,7 +79,7 @@ export function localAttendanceSettings() {
     schedule_required: true,
     gps_enabled: false,
     emergency_active: false,
-    late_grace_minutes: 0,
+    late_grace_minutes: ruleValue("hours.grace.minutes"),
     localPreview: true,
   };
 }
@@ -157,11 +157,14 @@ export function mergeAttendanceRangeRows(cloudRows = [], localRows = []) {
   return Array.from(byKey.values());
 }
 
-/** The duty day's date — today, or yesterday while its overnight row is still open (dutyDayOf). */
+/**
+ * The duty day's date — today, or yesterday while its overnight row is still open (dutyDayOf), and
+ * for a short while after its checkout (overnightClosedLinger), so the card shows the closed day.
+ */
 function dutyDateFor(companyId, employeeId) {
   const data = getCompanyData(companyId);
   const employee = (data?.employees || []).find((row) => String(row.id) === String(employeeId));
-  return employee ? dutyDayOf(data, employee).dateKey : todayKey();
+  return employee ? dutyDayOf(data, employee, new Date(), null, { includeClosed: true }).dateKey : todayKey();
 }
 
 export function getLocalTodayAttendance(companyId, employeeId) {
@@ -181,9 +184,10 @@ function throwGate(gate) {
 }
 
 export function localCheckIn(companyId, { employeeId, employeeName, stationId }) {
-  const date = todayKey();
   const data = getCompanyData(companyId);
   const employee = (data?.employees || []).find((row) => String(row.id) === String(employeeId));
+  const day = employee ? selfCheckInDay(data, employee, new Date()) : { dateKey: todayKey(), shift: null, nowMin: riyadhMinutesOf(new Date()) };
+  const date = day.dateKey;
   const leaveGate = checkCheckInLeaveGate(employee, date);
   if (!leaveGate.ok) throwGate(leaveGate);
   const existing = attendanceOnDate(data?.personalAttendance, employeeId, date);
@@ -196,18 +200,16 @@ export function localCheckIn(companyId, { employeeId, employeeName, stationId })
     requireTime: false,
   });
   if (!already.ok && already.error === "ALREADY_CHECKED_IN") throwGate(already);
-  // Check-in is always today's own shift (never a carried overnight one), and closes after it ends.
-  const shift = employee ? getShiftOnDate(data, employee, date) : null;
-  const lateGate = checkLateCheckInGate(shift, riyadhMinutesOf(new Date()));
+  // The duty day's shift on the Riyadh clock: today's own, or last night's overnight shift while it
+  // is still pending (selfCheckInDay) — then the row is dated on the shift's own day. Closes after it ends.
+  const shift = employee ? day.shift : null;
+  const lateGate = checkLateCheckInGate(shift, day.nowMin);
   if (!lateGate.ok) throwGate(lateGate);
-  const now = new Date();
-  const rawLate = shift?.start
-    ? lateMinutesFromScheduledStart(now.getHours() * 60 + now.getMinutes(), shift.start, 0)
+  // Lateness as the reports read it (deriveActualDuty): past the start beyond the rule's grace,
+  // less her Art. 154 nursing minutes at the start.
+  const late = shift?.start
+    ? lateMinutesFromScheduledStart(day.nowMin, shift.start, ruleValue("hours.grace.minutes", date), nursingHourOn(employee, date)?.startMinutes || 0)
     : { lateMinutes: 0, status: "present" };
-  // Art. 154: arriving inside her nursing minutes at the start is not lateness.
-  const nursingStart = nursingHourOn(employee, date)?.startMinutes || 0;
-  const lateLeft = Math.max(0, (rawLate.lateMinutes || 0) - nursingStart);
-  const late = rawLate.status === "late" && !lateLeft ? { lateMinutes: 0, status: "present" } : { ...rawLate, lateMinutes: lateLeft };
   let saved = null;
   updateCompany(companyId, (d) => {
     const list = Array.isArray(d.personalAttendance) ? d.personalAttendance : [];

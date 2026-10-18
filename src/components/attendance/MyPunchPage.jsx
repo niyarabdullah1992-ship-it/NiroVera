@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { getTodaysShift } from "@/lib/attendance";
+import { dutyDayOf } from "@/lib/attendanceDerivations";
+import { dutyAlertRailCard, lateReturnAlertOf } from "@/lib/dutyAlerts";
 import { isStatutoryOffDay } from "@/lib/leaveTypes";
 import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import { formatTime, useTimeFormat } from "@/hooks/useTimeFormat";
@@ -40,9 +41,19 @@ export default function MyPunchPage({ me, currentUser, company, data, t, lang = 
   const week = useMyDutyWeek({ employee: person, data, weekStart, ar });
   const heatCopy = dutyHeatCopy({ weekStart, dayRows: week.dayRows, ar, now });
 
-  const shift = getTodaysShift(data, currentUser);
-  const onLeave = !!isStatutoryOffDay(currentUser, todayKey, week.laborCalendar);
+  // The card's duty day: today, last night's overnight shift after midnight, or — just after its
+  // checkout — that closed night (never the next day's «لا وردية» as a broken chain).
+  const dutyRows = punchAtt ? [{ employeeId: currentUser?.id, ...punchAtt }, ...(data?.personalAttendance || [])] : null;
+  const duty = dutyDayOf(data, currentUser, now, dutyRows, { includeClosed: true });
+  const shift = duty.shift;
+  const dutyKey = duty.dateKey || todayKey;
+  const onLeave = !!isStatutoryOffDay(currentUser, dutyKey, week.laborCalendar);
   const chain = punchChainFromAttendance(punchAtt, { scheduled: !!shift, onLeave });
+  // «تنبيهاتي»: a late return from a flex break — the manager queue's reading, a warn, not a breach.
+  const liveCards = useMemo(() => {
+    const row = lateReturnAlertOf({ employee: person, row: punchAtt, data, now: new Date(tick) });
+    return row ? [dutyAlertRailCard(row, { employee: person, ar })] : [];
+  }, [person, punchAtt, data, tick, ar]);
   const clock = (hm) => formatShiftHm(hm, timeFormat, lang);
 
   const inAt = punchAtt?.check_in_at || punchAtt?.checkInAt || null;
@@ -88,7 +99,7 @@ export default function MyPunchPage({ me, currentUser, company, data, t, lang = 
 
   const band = breakBand(shift);
   // A flex shift subtracts the break as punched (or assumed) — the same reading as the card.
-  const flexDay = resolveDayBreaks({ shift, breaks: punchAtt?.breaks, checkIn: inAt, checkOut: outAt, now: new Date(tick), onDate: todayKey, company: data, employee: person });
+  const flexDay = resolveDayBreaks({ shift, breaks: punchAtt?.breaks, checkIn: inAt, checkOut: outAt, now: new Date(tick), onDate: dutyKey, company: data, employee: person });
   const worked = workedClock(inAt, outAt, tick, band, flexDay.flex ? flexDay : null);
   const targetLabel = band?.targetLabel || "8:00";
   const targetMin = band?.targetMin || 480;
@@ -147,6 +158,7 @@ export default function MyPunchPage({ me, currentUser, company, data, t, lang = 
             data={data}
             heatCopy={heatCopy}
             awareness={false}
+            railProps={{ liveCards }}
           >
             <AttendanceProofChain ar={ar} {...chain} compact onManual={() => setManualAsk((n) => n + 1)} />
           </DutySide>

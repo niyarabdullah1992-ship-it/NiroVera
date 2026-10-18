@@ -6,6 +6,8 @@ import { docFrame } from "@/lib/designSystem";
 import { statusBanner } from "@/lib/platformStyles";
 import { chip, SectionHead, slab } from "@/components/schedules/scheduleChrome";
 
+const NO_CARDS = [];
+
 /**
  * Employee presenter of the same week-check rows as حكم المنصة.
  * Section title is تنبيهاتي. Cards never name a coworker.
@@ -32,6 +34,8 @@ export default function FileHoursAlertsRail({
   omitNightConsent,
   /** (card) => node — the «افتح ›» link under each card (the day on جدولي, the row on جدول الدوام). */
   cardLinks,
+  /** Today's live duty cards (dutyAlerts.dutyAlertRailCard — e.g. a late return from a flex break). */
+  liveCards = NO_CARDS,
 }) {
   const ar = lang === "ar";
   const own = isViewerOwnFile(employee, currentUser);
@@ -108,10 +112,10 @@ export default function FileHoursAlertsRail({
         };
       });
     return groupDutyStripByPerson(
-      { cards: [...weekCards, ...extraCards] },
+      { cards: [...(liveCards || []).filter(Boolean), ...weekCards, ...extraCards] },
       { ar, audience },
     );
-  }, [weekPack, fileAlerts, employee, ar, audience, omitNightConsentRepeat]);
+  }, [weekPack, fileAlerts, employee, ar, audience, omitNightConsentRepeat, liveCards]);
   const due = grouped.anyDue;
   /** quietEdge (جدول): one slab, hairline rows — same chrome as «التنبيهات والامتثال». */
   const railSkin = quietEdge

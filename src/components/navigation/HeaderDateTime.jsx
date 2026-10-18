@@ -22,11 +22,14 @@ export default function HeaderDateTime({ lang, className = "" }) {
     day: "numeric",
     month: "long",
     calendar: "gregory",
+    // The platform's day and clock are Riyadh's — the same clock the punch card and the roster read.
+    timeZone: "Asia/Riyadh",
   });
   const timeLabel = now.toLocaleTimeString(locale, {
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: format === "12" ? "h12" : "h23",
+    timeZone: "Asia/Riyadh",
   });
 
   return (

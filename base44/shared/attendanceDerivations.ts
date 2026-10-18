@@ -529,33 +529,56 @@ export function previousDateKey(dateKey: string): string {
   return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) - 1)).toISOString().slice(0, 10);
 }
 
+/** Twin of checkLateCheckInGate's grace: minutes after a shift's end the self check-in still opens. */
+export const LATE_CHECKIN_GRACE_MINUTES = 60;
+
 /**
- * Twin of overnightCarryOpen: after midnight yesterday's overnight duty is still the duty day while its
- * row is open, nothing is checked in today, and today's own check-in window has not opened.
+ * Twin of overnightCarryOpen: after midnight yesterday's overnight duty is still the duty day while
+ * nothing is checked in today and today's own check-in window has not opened, and either its row is
+ * open, or it was not punched at all and its end (+ the late check-in grace) has not passed.
  */
 export function overnightCarryOpen(input: {
-  yesterdayRow?: { check_in_at?: string | null; check_out_at?: string | null } | null;
+  yesterdayRow?: { check_in_at?: string | null; check_out_at?: string | null; checkInAt?: string | null; checkOutAt?: string | null } | null;
   yesterdayShift?: { start?: string; end?: string } | null;
-  todayRow?: { check_in_at?: string | null } | null;
+  todayRow?: { check_in_at?: string | null; checkInAt?: string | null } | null;
   todayShift?: { start?: string } | null;
   nowMin?: number | null;
   earlyWindowMin?: number;
+  lateGraceMin?: number;
 }): boolean {
-  const { yesterdayRow, yesterdayShift, todayRow = null, todayShift = null, nowMin = null, earlyWindowMin = EARLY_CHECKIN_DEFAULT } = input || {};
-  if (!yesterdayRow?.check_in_at || yesterdayRow?.check_out_at || !isOvernightShift(yesterdayShift)) return false;
-  if (todayRow?.check_in_at) return false;
+  const { yesterdayRow, yesterdayShift, todayRow = null, todayShift = null, nowMin = null, earlyWindowMin = EARLY_CHECKIN_DEFAULT, lateGraceMin = LATE_CHECKIN_GRACE_MINUTES } = input || {};
+  if (!isOvernightShift(yesterdayShift)) return false;
+  if (todayRow?.check_in_at || todayRow?.checkInAt) return false;
   if (todayShift?.start && nowMin != null && checkEarlyCheckInGate(todayShift, nowMin, earlyWindowMin).ok) return false;
-  return true;
+  const inAt = yesterdayRow?.check_in_at || yesterdayRow?.checkInAt;
+  const outAt = yesterdayRow?.check_out_at || yesterdayRow?.checkOutAt;
+  if (inAt && !outAt) return true;
+  if (inAt || outAt || nowMin == null) return false;
+  return nowMin <= (hmMinutesOf(yesterdayShift?.end) ?? 0) + Math.max(0, Number(lateGraceMin) || 0);
+}
+
+/**
+ * Twin of lateMinutesFromScheduledStart: max(0, in − start − grace − excused) on the duty day's clock
+ * (≥ 1440 after the midnight of an overnight shift) — the same reading as deriveActualDuty.
+ */
+export function lateMinutesFromScheduledStart(nowMinutes: number, scheduledStart: string | null | undefined, graceMinutes: number = ruleValue("hours.grace.minutes"), excusedMinutes = 0) {
+  const startMinutes = hmMinutesOf(scheduledStart);
+  if (startMinutes == null) return { error: "NOT_SCHEDULED", lateMinutes: 0, status: null } as const;
+  const grace = Math.max(0, Number(graceMinutes) || 0);
+  const excused = Math.max(0, Number(excusedMinutes) || 0);
+  const lateMinutes = Math.max(0, Number(nowMinutes) - startMinutes - grace - excused);
+  return { lateMinutes, status: lateMinutes > 0 ? "late" : "present" } as const;
 }
 
 /** Twin of checkLateCheckInGate: after the shift has ended (+ grace) a self check-in is closed. */
-export const LATE_CHECKIN_GRACE_MINUTES = 60;
 export function checkLateCheckInGate(shift: { start?: string; end?: string } | null | undefined, nowMin: number | null, graceMin: number = LATE_CHECKIN_GRACE_MINUTES) {
   const start = hmMinutesOf(shift?.start);
   const end = hmMinutesOf(shift?.end);
   if (end == null || nowMin == null) return { ok: true } as const;
-  if (start != null && end <= start) return { ok: true } as const;
-  if (!(nowMin > end + graceMin)) return { ok: true } as const;
+  // Overnight: never ended on its start day; on the duty day's clock (≥ 1440) it ends at end + 1440.
+  const endAbs = start != null && end <= start ? (nowMin >= 1440 ? end + 1440 : null) : end;
+  if (endAbs == null) return { ok: true } as const;
+  if (!(nowMin > endAbs + graceMin)) return { ok: true } as const;
   return {
     ok: false,
     error: "SHIFT_ENDED",

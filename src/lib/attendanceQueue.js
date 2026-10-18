@@ -3,15 +3,16 @@
  * list, the section tab and the side-menu badge (they must never disagree).
  * A row may carry several faces at once (e.g. a late return AND no checkout): it is listed under each.
  */
-import { getTodaysShift, todaysShiftEnded } from "./attendanceDerivations.js";
+import { dutyClockMinutes, getTodaysShift, riyadhMinutesOf, todaysShiftEnded } from "./attendanceDerivations.js";
 import { isExcusedEarlyCheckout } from "./dutyRequests.js";
 import { resolveDayBreaks } from "./actualDuty.js";
 import { toRiyadhDateKey } from "./riyadhDate.js";
 
 export const QUEUE_FACES = ["manual", "outside", "missing", "early", "late_return"];
 
+/** Minutes past midnight on the Riyadh clock — never the device's. */
 function nowMinutesOf(now) {
-  return now.getHours() * 60 + now.getMinutes();
+  return riyadhMinutesOf(now);
 }
 
 /** The pending «طلب بصمة يدوية» of this person, if any. */
@@ -21,13 +22,15 @@ export function pendingManualPunch(employee) {
 
 /** The flex-break reading of the person's day (punched / assumed, and what ran past its minutes). */
 export function breakDayOf(employee, row, data, now = new Date()) {
+  const shift = getTodaysShift(data, employee, now);
   return resolveDayBreaks({
-    shift: getTodaysShift(data, employee, now),
+    shift,
     breaks: row?.breaks,
     checkIn: row?.check_in_at,
     checkOut: row?.check_out_at,
     now,
-    onDate: toRiyadhDateKey(now),
+    // The duty day the shift belongs to (after midnight an overnight shift is still last night's).
+    onDate: String(row?.date || shift?.dutyDate || "").slice(0, 10) || toRiyadhDateKey(now),
     company: data,
     employee,
   });
@@ -42,7 +45,9 @@ export function isLateReturnOpen(employee, row, data, now = new Date()) {
 /** «بلا انصراف» only once the shift has ended (+1 h) — an open record mid-shift is normal. */
 export function isPastCheckoutMissing(employee, row, data, now = new Date()) {
   if (!(row?.check_in_at && !row?.check_out_at && row?.status !== "absent")) return false;
-  return todaysShiftEnded(getTodaysShift(data, employee, now), nowMinutesOf(now), 60);
+  // Read on the shift's own day clock: a forgotten overnight checkout ends at tomorrow's end + 1 h.
+  const shift = getTodaysShift(data, employee, now);
+  return todaysShiftEnded(shift, shift?.dutyDate ? dutyClockMinutes(shift.dutyDate, now) : nowMinutesOf(now), 60);
 }
 
 /** Every face this person's day shows in the queue, in a stable order. [] = nothing to decide. */

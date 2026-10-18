@@ -922,9 +922,11 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   // The count restarts after every rest already in the day (the roster's fixed break, or the punched parts):
   // a break at 10:45–11:15 on 07:00–15:00 leaves no five-hour stretch, so no mark is shown at all.
   const knownRests = flexOn
-    ? (flexDay.punched || []).filter((row) => row.endMin != null).map((row) => ({ start: row.startMin, end: row.endMin }))
+    ? (flexDay.punched || []).filter((row) => !row.open && row.endMin != null).map((row) => ({ start: row.startMin, end: row.endMin }))
     : (dutyShift ? rosterBreakWindows(dutyShift, dutyDay) : []).map((w) => ({ start: (band?.start || 0) + w.from, end: (band?.start || 0) + w.from + w.minutes }));
-  let consecFrom = band?.start ?? 0;
+  // The stretch starts when he actually started — a late check-in moves the five-hour mark with it.
+  const inLifted = inClockMin != null && band ? (inClockMin + 720 < band.start ? inClockMin + 1440 : inClockMin) : null;
+  let consecFrom = Math.max(band?.start ?? 0, inLifted ?? -Infinity);
   for (const rest of knownRests.sort((a, b) => a.start - b.start)) {
     if (rest.start - consecFrom <= consecMax * 60) consecFrom = Math.max(consecFrom, rest.end);
   }
@@ -1207,6 +1209,23 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
               buttonRef={breakBtnRef}
             />
           ) : null}
+          {(() => {
+            // Taking the whole break now would leave more than five hours of work after it — say so before he taps.
+            if (!flexOn || !breakGate?.ok || flexDay.open || !band) return null;
+            const consecLimit = (Number(ruleValue("hours.rest.maxConsecutiveHours", dutyDay)) || 5) * 60;
+            let nowM = riyadhMinutesOf(new Date(tick));
+            if (nowM + 720 < band.start) nowM += 1440;
+            const after = band.start + band.targetMin - (nowM + (flexDay.remaining || 0));
+            if (after <= consecLimit) return null;
+            const hm = (m) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+            return (
+              <span data-break-early-warn="1" style={{ fontSize: 11.5, color: "var(--nv-warn-ink)", textAlign: "center", lineHeight: 1.7, maxWidth: 320 }}>
+                {ar
+                  ? `إن أخذت راحتك كاملة الآن يبقى بعدها ${hm(after)} عمل متواصل — أكثر من ${consecLimit / 60} ساعات.${flexDay.flex?.splitEffective ? ` خذ ${minutesAr(flexDay.flex.minPart)} الآن والباقي لاحقاً، أو أخّرها.` : " أخّرها قليلاً."}`
+                  : `Taking your whole break now leaves ${hm(after)} of work in a row after it — over ${consecLimit / 60} hours.${flexDay.flex?.splitEffective ? ` Take ${flexDay.flex.minPart} min now and the rest later, or wait.` : " Wait a little."}`}
+              </span>
+            );
+          })()}
           {breakClock?.kind === "fixed" ? (
             <span data-break-countdown="fixed" style={{ fontSize: 12, color: "var(--nv-ink2)", textAlign: "center" }}>
               {ar ? "راحتك" : "Your break"} <span dir="ltr" style={MONO}>{breakClock.start}–{breakClock.end}</span>

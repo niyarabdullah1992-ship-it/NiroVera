@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Check, Shield } from "lucide-react";
+import { Check, Printer, Shield } from "lucide-react";
 import { article93MaxDeduction, checkArticle93Gate, gosiLine, lineComponents } from "@/lib/payrollDerivations";
 import { companyPayday } from "@/lib/payrollLaw";
 import { slipRowHint } from "@/lib/rightHints.pay";
@@ -467,6 +467,81 @@ function facedForGosi(item, employee, month) {
   };
 }
 
+const DK = { bg: "linear-gradient(160deg, #0B3D27 0%, #0F5535 100%)", faint: "#A9CDB8", gold: "#C8A45A" };
+const MONO = { fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", direction: "ltr", unicodeBidi: "isolate" };
+const money = (n, ar) => `${sarDigits(n)} ${ar ? "ر.س" : "SAR"}`;
+
+/**
+ * «قسيمتي» from the run — the same card as the file estimate (PayslipEstimateCard): a dark head with
+ * the net and three figures, then one line per component with its source and «حقك». No selection,
+ * no pager; zero lines stay out — a figure that is nothing is not a line on a payslip.
+ */
+function PersonalSlipCard({ ar, item, monthLabel, parts, gross, withheld, rows, hintCtx, onExport }) {
+  const shown = rows.filter((row) => row.info || row.blocked || Math.abs(Number(row.amount) || 0) > 0);
+  const hidden = rows.length - shown.length;
+  return (
+    <section data-payslip-board="1" data-payslip-personal="1" style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <header style={{ background: DK.bg, color: "#fff", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 11.5, fontWeight: 600, color: DK.faint }}>
+            <span aria-hidden style={{ width: 12, height: 2, background: DK.gold, borderRadius: 8 }} />
+            {ar ? `قسيمتي${monthLabel ? ` · ${monthLabel}` : ""}` : `My payslip${monthLabel ? ` · ${monthLabel}` : ""}`}
+          </span>
+          <span style={{ marginInlineStart: "auto", display: "inline-flex", alignItems: "center", height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 700, background: item.paid ? "rgba(255,255,255,.14)" : "rgba(200,164,90,.18)", color: item.paid ? "#fff" : "#F3E3BC", border: `1px solid ${item.paid ? "rgba(255,255,255,.35)" : "rgba(200,164,90,.5)"}` }}>
+            {item.paid ? (ar ? "صُرفت" : "Paid") : (ar ? "من المسير · الحضور مقفل" : "From the run · attendance locked")}
+          </span>
+          <button type="button" data-payslip-print="1" onClick={() => onExport?.(item)} style={{ fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,.28)", background: "rgba(255,255,255,.06)", color: "#fff", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+            <Printer size={14} aria-hidden />
+            {ar ? "حفظ PDF" : "Save PDF"}
+          </button>
+        </div>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 18, flexWrap: "wrap" }}>
+          <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span style={{ fontSize: 11.5, color: DK.faint }}>{ar ? "الصافي" : "Net"}</span>
+            <strong style={{ ...MONO, fontSize: 30, fontWeight: 700, lineHeight: 1.05 }}>{money(Math.max(0, parts.net), ar)}</strong>
+            <span style={{ fontSize: 11, color: DK.faint }}>{depositHint(item, ar)}</span>
+          </span>
+          <span style={{ flex: 1 }} />
+          {[
+            [ar ? "الإجمالي" : "Gross", gross],
+            [ar ? "الخصومات" : "Deductions", withheld],
+            [ar ? "خصم التأمينات" : "GOSI share", Number(parts.gosiEmployee) || 0],
+          ].map(([label, v]) => (
+            <span key={label} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+              <span style={{ fontSize: 11, color: DK.faint }}>{label}</span>
+              <strong style={{ ...MONO, fontSize: 15, fontWeight: 700 }}>{money(v, ar)}</strong>
+            </span>
+          ))}
+        </div>
+      </header>
+      <ol style={{ listStyle: "none", margin: 0, padding: 0 }}>
+        {shown.map((row) => (
+          <li key={row.id} data-payslip-line={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, padding: "10px 18px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", alignItems: "center", background: row.minus ? "var(--nv-soft, #F6F8F7)" : "transparent" }}>
+            <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <strong style={{ fontSize: 13, color: "var(--nv-ink)" }}>{row.label}</strong>
+                <RightHint ar={ar} hint={slipRowHint(row, hintCtx)} />
+              </span>
+              {row.source ? <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.6 }}>{row.source}</span> : null}
+            </span>
+            {row.info
+              ? <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--nv-ok-ink, #2F6B43)", whiteSpace: "nowrap" }}>{row.valueText}</span>
+              : row.blocked
+                ? <span style={{ ...MONO, fontSize: 13, color: "var(--nv-muted)" }}>—</span>
+                : <span style={{ ...MONO, fontSize: 13.5, fontWeight: 700, color: row.minus ? "var(--nv-bad-ink, #9B2335)" : "var(--nv-ink)" }}>{row.minus ? `- ${money(row.amount, ar)}` : money(row.amount, ar)}</span>}
+          </li>
+        ))}
+      </ol>
+      <p style={{ margin: 0, padding: "10px 18px 12px", fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.8, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "baseline" }}>
+        <span style={{ flex: "1 1 240px" }}>
+          {ar ? <>من الحضور المقفل — كل بند بمصدره، و«<span style={{ color: "var(--nv-ok-ink)" }}><NvIcon name="scale" size={12} /></span> حقك» بجانب ما يحميه النظام.</> : <>From locked attendance — every line names its source, with «<span style={{ color: "var(--nv-ok-ink)" }}><NvIcon name="scale" size={12} /></span>» beside what the law protects.</>}
+        </span>
+        {hidden > 0 ? <span>{ar ? `${hidden} ${hidden === 1 ? "بند صفري لم يُعرض" : "بنود صفرية لم تُعرض"}` : `${hidden} zero ${hidden === 1 ? "line" : "lines"} not shown`}</span> : null}
+      </p>
+    </section>
+  );
+}
+
 export default function PayrollSlipBoard({
   monthLabel,
   month,
@@ -524,6 +599,10 @@ export default function PayrollSlipBoard({
   const foot = picked.size
     ? (ar ? "حدّد إجراء للسجلات المحددة من الأزرار في الصفوف" : "Choose an action for the selected rows")
     : (ar ? "انقر المربع لتحديد السجلات" : "Click a box to select rows");
+
+  if (personal) {
+    return <PersonalSlipCard ar={ar} item={item} monthLabel={monthLabel} parts={parts} gross={gross} withheld={withheld} rows={rows} hintCtx={hintCtx} onExport={onExport} />;
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

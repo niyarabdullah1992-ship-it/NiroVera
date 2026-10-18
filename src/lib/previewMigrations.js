@@ -546,7 +546,12 @@ function ensurePreviewWage(person, wage, parts = null) {
   if (!(Number(person.profile.baseSalary) > 0)) { assignWageFields(person.profile, { baseSalary: wage }); changed = true; }
   // a named split (housing / transport) so قسيمتي reads a real composition, not one lump
   if (parts && !(Number(person.profile.allowances) > 0) && !(Number(person.profile.housingAllowance) > 0)) {
-    assignWageFields(person.profile, { housingAllowance: parts.housing, transportAllowance: parts.transport, allowances: parts.housing + parts.transport });
+    assignWageFields(person.profile, { housingAllowance: parts.housing, transportAllowance: parts.transport, otherAllowances: parts.other || 0, allowances: parts.housing + parts.transport + (parts.other || 0) });
+    changed = true;
+  } else if (parts?.other > 0 && Number(person.profile.housingAllowance) > 0 && !(Number(person.profile.otherAllowances) > 0) && !person.profile.previewOtherSeeded) {
+    // a split seeded before other allowances existed: add the named «بدلات أخرى» once
+    assignWageFields(person.profile, { otherAllowances: parts.other, allowances: (Number(person.profile.allowances) || 0) + parts.other });
+    person.profile.previewOtherSeeded = true;
     changed = true;
   }
   return changed;
@@ -558,7 +563,7 @@ export function seedPreviewDiscipline(data, today = previewTodayKey()) {
   const manager = data.employees.find((row) => row.id === "emp_manager_preview") || data.employees.find((row) => row.role === "station_manager");
   const field = data.employees.find((row) => row.id === "emp_field_preview") || data.employees.find((row) => row.role === "employee");
   if (!owner || !field) return false;
-  const wages = [ensurePreviewWage(owner, 15500, { housing: 3875, transport: 1200 }), ensurePreviewWage(field, 9000, { housing: 2250, transport: 900 }), ensurePreviewWage(manager, 12800, { housing: 3200, transport: 1000 })].some(Boolean);
+  const wages = [ensurePreviewWage(owner, 15500, { housing: 3875, transport: 1200, other: 1000 }), ensurePreviewWage(field, 9000, { housing: 2250, transport: 900 }), ensurePreviewWage(manager, 12800, { housing: 3200, transport: 1000 })].some(Boolean);
   if (data.previewDisciplineSeeded) return wages;
   const cases = Array.isArray(data.disciplinaryCases) ? data.disciplinaryCases : [];
   if (cases.some((row) => String(row.id || "").startsWith("dsc_preview_"))) {

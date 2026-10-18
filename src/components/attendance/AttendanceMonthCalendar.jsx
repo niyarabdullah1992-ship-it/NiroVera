@@ -43,10 +43,25 @@ import {
 } from "@/lib/operationalCalendar";
 import NvIcon from "@/components/shared/NvIcon";
 import { minutesPhrase } from "@/lib/calendarDayFlags";
-import StatusFilterPills, { statusPillStyle } from "@/components/shared/StatusFilterPills";
 import { KindIcon, NameLetter, shiftKindOf } from "@/components/schedules/rosterTile";
 import { getShiftOnDate } from "@/lib/attendanceDerivations";
 import { approvedLeaveOnDay } from "@/lib/leaveTypes";
+
+/** One joined control — the selected part filled dark green; the platform's formal toggle. */
+function Segmented({ items, value, onChange }) {
+  return (
+    <span role="tablist" className="nv-seg">
+      {items.map((item) => {
+        const on = item.id === value;
+        return (
+          <button key={item.id} type="button" role="tab" aria-selected={on} data-seg={item.id} onClick={() => onChange(item.id)} className={on ? "is-on" : ""}>
+            {item.label}
+          </button>
+        );
+      })}
+    </span>
+  );
+}
 
 /** «1:15» for overtime minutes in a narrow column. */
 function minutesShort(total) {
@@ -902,128 +917,133 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
           )}
 
           <section data-cmp style={{ ...shell, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            <div style={{ padding: "16px 20px 14px", borderBottom: `1px solid ${OC.soft}`, display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: "1 1 260px" }}>
-                  <span style={{ fontSize: 16, fontWeight: 700 }}>{mineLane ? (ar ? "مقارنة الموظفين" : "People comparison") : (ar ? "مقارنة موظفي النطاق" : "People in scope")}</span>
-                  <span style={{ fontSize: 12, color: OC.muted, lineHeight: 1.7 }}>
-                    {view !== "team"
-                      ? (ar ? "المقارنة متاحة في عرض «الفريق» فقط" : "Comparison is available in Team view")
-                      : [
-                        scopeLine,
-                        rangeOn
-                          ? (rangeDays.length ? (ar ? `${rangeDays.length} يوم مسجّل` : `${rangeDays.length} days`) : (ar ? "لا يوم مسجّل بين التاريخين" : "No recorded day in range"))
-                          : (sel && !sel.blank ? (ar ? `يوم ${weekdays[sel.wd]} ${sel.d} ${months[month]}` : `${weekdays[sel.wd]} ${sel.d} ${months[month]}`) : (ar ? "اختر يوماً" : "Pick a day")),
-                      ].filter(Boolean).join(" · ")}
-                  </span>
-                </div>
-              </div>
-
-              {view === "team" ? (
-                <div data-cmp-mode style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 600, color: OC.mid }}>{ar ? "المقارنة" : "Compare"}</span>
-                  <StatusFilterPills
-                    bare
-                    dataKey="cmp-mode"
-                    value={cmpMode}
-                    onChange={setCmpMode}
-                    items={[
-                      { id: "all", label: ar ? "كل النطاق" : "Whole scope" },
-                      { id: "pick", label: ar ? "بين موظفين" : "Between people", n: cmpMode === "pick" ? cmpPicked.length : undefined },
-                    ]}
-                  />
-                  <div data-cmp-search style={{ position: "relative", display: "flex", flexDirection: "column", gap: 5, width: "100%", maxWidth: 520 }}>
-                    <label htmlFor="nv-cmp-q" style={{ fontSize: 11.5, fontWeight: 600, color: OC.mid }}>
-                      {cmpMode === "pick" ? (ar ? "أضف موظفاً للمقارنة" : "Add a person to compare") : (ar ? "ابحث بالاسم" : "Search by name")}
-                    </label>
-                    <span style={{ position: "relative", display: "block" }}>
-                    <span aria-hidden style={{ position: "absolute", insetInlineStart: 12, top: "50%", transform: "translateY(-50%)", width: 15, height: 15, color: OC.muted, display: "inline-flex" }}><SearchIcon /></span>
-                    <input
-                      id="nv-cmp-q"
-                      value={cmpQuery}
-                      onChange={(e) => setCmpQuery(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter" && pickSuggestions[0]) addPicked(pickSuggestions[0].id); }}
-                      placeholder={cmpMode === "pick" ? (ar ? "اكتب جزءاً من الاسم" : "Type part of a name") : (ar ? "اسم موظف في النطاق" : "A name in scope")}
-                      autoComplete="off"
-                      style={{ "--nv-input-start": "36px", fontFamily: "inherit", fontSize: 13, height: 40, paddingInlineEnd: 12, border: `1px solid ${OC.line}`, borderRadius: 10, outline: "none", background: "var(--nv-card)", color: OC.ink, width: "100%", boxSizing: "border-box" }}
-                    />
-                    </span>
-                    {cmpMode === "pick" && cmpQ ? (
-                      <div role="listbox" data-cmp-suggest style={{ position: "absolute", top: "100%", insetInline: 0, marginTop: 4, zIndex: 5, background: "var(--nv-card)", border: `1px solid ${OC.line}`, borderRadius: 10, boxShadow: "0 12px 28px rgba(12,20,16,.14)", padding: 4, display: "flex", flexDirection: "column", gap: 2, maxHeight: 260, overflowY: "auto" }}>
-                        {pickSuggestions.length ? pickSuggestions.map((row) => (
-                          <button
-                            key={row.id}
-                            type="button"
-                            role="option"
-                            data-cmp-person={row.id}
-                            onClick={() => addPicked(row.id)}
-                            style={{ fontFamily: "inherit", display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: "none", borderRadius: 8, background: "transparent", color: OC.ink, fontSize: 12.5, cursor: "pointer", textAlign: "start" }}
-                          >
-                            <NameLetter name={row.name} />
-                            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</span>
-                            <span style={{ fontSize: 11, color: OC.greenText, fontWeight: 600 }}>{ar ? "أضف" : "Add"}</span>
-                          </button>
-                        )) : (
-                          <span style={{ padding: "8px 10px", fontSize: 12, color: OC.muted }}>{ar ? "لا اسم يطابق في النطاق." : "No name matches in scope."}</span>
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-                  {cmpMode === "pick" ? (
-                    <div data-cmp-picked style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                      {pickedRows.length ? pickedRows.map((row) => (
-                        <span key={row.id} style={{ ...statusPillStyle(true, "sm"), gap: 6, paddingInlineStart: 4, cursor: "default" }}>
-                          <NameLetter name={row.name} mine />
-                          {row.name}
-                          <button type="button" onClick={() => dropPicked(row.id)} aria-label={ar ? `أزل ${row.name}` : `Remove ${row.name}`} style={{ fontFamily: "inherit", border: "none", background: "transparent", color: "inherit", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "0 2px" }}>×</button>
-                        </span>
-                      )) : (
-                        <span style={{ fontSize: 11.5, color: OC.muted }}>{ar ? "ابحث بالاسم وأضف موظفين اثنين أو أكثر." : "Search a name above and add two or more people."}</span>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              <div data-cmp-range style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: OC.mid }}>{ar ? "المدى" : "Range"}</span>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-                  <StatusFilterPills
-                    bare
-                    dataKey="cmp-range"
-                    value={rangePreset}
-                    onChange={(id) => rangePresets.find((p) => p.id === id)?.run()}
-                    items={rangePresets.map((p) => ({ id: p.id, label: p.label }))}
-                  />
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, width: 168 }}>
-                    <span style={{ fontSize: 10.5, color: OC.muted }}>{ar ? "من" : "From"}</span>
-                    <PlatformDateField compact ar={ar} value={rangeFrom} onChange={(next) => setRange({ ...(range || {}), from: next })} />
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, width: 168 }}>
-                    <span style={{ fontSize: 10.5, color: OC.muted }}>{ar ? "إلى" : "To"}</span>
-                    <PlatformDateField compact ar={ar} value={rangeTo} min={rangeFrom} onChange={(next) => setRange({ ...(range || {}), to: next })} />
-                  </label>
-                </div>
-              </div>
-
-              <div data-cmp-sort style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: OC.mid }}>{ar ? "اعرض أولاً من…" : "Show first who…"}</span>
-                {CMP_GROUPS.map((group) => (
-                  <div key={group.id} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 11, color: OC.muted, minWidth: 54 }}>{group.label}</span>
-                    <StatusFilterPills
-                      bare
-                      size="sm"
-                      dataKey={`cmp-sort-${group.id}`}
-                      value={cmp}
-                      onChange={setCmp}
-                      items={group.keys.map((key) => ({ id: key, label: cmpLabels[key][0], n: cmpTotals[key] }))}
-                    />
-                  </div>
-                ))}
-                <span data-cmp-explain style={{ fontSize: 11.5, color: OC.mid, lineHeight: 1.7, background: "var(--nv-soft)", borderRadius: 8, padding: "6px 10px" }}>
-                  {ar ? `يظهر أولاً من ${cmpLabels[cmp][0]} أكثر — ${cmpLabels[cmp][3]}` : `Shown first: who ${cmpLabels[cmp][0].toLowerCase()} most — ${cmpLabels[cmp][3]}`}
+            <div style={{ padding: "16px 20px 16px", borderBottom: `1px solid ${OC.soft}`, display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                <span style={{ fontSize: 16, fontWeight: 700 }}>{mineLane ? (ar ? "مقارنة الموظفين" : "People comparison") : (ar ? "مقارنة موظفي النطاق" : "People in scope")}</span>
+                <span style={{ fontSize: 12, color: OC.muted, lineHeight: 1.7 }}>
+                  {view !== "team"
+                    ? (ar ? "المقارنة متاحة في عرض «الفريق» فقط" : "Comparison is available in Team view")
+                    : [
+                      scopeLine,
+                      rangeOn
+                        ? (rangeDays.length ? (ar ? `${rangeDays.length} يوم مسجّل` : `${rangeDays.length} days`) : (ar ? "لا يوم مسجّل بين التاريخين" : "No recorded day in range"))
+                        : (sel && !sel.blank ? (ar ? `يوم ${weekdays[sel.wd]} ${sel.d} ${months[month]}` : `${weekdays[sel.wd]} ${sel.d} ${months[month]}`) : (ar ? "اختر يوماً" : "Pick a day")),
+                    ].filter(Boolean).join(" · ")}
                 </span>
+              </div>
+
+              {/* One form panel: a label column and a control column, rows on hairlines. */}
+              <div data-cmp-form className="nv-cmp-form">
+                {view === "team" ? (
+                  <div className="nv-cmp-row" data-cmp-mode>
+                    <span className="nv-cmp-label">{ar ? "المقارنة" : "Compare"}</span>
+                    <div className="nv-cmp-control">
+                      <Segmented
+                        value={cmpMode}
+                        onChange={setCmpMode}
+                        items={[
+                          { id: "all", label: ar ? "كل النطاق" : "Whole scope" },
+                          { id: "pick", label: ar ? `بين موظفين${cmpPicked.length ? ` · ${cmpPicked.length}` : ""}` : `Between people${cmpPicked.length ? ` · ${cmpPicked.length}` : ""}` },
+                        ]}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                {view === "team" ? (
+                  <div className="nv-cmp-row">
+                    <label htmlFor="nv-cmp-q" className="nv-cmp-label">
+                      {cmpMode === "pick" ? (ar ? "أضف موظفاً" : "Add a person") : (ar ? "الاسم" : "Name")}
+                    </label>
+                    <div className="nv-cmp-control" data-cmp-search style={{ position: "relative", display: "flex", flexDirection: "column", gap: 8 }}>
+                      <span style={{ position: "relative", display: "block", maxWidth: 460 }}>
+                        <span aria-hidden style={{ position: "absolute", insetInlineStart: 12, top: "50%", transform: "translateY(-50%)", width: 15, height: 15, color: OC.muted, display: "inline-flex" }}><SearchIcon /></span>
+                        <input
+                          id="nv-cmp-q"
+                          value={cmpQuery}
+                          onChange={(e) => setCmpQuery(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter" && pickSuggestions[0]) addPicked(pickSuggestions[0].id); }}
+                          placeholder={cmpMode === "pick" ? (ar ? "اكتب جزءاً من الاسم ثم اختر" : "Type part of a name, then pick") : (ar ? "ابحث في أسماء النطاق" : "Search names in scope")}
+                          autoComplete="off"
+                          style={{ "--nv-input-start": "36px", fontFamily: "inherit", fontSize: 13, height: 40, paddingInlineEnd: 12, border: `1px solid ${OC.line}`, borderRadius: 10, outline: "none", background: "var(--nv-card)", color: OC.ink, width: "100%", boxSizing: "border-box" }}
+                        />
+                        {cmpMode === "pick" && cmpQ ? (
+                          <div role="listbox" data-cmp-suggest style={{ position: "absolute", top: "100%", insetInline: 0, marginTop: 4, zIndex: 5, background: "var(--nv-card)", border: `1px solid ${OC.line}`, borderRadius: 10, boxShadow: "0 12px 28px rgba(12,20,16,.14)", padding: 4, display: "flex", flexDirection: "column", gap: 2, maxHeight: 260, overflowY: "auto" }}>
+                            {pickSuggestions.length ? pickSuggestions.map((row) => (
+                              <button
+                                key={row.id}
+                                type="button"
+                                role="option"
+                                data-cmp-person={row.id}
+                                onClick={() => addPicked(row.id)}
+                                style={{ fontFamily: "inherit", display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: "none", borderRadius: 8, background: "transparent", color: OC.ink, fontSize: 12.5, cursor: "pointer", textAlign: "start" }}
+                              >
+                                <NameLetter name={row.name} />
+                                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</span>
+                                <span style={{ fontSize: 11, color: OC.greenText, fontWeight: 600 }}>{ar ? "أضف" : "Add"}</span>
+                              </button>
+                            )) : (
+                              <span style={{ padding: "8px 10px", fontSize: 12, color: OC.muted }}>{ar ? "لا اسم يطابق في النطاق." : "No name matches in scope."}</span>
+                            )}
+                          </div>
+                        ) : null}
+                      </span>
+                      {cmpMode === "pick" ? (
+                        <div data-cmp-picked style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                          {pickedRows.length ? pickedRows.map((row) => (
+                            <span key={row.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 6px 0 4px", borderRadius: 8, border: `1px solid ${OC.greenBd}`, background: OC.greenBg, color: OC.greenText, fontSize: 12, fontWeight: 600 }}>
+                              <NameLetter name={row.name} />
+                              {row.name}
+                              <button type="button" onClick={() => dropPicked(row.id)} aria-label={ar ? `أزل ${row.name}` : `Remove ${row.name}`} style={{ fontFamily: "inherit", border: "none", background: "transparent", color: "inherit", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px" }}>×</button>
+                            </span>
+                          )) : (
+                            <span style={{ fontSize: 11.5, color: OC.muted }}>{ar ? "لم تختر أحداً بعد — اختر اثنين أو أكثر." : "Nobody picked yet — pick two or more."}</span>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="nv-cmp-row" data-cmp-range>
+                  <span className="nv-cmp-label">{ar ? "المدى" : "Range"}</span>
+                  <div className="nv-cmp-control" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <Segmented
+                      value={rangePreset}
+                      onChange={(id) => rangePresets.find((p) => p.id === id)?.run()}
+                      items={rangePresets.map((p) => ({ id: p.id, label: p.label }))}
+                    />
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 11.5, color: OC.muted }}>{ar ? "من" : "From"}</span>
+                      <span style={{ width: 150 }}><PlatformDateField compact ar={ar} value={rangeFrom} onChange={(next) => setRange({ ...(range || {}), from: next })} /></span>
+                      <span style={{ fontSize: 11.5, color: OC.muted }}>{ar ? "إلى" : "To"}</span>
+                      <span style={{ width: 150 }}><PlatformDateField compact ar={ar} value={rangeTo} min={rangeFrom} onChange={(next) => setRange({ ...(range || {}), to: next })} /></span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="nv-cmp-row" data-cmp-sort>
+                  <label htmlFor="nv-cmp-sort" className="nv-cmp-label">{ar ? "اعرض أولاً من" : "Show first who"}</label>
+                  <div className="nv-cmp-control" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <select
+                      id="nv-cmp-sort"
+                      value={cmp}
+                      onChange={(e) => setCmp(e.target.value)}
+                      style={{ fontFamily: "inherit", fontSize: 13, height: 40, maxWidth: 460, padding: "0 12px", border: `1px solid ${OC.line}`, borderRadius: 10, background: "var(--nv-card)", color: OC.ink, cursor: "pointer" }}
+                    >
+                      {CMP_GROUPS.map((group) => (
+                        <optgroup key={group.id} label={group.label}>
+                          {group.keys.map((key) => (
+                            <option key={key} value={key}>{`${cmpLabels[key][0]} — ${cmpTotals[key]}`}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <span data-cmp-explain style={{ fontSize: 11.5, color: OC.mid, lineHeight: 1.7 }}>
+                      {ar ? `يظهر أولاً من ${cmpLabels[cmp][0]} أكثر — ${cmpLabels[cmp][3]}` : `Shown first: who ${cmpLabels[cmp][0].toLowerCase()} most — ${cmpLabels[cmp][3]}`}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
             {cmpSorted.length ? (

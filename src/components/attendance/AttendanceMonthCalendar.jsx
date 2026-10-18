@@ -42,6 +42,14 @@ import {
 } from "@/lib/operationalCalendar";
 import NvIcon from "@/components/shared/NvIcon";
 import { minutesPhrase } from "@/lib/calendarDayFlags";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
+import { NameLetter } from "@/components/schedules/rosterTile";
+
+/** «1:15» for overtime minutes in a narrow column. */
+function minutesShort(total) {
+  const n = Math.max(0, Math.round(Number(total) || 0));
+  return n >= 60 ? `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}` : String(n);
+}
 
 function SearchIcon() {
   return (
@@ -392,7 +400,18 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
     over: [ar ? "مهام متأخرة" : "Overdue tasks", OC.abs, ar ? "متأخرة" : "Over"],
     hse: [ar ? "بلاغات سلامة" : "HSE", OC.abs, ar ? "سلامة" : "HSE"],
   };
-  const cmpGrid = "minmax(92px,1.2fr) minmax(70px,1fr) 40px 40px 40px 40px 44px 44px 44px 44px 44px 44px 44px";
+  const CMP_GROUPS = [
+    { id: "att", label: ar ? "الحضور" : "Attendance", keys: ["on", "late", "abs", "leave"] },
+    { id: "duty", label: ar ? "الدوام" : "Duty", keys: ["viol", "ot", "wait"] },
+    { id: "work", label: ar ? "المهام والسلامة" : "Tasks & safety", keys: ["done", "prog", "over", "hse"] },
+  ];
+  const CMP_ORDER = CMP_GROUPS.flatMap((group) => group.keys);
+  // Each sort pill carries the scope's total for that key — read from the same rows the table shows.
+  const cmpTotals = Object.fromEntries(CMP_ORDER.map((key) => {
+    const sum = cmpSorted.reduce((acc, row) => acc + (Number(row[key]) || 0), 0);
+    return [key, key === "ot" ? minutesShort(sum) : sum];
+  }));
+  const cmpGrid = "minmax(170px,1.6fr) minmax(80px,1fr) repeat(11,minmax(44px,52px))";
   const cmpColor = (key, value) => {
     if (!value) return OC.muted;
     if (key === "on" || key === "done") return OC.greenText;
@@ -416,6 +435,14 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
     const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
     return isoFromParts(d.getFullYear(), d.getMonth(), d.getDate());
   })();
+  const rangePresets = [
+    { id: "day", label: ar ? "يوم واحد" : "One day", run: () => setRange(null) },
+    { id: "w", label: ar ? "آخر 7 أيام" : "Last 7 days", run: () => setRange({ from: back7, to: todayIso }) },
+    { id: "m", label: ar ? "هذا الشهر" : "This month", run: () => setRange({ from: monthStart, to: monthEnd }) },
+  ];
+  const rangePreset = !rangeOn
+    ? "day"
+    : (rangeFrom === back7 && rangeTo === todayIso ? "w" : (rangeFrom === monthStart && rangeTo === monthEnd ? "m" : ""));
 
   const monthInsight = !real.length
     ? (ar ? "لا سجل بعد لهذا الشهر. الأرقام تُشتق من أول يوم يُسجَّل فيه حضور." : "No record yet this month. Figures appear after the first punch.")
@@ -670,81 +697,95 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
               <Loader2 style={{ width: 18, height: 18, color: OC.green, animation: "spin 1s linear infinite" }} />
             </section>
           ) : layout === "grid" ? (
-            <section style={{ ...shell, display: "flex", flexDirection: "column" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", background: OC.wash, borderBottom: `1px solid ${OC.line}` }}>
+            <section data-cal-grid style={{ ...shell, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 6, padding: "10px 10px 0" }}>
                 {weekdays.map((label, i) => (
-                  <span key={label} style={{ padding: "10px 0", textAlign: "center", fontSize: 12, fontWeight: 600, color: (i === 5 || i === 6) ? OC.muted : OC.mid }}>{label}</span>
+                  <span key={label} style={{ padding: "4px 0", textAlign: "center", fontSize: 11.5, fontWeight: 600, color: (i === 5 || i === 6) ? OC.muted : OC.mid }}>{label}</span>
                 ))}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 6, padding: 10 }}>
                 {cells.map((cell, index) => {
                   if (cell.blank) {
-                    return <div key={`b${index}`} style={{ minHeight: 104, background: OC.wash, borderInlineStart: `1px solid ${OC.soft}`, borderBottom: `1px solid ${OC.soft}` }} />;
+                    return <div key={`b${index}`} aria-hidden style={{ minHeight: 108 }} />;
                   }
                   const on = selected === cell.d;
                   const hit = !filtering || matchCell(cell);
                   const rec = cell.rec;
                   const items = cellItems(rec);
                   const myMark = myself ? myCellMark(mine.byKey[cell.key], ar) : null;
+                  const counts = rec ? [
+                    ["on", ar ? "حضر" : "On", rec.on, OC.greenText, OC.greenBg],
+                    ["late", ar ? "تأخّر" : "Late", rec.late, OC.goldText, OC.goldBg],
+                    ["abs", ar ? "غاب" : "Abs", rec.abs, OC.abs, OC.absBg],
+                    ["leave", ar ? "إجازة" : "Leave", rec.leave, OC.leave, OC.leaveBg],
+                  ].filter((row) => row[2] > 0) : [];
+                  const surface = !hit
+                    ? "var(--nv-soft)"
+                    : cell.today
+                      ? OC.greenBg
+                      : (cell.weekend && !rec ? "var(--nv-soft)" : "var(--nv-card)");
                   return (
                     <button
                       key={cell.key}
                       type="button"
+                      data-cal-day={cell.key}
+                      className="nv-cal-tile"
                       onClick={() => pickDay(cell.d, !!rec)}
                       style={{
                         fontFamily: "inherit",
                         textAlign: "start",
                         position: "relative",
                         minWidth: 0,
-                        minHeight: 104,
+                        minHeight: 108,
                         padding: "9px 10px",
-                        border: "none",
-                        borderInlineStart: `1px solid ${OC.soft}`,
-                        borderBottom: `1px solid ${OC.soft}`,
-                        background: !hit ? "var(--nv-soft)" : (rec?.leave ? OC.leaveBg : (cell.weekend ? OC.wash : (on ? OC.greenBg : "var(--nv-card)"))),
+                        borderRadius: 10,
+                        border: on ? "2px solid var(--nv-btn-fill, #0B3D27)" : `1px solid ${cell.today ? OC.greenBd : "var(--nv-line2)"}`,
+                        background: surface,
                         cursor: "pointer",
                         display: "flex",
                         flexDirection: "column",
                         gap: 7,
-                        outline: on ? `2px solid ${OC.green}` : (cell.today ? `1px dashed ${OC.green}` : "none"),
-                        outlineOffset: -2,
-                        opacity: hit ? 1 : 0.48,
+                        opacity: hit ? 1 : 0.5,
+                        boxSizing: "border-box",
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 7, width: "100%" }}>
-                        <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 15, fontWeight: cell.today ? 700 : 500, color: cell.weekend ? "var(--nv-box)" : (cell.future ? OC.muted : OC.ink) }}>{cell.d}</span>
-                        {cell.today ? <span style={{ fontSize: 10, fontWeight: 700, color: OC.greenText, background: OC.greenBg, border: `1px solid ${OC.greenBd}`, padding: "1px 6px" }}>{ar ? "اليوم" : "Today"}</span> : null}
-                        {rec?.broke ? <span title={ar ? BROKE[rec.broke]?.ar : BROKE[rec.broke]?.en} dir="ltr" style={{ marginInlineStart: "auto", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, fontWeight: 700, color: OC.goldText, background: OC.goldBg, border: `1px solid ${OC.goldBd}`, padding: "1px 5px" }}>{rec.broke}</span> : null}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, width: "100%" }}>
+                        <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 15, fontWeight: cell.today || on ? 700 : 500, color: cell.weekend && !rec ? OC.muted : (cell.future ? OC.mid : OC.ink) }}>{cell.d}</span>
+                        {cell.today ? <span className="nv-cal-today-chip" style={{ fontSize: 10, fontWeight: 700, color: "#fff", background: "var(--nv-btn-fill, #0B3D27)", borderRadius: 999, padding: "1px 8px" }}>{ar ? "اليوم" : "Today"}</span> : null}
+                        {rec?.broke ? <span title={ar ? BROKE[rec.broke]?.ar : BROKE[rec.broke]?.en} dir="ltr" style={{ marginInlineStart: "auto", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, fontWeight: 700, color: OC.goldText, background: OC.goldBg, border: `1px solid ${OC.goldBd}`, borderRadius: 999, padding: "0 6px" }}>{rec.broke}</span> : null}
                       </div>
-                      {rec ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
-                          <div style={{ display: "flex", height: 7, background: OC.soft, overflow: "hidden" }}>
-                            <div style={{ width: pct(rec.on, rec.head), background: OC.green }} />
-                            <div style={{ width: pct(rec.late, rec.head), background: OC.gold }} />
-                            <div style={{ width: pct(rec.abs, rec.head), background: OC.abs }} />
-                            <div style={{ width: pct(rec.leave, rec.head), background: OC.leave }} />
-                          </div>
-                          <div style={{ display: "flex", gap: 9, alignItems: "baseline" }}>
-                            <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: OC.greenText }}>{rec.on}</span>
-                            <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: rec.late ? OC.goldText : OC.muted }}>{rec.late}</span>
-                            <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: rec.abs ? OC.abs : OC.muted }}>{rec.abs}</span>
-                            {rec.leave ? <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: OC.leave, fontWeight: 700 }}>{rec.leave}</span> : null}
-                          </div>
+                      {rec && rec.head ? (
+                        <div style={{ display: "flex", height: 5, borderRadius: 999, background: OC.soft, overflow: "hidden", width: "100%" }}>
+                          <div style={{ width: pct(rec.on, rec.head), background: OC.green }} />
+                          <div style={{ width: pct(rec.late, rec.head), background: OC.gold }} />
+                          <div style={{ width: pct(rec.abs, rec.head), background: OC.abs }} />
+                          <div style={{ width: pct(rec.leave, rec.head), background: OC.leave }} />
                         </div>
+                      ) : null}
+                      {counts.length ? (
+                        <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          {counts.map(([id, label, n, color, bg]) => (
+                            <span key={id} data-cal-count={id} className="nv-cal-pill" style={{ display: "inline-flex", alignItems: "baseline", gap: 3, fontSize: 10.5, fontWeight: 600, color, background: bg, borderRadius: 999, padding: "1px 7px", whiteSpace: "nowrap" }}>
+                              <span className="nv-cal-pill-label">{label}</span><span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{n}</span>
+                            </span>
+                          ))}
+                        </span>
                       ) : (
-                        <span style={{ fontSize: 11, color: OC.muted }}>{cell.weekend ? (ar ? "عطلة" : "Off") : (cell.future ? (ar ? "مجدول" : "Scheduled") : "")}</span>
+                        <span className="nv-cal-quiet" style={{ fontSize: 11, color: OC.muted }}>
+                          {rec ? (cell.future ? (ar ? "مجدول" : "Scheduled") : (ar ? "لا حالة حضور" : "No attendance state")) : (cell.weekend ? (ar ? "عطلة" : "Off") : (cell.future ? (ar ? "مجدول" : "Scheduled") : ""))}
+                        </span>
                       )}
                       {myMark ? (
                         // My own day — its own small line under the branch counters, never mistaken for them.
-                        <span data-my-mark={myMark.kind} title={myMark.text} style={{ display: "flex", alignItems: "center", gap: 4, width: "100%", fontSize: 10, fontWeight: 600, color: myMark.kind === "absent" ? OC.abs : OC.goldText, borderTop: `1px dashed ${OC.soft}`, paddingTop: 4, minWidth: 0 }}>
+                        <span data-my-mark={myMark.kind} className="nv-cal-mine" title={myMark.text} style={{ display: "flex", alignItems: "center", gap: 4, width: "100%", fontSize: 10, fontWeight: 600, color: myMark.kind === "absent" ? OC.abs : OC.goldText, borderTop: `1px dashed ${OC.soft}`, paddingTop: 4, minWidth: 0 }}>
                           <span aria-hidden style={{ width: 6, height: 6, borderRadius: 999, flex: "none", background: myMark.kind === "absent" ? OC.abs : OC.gold }} />
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{ar ? "أنا: " : "Me: "}{myMark.text}</span>
                         </span>
                       ) : null}
                       {items.length ? (
-                        <span style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: "auto" }}>
+                        <span className="nv-cal-items" style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: "auto" }}>
                           {items.map((item) => (
-                            <span key={item.label} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 600, color: item.color, background: item.bg, border: `1px solid ${item.border}`, padding: "1px 6px", whiteSpace: "nowrap" }}>
+                            <span key={item.label} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 600, color: item.color, background: item.bg, border: `1px solid ${item.border}`, borderRadius: 999, padding: "0 7px", whiteSpace: "nowrap" }}>
                               {item.label}<span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{item.count}</span>
                             </span>
                           ))}
@@ -754,10 +795,10 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
                   );
                 })}
               </div>
-              <div style={{ padding: "12px 16px", display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center", borderTop: `1px solid ${OC.line}` }}>
+              <div data-cal-legend style={{ padding: "10px 14px 14px", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", borderTop: `1px solid ${OC.soft}` }}>
                 {legend.map((item) => (
-                  <span key={item.label} style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 11, color: OC.mid }}>
-                    <span style={{ width: 10, height: 10, background: item.color, border: `1px solid ${item.border}` }} />
+                  <span key={item.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: OC.mid, border: "1px solid var(--nv-pill-line, #D5DCD8)", background: "var(--nv-card)", borderRadius: 999, padding: "3px 10px 3px 8px" }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 999, background: item.color, border: `1px solid ${item.border}` }} />
                     {item.label}
                   </span>
                 ))}
@@ -808,105 +849,144 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
             </section>
           )}
 
-          <section style={{ ...shell, display: "flex", flexDirection: "column" }}>
-            <div style={{ padding: "16px 20px", borderBottom: `1px solid ${OC.soft}`, display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                <span style={{ fontSize: 16, fontWeight: 700 }}>{mineLane ? (ar ? "مقارنة الموظفين" : "People comparison") : (ar ? "مقارنة موظفي النطاق" : "People in scope")}</span>
-                <span style={{ fontSize: 12, color: OC.muted, lineHeight: 1.7 }}>
-                  {view !== "team"
-                    ? (ar ? "المقارنة متاحة في عرض «الفريق» فقط" : "Comparison is available in Team view")
-                    : [
-                      scopeLine,
-                      rangeOn
-                        ? (rangeDays.length ? (ar ? `${rangeDays.length} يوم مسجّل` : `${rangeDays.length} days`) : (ar ? "لا يوم مسجّل بين التاريخين" : "No recorded day in range"))
-                        : (sel && !sel.blank ? (ar ? `يوم ${weekdays[sel.wd]} ${sel.d} ${months[month]}` : `${weekdays[sel.wd]} ${sel.d} ${months[month]}`) : (ar ? "اختر يوماً" : "Pick a day")),
-                      roster.length
-                        ? (ar
-                          ? `${recordedPeople} ظهرت لهم حالة — الباقي بلا وردية منشورة في هذا المدى`
-                          : `${recordedPeople} have a recorded state — the rest had no published shift in range`)
-                        : null,
-                    ].filter(Boolean).join(" · ")}
-                </span>
-              </div>
-              <div style={{ marginInlineStart: "auto", display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+          <section data-cmp style={{ ...shell, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ padding: "16px 20px 14px", borderBottom: `1px solid ${OC.soft}`, display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: "1 1 260px" }}>
+                  <span style={{ fontSize: 16, fontWeight: 700 }}>{mineLane ? (ar ? "مقارنة الموظفين" : "People comparison") : (ar ? "مقارنة موظفي النطاق" : "People in scope")}</span>
+                  <span style={{ fontSize: 12, color: OC.muted, lineHeight: 1.7 }}>
+                    {view !== "team"
+                      ? (ar ? "المقارنة متاحة في عرض «الفريق» فقط" : "Comparison is available in Team view")
+                      : [
+                        scopeLine,
+                        rangeOn
+                          ? (rangeDays.length ? (ar ? `${rangeDays.length} يوم مسجّل` : `${rangeDays.length} days`) : (ar ? "لا يوم مسجّل بين التاريخين" : "No recorded day in range"))
+                          : (sel && !sel.blank ? (ar ? `يوم ${weekdays[sel.wd]} ${sel.d} ${months[month]}` : `${weekdays[sel.wd]} ${sel.d} ${months[month]}`) : (ar ? "اختر يوماً" : "Pick a day")),
+                      ].filter(Boolean).join(" · ")}
+                  </span>
+                </div>
                 {view === "team" ? (
-                  <input
-                    value={cmpQuery}
-                    onChange={(e) => setCmpQuery(e.target.value)}
-                    placeholder={ar ? "ابحث في أسماء النطاق" : "Search names in scope"}
-                    style={{ fontFamily: "inherit", fontSize: 12, padding: "7px 10px", border: `1px solid ${OC.line}`, outline: "none", background: "var(--nv-card)", color: OC.ink, minWidth: "min(240px,100%)" }}
-                  />
+                  <label style={{ display: "flex", flexDirection: "column", gap: 5, flex: "1 1 220px", maxWidth: 320 }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: OC.mid }}>{ar ? "ابحث بالاسم" : "Search by name"}</span>
+                    <input
+                      value={cmpQuery}
+                      onChange={(e) => setCmpQuery(e.target.value)}
+                      placeholder={ar ? "اسم موظف في النطاق" : "A name in scope"}
+                      style={{ fontFamily: "inherit", fontSize: 12.5, height: 36, padding: "0 12px", border: `1px solid ${OC.line}`, borderRadius: 10, outline: "none", background: "var(--nv-card)", color: OC.ink, width: "100%", boxSizing: "border-box" }}
+                    />
+                  </label>
                 ) : null}
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 11, color: OC.muted }}>{ar ? "المدى" : "Range"}</span>
-                  <div style={{ width: 168 }}>
+              </div>
+
+              <div data-cmp-range style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: OC.mid }}>{ar ? "المدى" : "Range"}</span>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+                  <StatusFilterPills
+                    bare
+                    dataKey="cmp-range"
+                    value={rangePreset}
+                    onChange={(id) => rangePresets.find((p) => p.id === id)?.run()}
+                    items={rangePresets.map((p) => ({ id: p.id, label: p.label }))}
+                  />
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, width: 168 }}>
+                    <span style={{ fontSize: 10.5, color: OC.muted }}>{ar ? "من" : "From"}</span>
                     <PlatformDateField compact ar={ar} value={rangeFrom} onChange={(next) => setRange({ ...(range || {}), from: next })} />
-                  </div>
-                  <span style={{ fontSize: 11, color: OC.muted }}>→</span>
-                  <div style={{ width: 168 }}>
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, width: 168 }}>
+                    <span style={{ fontSize: 10.5, color: OC.muted }}>{ar ? "إلى" : "To"}</span>
                     <PlatformDateField compact ar={ar} value={rangeTo} min={rangeFrom} onChange={(next) => setRange({ ...(range || {}), to: next })} />
+                  </label>
+                </div>
+              </div>
+
+              <div data-cmp-sort style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: OC.mid }}>{ar ? "رتّب حسب" : "Sort by"}</span>
+                {CMP_GROUPS.map((group) => (
+                  <div key={group.id} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11, color: OC.muted, minWidth: 54 }}>{group.label}</span>
+                    <StatusFilterPills
+                      bare
+                      size="sm"
+                      dataKey={`cmp-sort-${group.id}`}
+                      value={cmp}
+                      onChange={setCmp}
+                      items={group.keys.map((key) => ({ id: key, label: cmpLabels[key][0], n: cmpTotals[key] }))}
+                    />
                   </div>
-                  {[
-                    { id: "day", label: ar ? "يوم واحد" : "One day", run: () => setRange(null), on: !rangeOn },
-                    { id: "w", label: ar ? "آخر 7 أيام" : "Last 7 days", run: () => setRange({ from: back7, to: todayIso }), on: rangeFrom === back7 && rangeTo === todayIso },
-                    { id: "m", label: ar ? "هذا الشهر" : "This month", run: () => setRange({ from: monthStart, to: monthEnd }), on: rangeFrom === monthStart && rangeTo === monthEnd },
-                  ].map((p) => (
-                    <button key={p.id} type="button" onClick={p.run} style={chip(p.on)}>{p.label}</button>
-                  ))}
-                </div>
-                <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-                  <span style={{ fontSize: 11, color: OC.muted }}>{ar ? "رتّب حسب" : "Sort by"}</span>
-                  {CMP_KEYS.map((key) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => setCmp(key)}
-                      style={{ ...chip(cmp === key), display: "inline-flex", alignItems: "center", gap: 6 }}
-                    >
-                      <span style={{ width: 8, height: 8, background: cmpLabels[key][1] }} />{cmpLabels[key][0]}
-                    </button>
-                  ))}
-                </div>
+                ))}
               </div>
             </div>
             {cmpSorted.length ? (
-              <div data-cmp-scroll style={{ overflowX: "auto", maxWidth: "100%" }}>
-                <div style={{ minWidth: 760 }}>
-                <div style={{ display: "grid", gridTemplateColumns: cmpGrid, gap: 8, padding: "10px 20px", fontSize: 11, color: OC.muted, background: OC.wash, borderBottom: `1px solid ${OC.soft}` }}>
-                  <span>{ar ? "الموظف" : "Name"}</span>
-                  <span>{ar ? "توزيع الأيام" : "Split"}</span>
-                  {CMP_KEYS.map((key) => <span key={key}>{cmpLabels[key][2]}</span>)}
-                </div>
-                {cmpSorted.map((row) => {
-                  const tot = Math.max(1, row.on + row.late + row.abs + row.leave);
-                  return (
-                    <div key={row.id} style={{ display: "grid", gridTemplateColumns: cmpGrid, gap: 8, padding: "11px 20px", alignItems: "center", borderBottom: "1px solid var(--nv-hover)" }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
-                        {row.name}{isViewerOwnFile(row, currentUser) ? <>{" "}<FileSelfBadge ar={ar} /></> : null}
-                      </span>
-                      <div style={{ display: "flex", height: 11, background: OC.soft, overflow: "hidden" }}>
-                        <div title={ar ? `حضر ${row.on}` : `On ${row.on}`} style={{ width: pct(row.on, tot), background: OC.green }} />
-                        <div title={ar ? `تأخّر ${row.late}` : `Late ${row.late}`} style={{ width: pct(row.late, tot), background: OC.gold }} />
-                        <div title={ar ? `غاب ${row.abs}` : `Absent ${row.abs}`} style={{ width: pct(row.abs, tot), background: OC.abs }} />
-                        <div title={ar ? `إجازة ${row.leave}` : `Leave ${row.leave}`} style={{ width: pct(row.leave, tot), background: "#9aa3b2" }} />
-                      </div>
-                      {CMP_KEYS.map((key) => (
-                        <span key={key} dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: cmpColor(key, row[key]), textAlign: "right" }}>{row[key]}</span>
-                      ))}
-                    </div>
-                  );
-                })}
+              <div data-cmp-scroll className="nv-cmp-scroll" style={{ overflowX: "auto", maxWidth: "100%" }}>
+                <div role="table" style={{ minWidth: 820 }}>
+                  <div role="row" style={{ display: "grid", gridTemplateColumns: cmpGrid, gap: 6, padding: "8px 20px 0", fontSize: 10.5, color: OC.muted }}>
+                    <span />
+                    <span />
+                    {CMP_GROUPS.map((group) => (
+                      <span key={group.id} style={{ gridColumn: `span ${group.keys.length}`, textAlign: "center", fontWeight: 700, borderBottom: `2px solid ${OC.soft}`, paddingBottom: 4 }}>{group.label}</span>
+                    ))}
+                  </div>
+                  <div role="row" style={{ display: "grid", gridTemplateColumns: cmpGrid, gap: 6, padding: "8px 20px", fontSize: 11, color: OC.muted, borderBottom: `1px solid ${OC.soft}` }}>
+                    <span role="columnheader">{ar ? "الموظف" : "Name"}</span>
+                    <span role="columnheader">{ar ? "توزيع الأيام" : "Split"}</span>
+                    {CMP_ORDER.map((key) => (
+                      <button
+                        key={key}
+                        type="button"
+                        role="columnheader"
+                        aria-sort={cmp === key ? "descending" : "none"}
+                        onClick={() => setCmp(key)}
+                        style={{ fontFamily: "inherit", fontSize: 11, border: "none", background: cmp === key ? "var(--nv-ok-soft)" : "transparent", color: cmp === key ? OC.greenText : OC.muted, fontWeight: cmp === key ? 700 : 500, borderRadius: 999, padding: "2px 0", cursor: "pointer", whiteSpace: "nowrap" }}
+                      >
+                        {cmpLabels[key][2]}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px 12px" }}>
+                    {cmpSorted.map((row) => {
+                      const tot = Math.max(1, row.on + row.late + row.abs + row.leave);
+                      const self = isViewerOwnFile(row, currentUser);
+                      return (
+                        <div key={row.id} role="row" data-cmp-row={row.id} style={{ display: "grid", gridTemplateColumns: cmpGrid, gap: 6, padding: "9px 8px", alignItems: "center", borderRadius: 10, border: `1px solid ${self ? OC.greenBd : "var(--nv-line2)"}`, background: self ? OC.greenBg : "var(--nv-card)" }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                            <NameLetter name={row.name} mine={self} />
+                            <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{row.name}</span>
+                            {self ? <FileSelfBadge ar={ar} /> : null}
+                          </span>
+                          <div style={{ display: "flex", height: 6, borderRadius: 999, background: OC.soft, overflow: "hidden" }}>
+                            <div title={ar ? `حضر ${row.on}` : `On ${row.on}`} style={{ width: pct(row.on, tot), background: OC.green }} />
+                            <div title={ar ? `تأخّر ${row.late}` : `Late ${row.late}`} style={{ width: pct(row.late, tot), background: OC.gold }} />
+                            <div title={ar ? `غاب ${row.abs}` : `Absent ${row.abs}`} style={{ width: pct(row.abs, tot), background: OC.abs }} />
+                            <div title={ar ? `إجازة ${row.leave}` : `Leave ${row.leave}`} style={{ width: pct(row.leave, tot), background: OC.leave }} />
+                          </div>
+                          {CMP_ORDER.map((key) => {
+                            const value = Number(row[key]) || 0;
+                            return (
+                              <span key={key} role="cell" style={{ textAlign: "center", padding: "3px 0" }}>
+                                {value ? (
+                                  <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, fontWeight: 600, color: cmpColor(key, value) }}>
+                                    {key === "ot" ? minutesShort(value) : value}
+                                  </span>
+                                ) : (
+                                  <span aria-label="0" style={{ color: "var(--nv-line)", fontSize: 12 }}>—</span>
+                                )}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             ) : null}
-            <div style={{ padding: "13px 20px" }}>
+            <div style={{ padding: "12px 20px", borderTop: `1px solid ${OC.soft}` }}>
               <span style={{ fontSize: 12, color: OC.mid, lineHeight: 1.85 }}>
                 {view !== "team"
                   ? (ar ? "بدّل إلى «الفريق» أعلى الصفحة لمقارنة الموظفين." : "Switch to Team to compare people.")
                   : (top && topScore > 0
-                    ? (ar ? `الأعلى في «${cmpTitle}»: ${top.name} بـ${topScore}، و${zero} موظفاً بلا أي حالة من هذه الأصناف.` : `Highest ${cmpTitle}: ${top.name} at ${topScore}; ${zero} with none.`)
-                    : (ar ? `لا أحد سجّل «${cmpTitle}» في هذا النطاق.` : `Nobody recorded ${cmpTitle} in this range.`))}
+                    ? (ar ? `الأعلى في «${cmpTitle}»: ${top.name} بـ${cmp === "ot" ? minutesPhrase(topScore, true) : topScore}، و${zero} بلا شيء منه.` : `Highest ${cmpTitle}: ${top.name} at ${topScore}; ${zero} with none.`)
+                    : (ar ? `لا أحد سجّل «${cmpTitle}» في هذا المدى.` : `Nobody recorded ${cmpTitle} in this range.`))}
               </span>
             </div>
           </section>
@@ -922,30 +1002,11 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
                   {ar ? "اليوم لم يُغلق بعد — اعرضه في شاشة الحضور ←" : "Today is still open — view it on Attendance →"}
                 </Link>
               ) : null}
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr)", gap: 6, paddingTop: 4 }}>
-                <label style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  <span style={{ fontSize: 10, color: OC.muted }}>{ar ? "من" : "From"}</span>
-                  <PlatformDateField compact ar={ar} value={rangeFrom} onChange={(next) => setRange({ ...(range || {}), from: next })} />
-                </label>
-                <label style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  <span style={{ fontSize: 10, color: OC.muted }}>{ar ? "إلى" : "To"}</span>
-                  <PlatformDateField compact ar={ar} value={rangeTo} min={rangeFrom} onChange={(next) => setRange({ ...(range || {}), to: next })} />
-                </label>
-              </div>
-              <div style={{ display: "flex", gap: 5, flexWrap: "wrap", paddingTop: 3 }}>
-                {[
-                  { id: "day", label: ar ? "يوم واحد" : "One day", run: () => setRange(null), on: !rangeOn },
-                  { id: "w", label: ar ? "آخر 7 أيام" : "Last 7 days", run: () => setRange({ from: back7, to: todayIso }), on: rangeFrom === back7 && rangeTo === todayIso },
-                  { id: "m", label: ar ? "هذا الشهر" : "This month", run: () => setRange({ from: monthStart, to: monthEnd }), on: rangeFrom === monthStart && rangeTo === monthEnd },
-                ].map((p) => (
-                  <button key={p.id} type="button" onClick={p.run} style={chip(p.on)}>{p.label}</button>
-                ))}
-              </div>
-              <span style={{ fontSize: 10, color: OC.muted, lineHeight: 1.7 }}>
-                {rangeOn
-                  ? (rangeDays.length ? (ar ? `${rangeDays.length} يوم مسجّل بين التاريخين` : `${rangeDays.length} recorded days between the dates`) : (ar ? "لا سجل بين التاريخين — عطلة أو أيام لم تأتِ بعد" : "No record between the dates"))
-                  : (ar ? "حدّد تاريخين لاستخراج البيانات بينهما، أو اضغط يوماً في التقويم" : "Set two dates, or tap a day on the calendar")}
-              </span>
+              {rangeOn ? (
+                <button type="button" onClick={() => setRange(null)} style={{ alignSelf: "flex-start", fontFamily: "inherit", fontSize: 11, fontWeight: 600, color: OC.greenText, background: "transparent", border: "none", padding: 0, cursor: "pointer" }}>
+                  {ar ? "عودة إلى يوم واحد" : "Back to one day"}
+                </button>
+              ) : null}
             </div>
             {rangeOn && (
               <div style={{ borderBottom: `1px solid ${OC.soft}`, display: "flex", flexDirection: "column" }}>

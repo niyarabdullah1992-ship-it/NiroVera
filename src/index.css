@@ -4323,3 +4323,20 @@ html.dark .nv-cic, .dark .nv-cic { background: var(--nv-card, #1C2922); }
 .nv-cic .nv-req-meta dd { white-space: normal; overflow-wrap: anywhere; }
 .nv-cic .nv-req-card-status:empty { display: none; }
 .nv-cic .nv-req-acts { min-width: 0; width: 100%; }
+.nv-cmp-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--nv-line) transparent;
+}
+.nv-cmp-scroll::-webkit-scrollbar { height: 6px; }
+.nv-cmp-scroll::-webkit-scrollbar-thumb { background: var(--nv-line); border-radius: 999px; }
+/* التقويم التشغيلي on a phone: each day keeps its number, bar and coloured counts — words fold away. */
+@media (max-width: 640px) {
+  .nv-ops-cal .nv-cal-tile { min-height: 76px !important; padding: 6px 5px !important; gap: 4px !important; }
+  .nv-ops-cal .nv-cal-pill { padding: 0 5px !important; font-size: 10px !important; }
+  .nv-ops-cal .nv-cal-pill-label,
+  .nv-ops-cal .nv-cal-items,
+  .nv-ops-cal .nv-cal-quiet,
+  .nv-ops-cal .nv-cal-mine,
+  .nv-ops-cal .nv-cal-today-chip { display: none !important; }
+  .nv-ops-cal [data-cal-grid] > div { gap: 4px !important; padding: 6px !important; }
+}

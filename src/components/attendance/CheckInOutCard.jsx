@@ -913,8 +913,18 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const restMin = Number(ruleValue("hours.rest.duringShiftMinutes", dutyDay)) || 0;
   // A saved rest plan is already checked against this limit — the five-hour mark would only repeat it.
   const planHoldsLimit = flexOn && !!restPlan?.parts && checkRestPlanGate({ shift: dutyShift, onDate: dutyDay, parts: restPlan.parts, continuous103 }).ok;
-  if (band && !continuous103 && !planHoldsLimit && consecMax > 0 && (band.targetMin || 0) > consecMax * 60) {
-    const markAt = band.start + consecMax * 60;
+  // The count restarts after every rest already in the day (the roster's fixed break, or the punched parts):
+  // a break at 10:45–11:15 on 07:00–15:00 leaves no five-hour stretch, so no mark is shown at all.
+  const knownRests = flexOn
+    ? (flexDay.punched || []).filter((row) => row.endMin != null).map((row) => ({ start: row.startMin, end: row.endMin }))
+    : (dutyShift ? rosterBreakWindows(dutyShift, dutyDay) : []).map((w) => ({ start: (band?.start || 0) + w.from, end: (band?.start || 0) + w.from + w.minutes }));
+  let consecFrom = band?.start ?? 0;
+  for (const rest of knownRests.sort((a, b) => a.start - b.start)) {
+    if (rest.start - consecFrom <= consecMax * 60) consecFrom = Math.max(consecFrom, rest.end);
+  }
+  const bandEndMin = (band?.start ?? 0) + (band?.targetMin ?? 0);
+  if (band && !continuous103 && !planHoldsLimit && consecMax > 0 && consecFrom + consecMax * 60 < bandEndMin) {
+    const markAt = consecFrom + consecMax * 60;
     const hh = String(Math.floor((markAt % 1440) / 60)).padStart(2, "0");
     const mm = String(markAt % 60).padStart(2, "0");
     placeByTime({
@@ -925,7 +935,9 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       value: `${hh}:${mm}`,
       badge: lawBadge(consecCite),
       note: ar
-        ? `لا عمل أكثر من ${consecMax} ساعات متواصلة — تبدأ راحتك (${restMin} دقيقة على الأقل) قبل هذا الوقت`
+        ? (consecFrom > band.start
+          ? `لا عمل أكثر من ${consecMax} ساعات متواصلة بعد راحتك — خذ راحة (${restMin} دقيقة على الأقل) قبل هذا الوقت`
+          : `لا عمل أكثر من ${consecMax} ساعات متواصلة — تبدأ راحتك (${restMin} دقيقة على الأقل) قبل هذا الوقت`)
         : `No more than ${consecMax} hours in a row — your rest (at least ${restMin} min) starts before this time`,
       hint: attRightHint("rest", {}, { view: "employee", ar }),
     }, markAt);

@@ -54,14 +54,14 @@ export function HeatAwarenessCard({ heatCopy, ar = true }) {
             <li><strong style={{ color: SW.ink }}>مظلّل</strong>: عمل داخل مبنى أو تحت مظلّة تحجب الشمس — لا يسري عليه الحظر.</li>
             <li>إذا وقعت ورديتك في ساعات الحظر تحدّد الإدارة تلقائيًا هل عملك فيها مكشوف أم مظلّل، ويظهر لك ذلك على بطاقة اليوم.</li>
             <li>عند {heatCopy.window.split("–")[0]} في أيام الموسم يصلك إشعار تذكير، وتصل الإدارة كذلك إن كان عملك «مكشوف».</li>
-            <li>إن كُلِّفت بعمل مكشوف بين {heatCopy.window.replace("–", " و")} فلك أن ترفض، و<Link to="/app/requests?kind=heat_report" style={{ color: "var(--nv-ok-ink)", fontWeight: 700 }}>بلّغ من «طلبات الدوام» ›</Link></li>
+            <li>إن كُلِّفت بعمل مكشوف بين {heatCopy.window.replace("–", " و")} فلك أن ترفض، و<Link to="/app/complaints?channel=heat" style={{ color: "var(--nv-ok-ink)", fontWeight: 700 }}>بلّغ من «صوت الموظف» ›</Link></li>
           </ul>
         ) : (
           <ul style={{ margin: 0, paddingInlineStart: 18, display: "flex", flexDirection: "column", gap: 4 }}>
             <li><strong style={{ color: SW.ink }}>Exposed</strong>: work in direct sun at an unshaded site — the ban applies.</li>
             <li><strong style={{ color: SW.ink }}>Shaded</strong>: work indoors or under cover — the ban does not apply.</li>
             <li>When your shift falls in the ban hours, management marks it exposed or shaded and it shows on your day card.</li>
-            <li>If you are assigned exposed work in {heatCopy.window}, you may refuse — <Link to="/app/requests?kind=heat_report" style={{ color: "var(--nv-ok-ink)", fontWeight: 700 }}>report it from Duty requests ›</Link></li>
+            <li>If you are assigned exposed work in {heatCopy.window}, you may refuse — <Link to="/app/complaints?channel=heat" style={{ color: "var(--nv-ok-ink)", fontWeight: 700 }}>report it from Employee voice ›</Link></li>
           </ul>
         )}
       </div>

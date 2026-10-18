@@ -389,7 +389,7 @@ export const ATT_HINT_BUILDERS = {
         : `${exposed ? `${nameOf(c)} on exposed work${when ? ` ${when}` : ""} — ` : ""}stop open-sun work ${w.startLabel}–${w.endLabel} ${season} or move to shade.`,
       worker: {
         ifNot: ar ? "إن كُلّفت بعمل مكشوف في هذه الساعات: لك أن ترفض وتبلّغ من «طلبات الدوام»." : "If assigned exposed work in these hours: you may refuse and report it from Duty requests.",
-        action: { kind: "duty", to: "/app/requests?kind=heat_report", label: ar ? "بلّغ عن عمل مكشوف" : "Report exposed work" },
+        action: { kind: "duty", to: "/app/complaints?channel=heat", label: ar ? "بلّغ عن عمل مكشوف" : "Report exposed work" },
       },
       manager: ar ? "وإلا عُدّ مخالفة للقرار 3337 تُرصد في تفتيش الوزارة." : "Otherwise it breaches Decision 3337 and shows on a ministry inspection.",
     });

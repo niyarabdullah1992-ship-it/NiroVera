@@ -219,13 +219,6 @@ export function requestsMinistryRows({ subject, liveArticle = "", liveKind = "",
       live: liveKind === "pregnancy_notice",
     });
   }
-  list.push({
-    key: "3337-report",
-    source: "3337",
-    title: ar ? "بلاغ عمل مكشوف وقت الحظر" : "Exposed-work report in the ban hours",
-    note: ar ? "إن كُلّفت بعمل تحت الشمس في ساعات الحظر ارفع بلاغاً — تصل الإدارة تنبيهاً، وتبقى المخالفة ظاهرة حتى تُعالج." : "If assigned sun work in the ban hours, file a report — management is alerted and the violation stays visible until fixed.",
-    status: statusOf(["heat_report"], requests),
-    live: liveKind === "heat_report",
-  });
+  // Decision 3337 report lives in صوت الموظف (channel «heat», HR-only), not in the requests ledger.
   return list;
 }

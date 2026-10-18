@@ -3,7 +3,7 @@ import FigureRow from "@/components/shared/FigureRow";
 import { Link, useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
-import { updateCompany, addNotification, getAnonUsage } from "@/lib/store";
+import { updateCompany, addNotification, getAnonUsage, setSunExposure } from "@/lib/store";
 import { toast } from "@/components/ui/use-toast";
 import { hasHRPermission } from "@/lib/permissions";
 import { branchReviewTiers } from "@/lib/branchChain";
@@ -181,14 +181,17 @@ export default function Complaints() {
     setSearchParams(params, { replace: true });
   };
   // ?channel=abuse (old طلباتي links) opens the harassment form.
-  const [channel, setChannel] = useState(() => (["suggestion", "complaint", "anonymous", "abuse"].includes(searchParams.get("channel")) ? searchParams.get("channel") : "suggestion"));
-  const asked = searchParams.get("channel");
-  useEffect(() => {
-    if (["suggestion", "complaint", "anonymous", "abuse"].includes(asked)) setChannel(asked);
-  }, [asked]);
-  const [pickedId] = useState("");
+  const [channel, setChannel] = useState(() => (["suggestion", "complaint", "anonymous", "abuse", "heat"].includes(searchParams.get("channel")) ? searchParams.get("channel") : "suggestion"));
   const [prio, setPrio] = useState("low");
   const [topicId, setTopicId] = useState("wage");
+  const asked = searchParams.get("channel");
+  useEffect(() => {
+    if (!["suggestion", "complaint", "anonymous", "abuse", "heat"].includes(asked)) return;
+    setChannel(asked);
+    setPrio((asked === "abuse" ? ABUSE_VOICE_CHANNEL : channelOf(asked)).defaultPrio);
+    if (asked === "heat") setTopicId("safety");
+  }, [asked]);
+  const [pickedId] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [when, setWhen] = useState("");
@@ -265,6 +268,8 @@ export default function Complaints() {
     const next = id === "abuse" ? ABUSE_VOICE_CHANNEL : channelOf(id);
     setChannel(id);
     setPrio(next.defaultPrio);
+    // An exposed-work report is a safety matter (Decision 3337).
+    if (id === "heat") setTopicId("safety");
   };
 
   const pickFile = async (event) => {
@@ -355,6 +360,8 @@ export default function Complaints() {
             stationId,
             type: channel === "suggestion" ? "suggestion" : "complaint",
             kind: channel === "suggestion" ? "suggestion" : "public",
+            // A heat report keeps its channel: HR-only, and its adoption marks the day «مظلّل» (Decision 3337).
+            ...(channel === "heat" ? { channel: "heat" } : {}),
             voiceRef: `VO-${String(Date.now()).slice(-4)}`,
             title: gate.title,
             message: gate.message,
@@ -453,6 +460,12 @@ export default function Complaints() {
         level: found.escalationLevel || 0,
       });
     });
+    // Decision 3337: an adopted heat report moves the worker's day to «مظلّل» on his branch roster.
+    if (outcome === "adopt" && card.item.channel === "heat" && card.item.authorId && /^\d{4}-\d{2}-\d{2}$/.test(String(card.item.incidentDate || ""))) {
+      const author = employees.find((row) => String(row.id) === String(card.item.authorId));
+      const stationId = card.item.stationId || author?.stationId;
+      if (stationId) setSunExposure(company.id, stationId, { employeeId: card.item.authorId, dateKeys: [card.item.incidentDate], mark: "office" });
+    }
     if (card.item.authorId) {
       const notice = { outcome, channel: card.item.channel, title: card.title };
       addNotification(company.id, card.item.authorId, voiceDecisionNoticeText(notice, lang), { voiceNotice: notice });

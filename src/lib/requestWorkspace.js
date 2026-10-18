@@ -92,7 +92,7 @@ export const REQUEST_KINDS = [
   { id: "shift_change", ar: "تغيير وردية", en: "Shift change", type: "shift_change", duty: true },
   { id: "nursing_hour", ar: "ساعة الرضاعة", en: "Nursing hour", type: "nursing_hour", duty: true, gender: "female", manageDuty: true },
   { id: "pregnancy_notice", ar: "إبلاغ حمل", en: "Pregnancy notice", type: "pregnancy_notice", duty: true, gender: "female", manageDuty: true },
-  { id: "heat_report", ar: "بلاغ عمل مكشوف", en: "Exposed-work report", type: "heat_report", duty: true },
+  // «بلاغ عمل مكشوف» lives in صوت الموظف (channel "heat", HR-only) — /app/complaints?channel=heat.
   /** Decision 18632 (e) — the worker tells HR; on approval the file carries it and the roster considers it at night. */
   { id: "family_duties", ar: "إبلاغ بمسؤوليات عائلية", en: "Family responsibilities notice", type: "family_duties", duty: true },
   { id: "manual", ar: "تسجيل حضور يدوي", en: "Manual punch", type: "manual_punch" },

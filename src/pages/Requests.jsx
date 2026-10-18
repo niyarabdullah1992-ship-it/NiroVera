@@ -118,7 +118,7 @@ export default function Requests() {
   }
   const initialKind = path.endsWith("/other")
     ? "other"
-    : (["permission", "shift_change", "nursing_hour", "pregnancy_notice", "heat_report", "family_duties", "manual", "outfix", "resignation", "rights", "file_correction"].includes(askedKind)
+    : (["permission", "shift_change", "nursing_hour", "pregnancy_notice", "family_duties", "manual", "outfix", "resignation", "rights", "file_correction"].includes(askedKind)
       ? askedKind
       : (manageLane ? "leave_credit" : "leave"));
   const lane = manageLane ? "manage" : "mine";

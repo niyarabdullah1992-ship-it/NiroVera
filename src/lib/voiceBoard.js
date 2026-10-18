@@ -71,6 +71,27 @@ export const VOICE_CHANNELS = [
     hours: 24,
     defaultPrio: "high",
   },
+  {
+    // Decision 3337: assigned sun-exposed work in the ban hours. A worker's report of a breach against him —
+    // it belongs to صوت الموظف and goes straight to HR (never through the manager who assigned it).
+    id: "heat",
+    ar: "بلاغ عمل مكشوف",
+    en: "Exposed-work report",
+    accent: "var(--nv-warn-fill)",
+    color: "var(--nv-warn-ink)",
+    bg: "var(--nv-warn-soft)",
+    border: "var(--nv-warn-line)",
+    identityAr: "باسمك",
+    identityEn: "In your name",
+    blurbAr: "كُلّفت بعمل تحت الشمس وقت الحظر.",
+    blurbEn: "You were assigned sun-exposed work in the ban hours.",
+    lawAr: "القرار 3337",
+    lawEn: "Decision 3337",
+    promiseAr: "لا عمل مكشوف تحت الشمس من 12:00 إلى 15:00، من 15 يونيو إلى 15 سبتمبر. يصل بلاغك باسمك إلى الموارد البشرية مباشرة، لا يمر بمديرك. وعند اعتماده يُسجَّل يومك «مظلّل» في الجدول.",
+    promiseEn: "No sun-exposed work 12:00–15:00, 15 June to 15 September. Your report reaches HR directly in your name, never via your manager. Once adopted, your day is marked «shaded» on the roster.",
+    hours: 24,
+    defaultPrio: "high",
+  },
 ];
 
 /**
@@ -95,7 +116,7 @@ export const ABUSE_VOICE_CHANNEL = {
 
 /** Where each channel goes — the calm line under the tiles. */
 export function voiceRouteLine(channelId, ar = true) {
-  const hrOnly = channelId === "suggestion" || channelId === "anonymous" || channelId === "abuse";
+  const hrOnly = channelId === "suggestion" || channelId === "anonymous" || channelId === "abuse" || channelId === "heat";
   if (hrOnly) return ar ? "تصل إلى الموارد البشرية فقط — لا يراها مديرك" : "Reaches HR only — your manager does not see it";
   return ar ? "تبدأ عند مديرك وتتصعّد إن لم تُحل" : "Starts with your manager and climbs if not resolved";
 }
@@ -194,7 +215,7 @@ export function collectVoiceItems({ publicReports = [], anonymousReports = [] } 
   const named = (publicReports || []).map((row) => ({
     ...row,
     bucket: "public",
-    channel: voiceKind(row) === "suggestion" ? "suggestion" : "complaint",
+    channel: row.channel === "heat" ? "heat" : voiceKind(row) === "suggestion" ? "suggestion" : "complaint",
     title: titleOf(row),
     body: row.message || row.body || "",
   }));

@@ -14,7 +14,7 @@ import { voiceKind } from "./complaintDerivations.js";
 
 const str = (v) => String(v ?? "");
 
-export const HR_ONLY_VOICE_CHANNELS = ["suggestion", "anonymous", "abuse"];
+export const HR_ONLY_VOICE_CHANNELS = ["suggestion", "anonymous", "abuse", "heat"];
 /** HR-level permissions that make a person a receiver of the HR-only voice channels. */
 export const HR_VOICE_PERMISSIONS = ["view_anonymous_reports", "manage_anonymous_reports", "manage_complaints"];
 /** Roles that are the company administration or HR by role (not a line manager). */
@@ -31,7 +31,7 @@ export const HR_TIER_ID = "hr_voice";
 export function voiceChannelOf(item) {
   if (!item) return "";
   const ch = str(item.channel);
-  if (["suggestion", "complaint", "anonymous", "abuse"].includes(ch)) return ch;
+  if (["suggestion", "complaint", "anonymous", "abuse", "heat"].includes(ch)) return ch;
   if (item.bucket === "anon") return "anonymous";
   if (item.reporterRole && item.accusedId !== undefined && item.kind && !item.type) return "abuse";
   const kind = voiceKind(item);

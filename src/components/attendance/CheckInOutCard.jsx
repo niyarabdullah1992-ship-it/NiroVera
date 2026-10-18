@@ -1013,14 +1013,14 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         note = clockState === "in_window"
           ? (ar ? `الآن ساعات الحظر وورديتك «مكشوف» — لا عمل تحت الشمس المباشرة حتى ${win.endLabel}. يحق لك رفض العمل المكشوف والانتقال إلى مكان مظلّل.` : `Ban hours now and your shift is marked exposed — no work in direct sun until ${win.endLabel}. You may refuse exposed work and move to shade.`)
           : (ar ? `ورديتك اليوم «مكشوف» — لا عمل تحت الشمس المباشرة في هذه الساعات. يحق لك رفض العمل المكشوف.` : `Your shift today is marked exposed — no work in direct sun in these hours. You may refuse exposed work.`);
-        action = { to: "/app/requests?kind=heat_report", label: ar ? "بلّغ عن عمل مكشوف ›" : "Report exposed work ›" };
+        action = { to: "/app/complaints?channel=heat", label: ar ? "بلّغ عن عمل مكشوف ›" : "Report exposed work ›" };
       } else if (sunMark === SUN_OFFICE) {
         tone = "ok";
         note = ar ? "يومك «مظلّل» — لا عمل تحت الشمس في هذه الساعات." : "Your day is marked shaded — no sun work in these hours.";
       } else {
         tone = "alert";
         note = ar ? "في موسم الحظر ولم يُحدَّد يومك «مكشوف / مظلّل». إن شُغّلت تحت الشمس في هذه الساعات فبلّغ." : "In the ban season and your day has no exposed/shaded mark. If you are put in the sun in these hours, report it.";
-        action = { to: "/app/requests?kind=heat_report", label: ar ? "بلّغ عن عمل مكشوف ›" : "Report exposed work ›" };
+        action = { to: "/app/complaints?channel=heat", label: ar ? "بلّغ عن عمل مكشوف ›" : "Report exposed work ›" };
       }
       const heatBadge = heatCite?.article ? (ar ? `م ${heatCite.article}` : `Art. ${heatCite.article}`) : (ar ? "القرار 3337" : "Dec. 3337");
       placeByTime({

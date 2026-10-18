@@ -393,6 +393,35 @@ export function resolveFlexDayBreaks({ shift, breaks, checkIn, checkOut, now, on
   return out;
 }
 
+/** The platform rule for a long shift: more than the ordinary day (Art. 98, 8 h) opens a one-hour rest. */
+export const LONG_SHIFT_REST_MINUTES = 60;
+
+/**
+ * A shift longer than the ordinary day gets a one-hour flex break the worker places himself in بصمتي —
+ * split in two by default, the window from the first half hour after the start to the last before the end.
+ * Returns the patch to apply, or null (short shift · already flex · continuous Art. 103 · fixed by choice).
+ */
+export function longShiftRestPatch(shift, onDate) {
+  if (!shift || shift.breakMode === "flex" || shift.breakMode === "continuous" || shift.breakMode === "fixed") return null;
+  const start = clockOfHm(shift.start);
+  if (start == null || clockOfHm(shift.end) == null) return null;
+  const span = minutesBetween(shift.start, shift.end) || 1440;
+  const ordinary = (Number(ruleValue("hours.shift.ordinaryHours", onDate)) || 8) * 60;
+  if (span <= ordinary) return null;
+  const minPart = ruleValue("hours.rest.duringShiftMinutes", onDate) || 30;
+  return {
+    breakMode: "flex",
+    restMinutes: LONG_SHIFT_REST_MINUTES,
+    flexBreak: {
+      minutes: LONG_SHIFT_REST_MINUTES,
+      from: hmOfClock(start + minPart),
+      to: hmOfClock(start + span - minPart),
+      split: LONG_SHIFT_REST_MINUTES >= minPart * 2,
+      earlyEnd: false,
+    },
+  };
+}
+
 /**
  * The worker's own rest plan on a flex shift — he chooses where his break sits, ahead of time.
  * parts: [{ start: "HH:MM", minutes }] — one block, or two parts when the shift splits the break.

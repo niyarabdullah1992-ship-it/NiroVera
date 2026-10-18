@@ -17,7 +17,7 @@ import { getUiLang } from "./dateFormat";
 import { toRiyadhDateKey } from "./riyadhDate";
 import { reconcileStationReferences } from "./stationConsistency";
 import { clearStationScope } from "./stationScopeStore";
-import { planDuplicateShiftMerge, shiftWindowKey } from "./shiftDerivations";
+import { longShiftRestPatch, planDuplicateShiftMerge, shiftWindowKey } from "./shiftDerivations";
 import { employeeWageSplit } from "./employeeFileView";
 import { applyCopyMonthAssignments, publishedWeekSnapshot, restoreCutNightDays, checkShiftChangeApplyGate, checkWeekPublishGates, clearRosterLeaveGhostAssignments, cloneDayMap, employeeShiftOnDay, isNightWorker, monthDateKeys, nightAllowanceAmount, nightAllowanceKind, nightAllowancePayLabel, nightCutHoursLabel, nightReduceCutHours, payableNightAllowance, planCopyMonthAssignments, repairNightRestAssignments, resolveNightRestAssignTarget, shiftHours, weekDateKeys, weekKeyFromDate, weekStartDate, weekStartsInMonth } from "./shiftWeek";
 import {
@@ -618,6 +618,18 @@ function purgePresetLadders(data) {
 }
 
 /* ----------------------------- company data ----------------------------- */
+/** Shift types past the ordinary day with no break mode chosen get the one-hour flex rest (longShiftRestPatch). */
+function openLongShiftRests(data) {
+  let changed = false;
+  for (const schedule of data?.schedules || []) {
+    for (const shift of schedule?.shiftTypes || []) {
+      const patch = longShiftRestPatch(shift);
+      if (patch) { Object.assign(shift, patch); changed = true; }
+    }
+  }
+  return changed;
+}
+
 export function getCompanyData(id) {
   const data = normalizeCompanyData(read(companyKey(id), null));
   if (!data) return data;
@@ -635,6 +647,8 @@ export function getCompanyData(id) {
   if (moveCompCreditsOutOfAnnual(data)) persist = true;
   // Art. 112: official holidays apply from the calendar — old pending «eid» requests need no decision.
   if (voidLegacyHolidayRequestsIn(data)) persist = true;
+  // The platform rule: a shift longer than 8 hours opens a one-hour rest the worker places in بصمتي.
+  if (openLongShiftRests(data)) persist = true;
   // Local preview used to seed compass names (شمال/شرق) — those were labels only,
   // not a forced region layer. Rewrite once so the org tree shows free branch names.
   if (isLocalPreviewWorkspace(id) && Array.isArray(data.stations)) {
@@ -5230,6 +5244,10 @@ export function addShiftType(companyId, stationId, shiftType) {
       restMinutes: shiftType.restMinutes ?? ruleValue("hours.rest.duringShiftMinutes"),
       ...(shiftType.outdoor === true ? { outdoor: true } : shiftType.outdoor === false ? { outdoor: false } : {}),
     });
+    // More than 8 hours → a one-hour rest the worker places himself in بصمتي.
+    const added = entry.shiftTypes[entry.shiftTypes.length - 1];
+    const patch = longShiftRestPatch(added);
+    if (patch) Object.assign(added, patch);
   });
 }
 
@@ -5368,6 +5386,11 @@ export function updateShiftType(companyId, stationId, shiftTypeId, updates) {
     const st = entry.shiftTypes.find((s) => s.id === shiftTypeId);
     if (!st) return;
     Object.assign(st, updates);
+    // A shift stretched past 8 hours opens the one-hour flex rest (unless the manager chose a break mode).
+    if ((updates?.start || updates?.end) && !updates?.breakMode) {
+      const patch = longShiftRestPatch(st);
+      if (patch) Object.assign(st, patch);
+    }
     applyShiftMerge(entry, planDuplicateShiftMerge(entry.shiftTypes));
     markWeekDirty(entry, new Date());
   });

@@ -22,3 +22,16 @@ const day = resolveFlexDayBreaks({ shift, breaks: [], checkIn: "07:00", checkOut
 assert.equal(day.assumed?.start, "11:30");
 assert.equal(day.assumed?.end, "12:30");
 console.log("PASS rest plan — the worker places his own break, within Art. 101");
+
+// The platform rule: more than 8 hours opens a one-hour flex rest; 8 hours or less, or a chosen mode, stays.
+import { longShiftRestPatch } from "../src/lib/shiftDerivations.js";
+const nine = longShiftRestPatch({ start: "07:00", end: "16:00" }, DAY);
+assert.equal(nine.breakMode, "flex");
+assert.equal(nine.flexBreak.minutes, 60);
+assert.equal(nine.flexBreak.split, true);
+assert.equal(nine.flexBreak.from, "07:30");
+assert.equal(nine.flexBreak.to, "15:30");
+assert.equal(longShiftRestPatch({ start: "07:00", end: "15:00" }, DAY), null, "8 hours: no change");
+assert.equal(longShiftRestPatch({ start: "07:00", end: "16:00", breakMode: "fixed" }, DAY), null, "a fixed break chosen by the manager stays");
+assert.equal(longShiftRestPatch({ start: "19:00", end: "07:00" }, DAY).breakMode, "flex", "a 12-hour night opens it too");
+console.log("PASS long shift opens a one-hour flex rest");

@@ -201,7 +201,7 @@ const week = (schedule, employees, weekStart, extra = {}) => checkWeekPublishGat
   ok(/المادة 103/.test(gate(week({ assignments: { "2026-10-12": { short: ["a"] } } }, emp, "2026-10-11", { company: { hoursPolicy: { continuousWork103: true } } }), "rest_5h")?.note), "Art. 103 shown on the gate");
 
   const posting = week({ assignments: { "2026-10-12": { short: ["a"] } } }, emp, "2026-10-11");
-  eq(`${gate(posting, "work_posting")?.ok}/${gate(posting, "work_posting")?.error}`, "false/WORK_POSTING_MISSING", "Art. 17 posting missing warns");
+  eq(`${gate(posting, "work_posting")?.ok}/${gate(posting, "work_posting")?.error}`, "true/null", "Art. 17 is shown for information only — no warning");
   eq(gate(week({ assignments: { "2026-10-12": { short: ["a"] } } }, emp, "2026-10-11", { company: { hoursPolicy: { workPosting: { posted: true, postedAt: "2026-01-01" } } } }), "work_posting")?.ok, true, "posted table passes");
 }
 

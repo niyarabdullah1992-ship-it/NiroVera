@@ -3332,14 +3332,12 @@ export function checkWeekPublishGates({
     },
     {
       id: "work_posting",
-      ok: workPosting.ok,
+      ok: true,
       block: false,
-      error: workPosting.ok ? null : workPosting.error,
+      error: null,
       ...articleChip("hours.posting.cite", onDate),
-      title: ar ? "جدول مواعيد العمل معلن في موقع العمل" : "Work-hours table posted at the workplace",
-      note: workPosting.ok
-        ? (ar ? `مُعلن${workPosting.postedAt ? ` منذ ${workPosting.postedAt}` : ""}: مواعيد العمل وفترات الراحة ويوم الراحة ومواعيد النوبات (المادة 17).` : `Posted${workPosting.postedAt ? ` since ${workPosting.postedAt}` : ""}: hours, rest periods, rest day and shift times (Art. 17).`)
-        : (ar ? workPosting.reason : workPosting.reasonEn),
+      title: ar ? "للعلم: إعلان الجدول في موقع العمل" : "For information: posting the table at the work site",
+      note: ar ? "يُعلَّق جدول مواعيد العمل وفترات الراحة ويوم الراحة ومواعيد النوبات في مكان ظاهر بموقع العمل (المادة 17)." : "Post the table of hours, rest periods, rest day and shift times in a visible place at the work site (Art. 17).",
     },
     {
       id: "juvenile",

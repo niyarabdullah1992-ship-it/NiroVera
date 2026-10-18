@@ -1,5 +1,4 @@
 import React, { useState, useEffect, lazy, Suspense } from "react";
-import { checkWorkPostingGate } from "@/lib/laborHoursPolicy.js";
 import { Link, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -323,13 +322,6 @@ export default function Attendance() {
           {(activeTab === "roster" || activeTab === "punch") && (
             <MyPunchPage me={self} currentUser={currentUser} company={company} data={data} t={t} lang={lang} />
           )}
-          {activeTab === "team" && isManager && !checkWorkPostingGate({ company: data }).ok ? (
-            <div data-work-posting-missing="1" role="note" style={{ margin: "0 0 12px", padding: "10px 14px", border: "1px solid var(--nv-warn-line, #E3C27A)", background: "var(--nv-warn-soft, #FBF3E2)", color: "var(--nv-warn-ink, #7A4E0B)", fontSize: 12, lineHeight: 1.75, borderRadius: 10 }}>
-              {ar ? checkWorkPostingGate({ company: data }).reason : checkWorkPostingGate({ company: data }).reasonEn}
-              {" "}
-              <Link to="/app/attendance?lane=manage&tab=policy" style={{ color: "inherit", fontWeight: 600 }}>{ar ? "سجّل الإعلان في «السياسة والمواقع» ›" : "Record it in Policy and sites ›"}</Link>
-            </div>
-          ) : null}
           {activeTab === "team" && isManager && (
             <AttendanceDailyDashboard employees={employees} currentUser={currentUser} company={company} data={data} t={t} onQueueCount={onDashboardCount} />
           )}

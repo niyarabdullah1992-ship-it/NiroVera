@@ -872,12 +872,30 @@ export function migratePreviewOwnerGosiIdentity(data) {
  * onto the company field the ministry board already saves, and clear the
  * employee field only when it still holds that exact value.
  */
+/**
+ * Preview: the Khafji morning shift becomes a 9-hour day (07:00–16:00) with a one-hour flex break, split
+ * in two by default — so «حدّد وقت راحتك» shows in بصمتي and the worker places his own rest. Once.
+ */
+export function migratePreviewFlexMorning(data) {
+  if (!data || data.previewFlexMorning9h) return false;
+  const schedule = (data.schedules || []).find((row) => row?.id === "sch_1") || null;
+  const morning = schedule?.shiftTypes?.find((row) => row?.id === "morning");
+  if (!morning) return false;
+  data.previewFlexMorning9h = true;
+  morning.end = "16:00";
+  morning.restMinutes = 60;
+  morning.breakMode = "flex";
+  morning.flexBreak = { minutes: 60, from: "07:30", to: "15:30", split: true, earlyEnd: false };
+  return true;
+}
+
 export function migratePreviewGosiEstablishment(data) {
+  const flexMorning = migratePreviewFlexMorning(data);
   const moved = migratePlatformFactHomes(data);
   const dated = migratePreviewDatelessLeave(data);
   const crew = migratePreviewProofPeople(data);
   const rhythm = migratePreviewTaskRhythm(data);
-  return dated || crew || rhythm || moved;
+  return dated || crew || rhythm || moved || flexMorning;
 }
 
 /**

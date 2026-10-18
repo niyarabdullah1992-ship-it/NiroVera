@@ -392,7 +392,8 @@ export function enterLocalPreview() {
           nightEmergencyTransferReady: true,
           nightFoodAccessReady: true,
           shiftTypes: [
-            { id: "morning", start: "07:00", end: "15:00", label: "صباحي", restMinutes: 30 },
+            // 9-hour day with a one-hour flex break the worker places himself (split in two by default).
+            { id: "morning", start: "07:00", end: "16:00", label: "صباحي", restMinutes: 60, breakMode: "flex", flexBreak: { minutes: 60, from: "07:30", to: "15:30", split: true, earlyEnd: false } },
             { id: "evening", start: "15:00", end: "23:00", label: "مسائي", restMinutes: 30 },
             { id: "night", start: "23:00", end: "07:00", label: "ليلي", restMinutes: 30 },
           ],

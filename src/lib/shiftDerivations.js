@@ -409,15 +409,19 @@ export function longShiftRestPatch(shift, onDate) {
   const ordinary = (Number(ruleValue("hours.shift.ordinaryHours", onDate)) || 8) * 60;
   if (span <= ordinary) return null;
   const minPart = ruleValue("hours.rest.duringShiftMinutes", onDate) || 30;
+  // The opening length reads the roster's own hours: what the duty holds past the ordinary eight
+  // (8:30 → 30 min, 9:00 → 60), never under the statutory minimum and at most an hour by default.
+  // The management changes it afterwards on the shift type («مدة الراحة»), within Art. 101.
+  const minutes = Math.min(LONG_SHIFT_REST_MINUTES, Math.max(minPart, span - ordinary));
   return {
     breakMode: "flex",
-    restMinutes: LONG_SHIFT_REST_MINUTES,
+    restMinutes: minutes,
     // The window is the whole duty: the worker writes his break time anywhere inside it.
     flexBreak: {
-      minutes: LONG_SHIFT_REST_MINUTES,
+      minutes,
       from: hmOfClock(start),
       to: hmOfClock(start + span),
-      split: LONG_SHIFT_REST_MINUTES >= minPart * 2,
+      split: minutes >= minPart * 2,
       earlyEnd: false,
     },
   };

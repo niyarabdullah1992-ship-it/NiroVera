@@ -12,6 +12,17 @@ const toMin = (hm) => {
 };
 /** Arabic count of hours: 3–10 «ساعات», 11 and up «ساعة», 1 «ساعة», 2 «ساعتان». */
 const hoursAr = (n) => (n === 1 ? "ساعة واحدة" : n === 2 ? "ساعتان" : n >= 3 && n <= 10 ? `${n} ساعات` : `${n} ساعة`);
+/** Hours and minutes in words — 510 → «8 ساعات و30 دقيقة», never a rounded hour. */
+const spanAr = (mins) => {
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  return m ? `${h ? `${hoursAr(h)} و` : ""}${m} دقيقة` : hoursAr(h);
+};
+const spanEn = (mins) => {
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  return m ? `${h} h ${m} min` : `${h} h`;
+};
 const hmOf = (mins) => {
   const m = ((Math.round(mins) % 1440) + 1440) % 1440;
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
@@ -58,7 +69,7 @@ export function DutyComposition({ ar = true, flex, onDate, minClock, maxClock })
       ? (ar ? `نظام العمل · ${daily?.labelAr || "المادة 98"}` : `Labour Law · ${daily?.labelEn || "Art. 98"}`)
       : (ar ? `فوق ${daily?.value || 8} ساعات — عمل إضافي` : `Past ${daily?.value || 8} h — overtime`);
   const rows = [
-    { key: "work", label: ar ? "العمل الفعلي" : "Actual work", value: ar ? hoursAr(Math.round(work / 60)) : `${Math.round(work / 60)} h`, tag: <SourceTag kind="law">{workSource}</SourceTag> },
+    { key: "work", label: ar ? "العمل الفعلي" : "Actual work", value: ar ? spanAr(work) : spanEn(work), tag: <SourceTag kind="law">{workSource}</SourceTag> },
     { key: "rest", label: ar ? "الراحة" : "Rest", value: minutesAr(flex.minutes), tag: <SourceTag kind="law">{ar ? `نظام العمل · المادتان ${restLaw?.article || "101"} و${notWorkLaw?.article || "102"}` : `Labour Law · Arts. ${restLaw?.article || "101"} & ${notWorkLaw?.article || "102"}`}</SourceTag> },
   ];
   const cell = { padding: "7px 10px", fontSize: 12, borderTop: "1px solid var(--nv-line)" };
@@ -74,8 +85,17 @@ export function DutyComposition({ ar = true, flex, onDate, minClock, maxClock })
           </React.Fragment>
         ))}
         <span style={{ ...cell, borderTop: "1.5px solid var(--nv-ink2)", fontWeight: 700, color: "var(--nv-ink)", whiteSpace: "nowrap" }}>{ar ? "الدوام" : "Duty"}</span>
-        <span style={{ ...cell, borderTop: "1.5px solid var(--nv-ink2)", fontWeight: 700, color: "var(--nv-ink)", whiteSpace: "nowrap" }}>{ar ? hoursAr(Math.round(flex.span / 60)) : `${Math.round(flex.span / 60)} h`}</span>
+        <span style={{ ...cell, borderTop: "1.5px solid var(--nv-ink2)", fontWeight: 700, color: "var(--nv-ink)", whiteSpace: "nowrap" }}>{ar ? spanAr(flex.span) : spanEn(flex.span)}</span>
         <span dir="ltr" style={{ ...cell, borderTop: "1.5px solid var(--nv-ink2)", ...MONO, fontSize: 11.5, color: "var(--nv-muted)", textAlign: "left" }}>{minClock}–{maxClock}</span>
+      </div>
+      <div data-rest-length-source="1" style={{ padding: "6px 10px", borderTop: "1px solid var(--nv-line)", fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.6 }}>
+        {flex.minutes > Number(restLaw?.value || 30)
+          ? (ar
+            ? `الحد النظامي للراحة ${restLaw?.value || 30} دقيقة في المرة الواحدة، تجمع الراحة والصلاة والطعام. ومدة ${minutesAr(flex.minutes)} حددتها إدارتك في جدول الورديات.`
+            : `The statutory minimum is ${restLaw?.value || 30} min at a time, for rest, prayer and food together. ${flex.minutes} min was set by your management on the roster.`)
+          : (ar
+            ? `راحتك هي الحد النظامي: ${restLaw?.value || 30} دقيقة في المرة الواحدة، تجمع الراحة والصلاة والطعام.`
+            : `Your break is the statutory minimum: ${restLaw?.value || 30} min at a time, for rest, prayer and food together.`)}
       </div>
     </div>
   );

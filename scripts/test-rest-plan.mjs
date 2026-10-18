@@ -34,7 +34,11 @@ assert.equal(nine.flexBreak.to, "16:00");
 assert.equal(longShiftRestPatch({ start: "07:00", end: "15:00" }, DAY), null, "8 hours: no change");
 assert.equal(longShiftRestPatch({ start: "07:00", end: "16:00", breakMode: "fixed" }, DAY), null, "a fixed break chosen by the manager stays");
 assert.equal(longShiftRestPatch({ start: "19:00", end: "07:00" }, DAY).breakMode, "flex", "a 12-hour night opens it too");
-console.log("PASS long shift opens a one-hour flex rest");
+const eightHalf = longShiftRestPatch({ start: "07:00", end: "15:30" }, DAY);
+assert.equal(eightHalf.flexBreak.minutes, 30, "8:30 duty → the statutory 30 minutes");
+assert.equal(eightHalf.flexBreak.split, false);
+assert.equal(longShiftRestPatch({ start: "19:00", end: "07:00" }, DAY).flexBreak.minutes, 60, "12-hour stay → one hour by default");
+console.log("PASS long shift opens a flex rest sized from the roster hours");
 
 // A prayer inside the day is left out of the choices (Dhuhr 11:38 → no one-hour block covering it).
 const withDhuhr = restPlanChoices({ shift, onDate: DAY, avoid: [{ from: 11 * 60 + 38, to: 11 * 60 + 53 }] });

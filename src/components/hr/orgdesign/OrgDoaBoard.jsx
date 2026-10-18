@@ -1,29 +1,19 @@
 import React, { useMemo, useState } from "react";
 import {
-  activePeople,
   deriveSeatRegister,
   DOA_KINDS,
   DOA_KIND_LABELS,
   orgDesignOf,
-  resolveDoa,
   seatOccupant,
   todayKey,
 } from "@/lib/orgDesign";
 import { removeDoaRow, upsertDoaRow } from "@/lib/orgDesignStore";
-import { branchRequestManagers } from "@/lib/dutyScope";
-import { EmptyInvite, GateLine, Note, Slab, SlabBody, SubHead, btnGhost, btnPrimary, btnQuiet, seatOptionLabel } from "./orgDesignUi";
+import { EmptyInvite, GateLine, Slab, SlabBody, SubHead, btnGhost, btnPrimary, btnQuiet, seatOptionLabel } from "./orgDesignUi";
 
 const VIA = {
   holder: { ar: "شاغل المنصب", en: "holder" },
   acting: { ar: "بالتكليف", en: "acting" },
   deputy: { ar: "النائب", en: "deputy" },
-};
-const WHY = {
-  row: { ar: "يعتمد", en: "approves" },
-  escalated: { ar: "تصعيد", en: "escalated" },
-  over_limit: { ar: "فوق الحد", en: "over the limit" },
-  vacant: { ar: "المنصب شاغر بلا تكليف ولا نائب", en: "seat vacant, no acting or deputy" },
-  self: { ar: "صاحب الطلب لا يعتمد نفسه", en: "nobody approves himself" },
 };
 
 const blank = { id: "", kind: "leave", unitId: "", approverSeatId: "", limit: "", escalateToSeatId: "", note: "" };
@@ -40,10 +30,8 @@ export default function OrgDoaBoard({ ar, data, actor, companyId, canEdit }) {
   const seats = useMemo(() => deriveSeatRegister(data, day), [data, day]);
   const seatById = useMemo(() => new Map(seats.map((s) => [s.seatId, s])), [seats]);
   const stations = data?.stations || [];
-  const people = activePeople(data);
   const [form, setForm] = useState(null);
   const [gate, setGate] = useState(null);
-  const [sim, setSim] = useState({ employeeId: "", kind: "leave", amount: "" });
 
   const unitName = (id) => (id ? stations.find((s) => String(s.id) === String(id))?.name || "—" : (ar ? "كل المنشأة" : "Whole company"));
   const seatFace = (id) => {
@@ -60,15 +48,6 @@ export default function OrgDoaBoard({ ar, data, actor, companyId, canEdit }) {
     if (res.ok) setForm(null);
   };
 
-  const simResult = useMemo(() => {
-    if (!sim.employeeId) return null;
-    return resolveDoa(data, { kind: sim.kind, employeeId: sim.employeeId, amount: sim.amount === "" ? null : Number(sim.amount), day });
-  }, [data, sim, day]);
-  const simDefault = useMemo(() => {
-    if (!sim.employeeId || simResult?.source !== "default") return [];
-    const person = people.find((p) => String(p.id) === sim.employeeId);
-    return person ? branchRequestManagers(data, person).map((p) => p.name) : [];
-  }, [data, sim.employeeId, simResult, people]);
 
   return (
     <div className="nv-od">
@@ -171,47 +150,6 @@ export default function OrgDoaBoard({ ar, data, actor, companyId, canEdit }) {
       ) : (gate && !gate.ok ? <div style={{ padding: "10px 18px" }}><GateLine gate={gate} ar={ar} /></div> : null)}
       </Slab>
 
-      <Slab
-        body
-        title={ar ? "جرّب المسار" : "Try the path"}
-        note={ar ? "اختر موظفاً ونوع قرار — ترى من يقرر اليوم ولماذا، قبل أن يصل أي طلب." : "Pick a person and a decision type — see who decides today and why, before any request arrives."}
-      >
-        <div className="nv-od-form">
-          <label className="nv-od-field">{ar ? "الموظف" : "Person"}
-            <select className="nv-od-select" value={sim.employeeId} onChange={(e) => setSim((s) => ({ ...s, employeeId: e.target.value }))}>
-              <option value="">{ar ? "— اختر —" : "— pick —"}</option>
-              {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </label>
-          <label className="nv-od-field">{ar ? "القرار" : "Decision"}
-            <select className="nv-od-select" value={sim.kind} onChange={(e) => setSim((s) => ({ ...s, kind: e.target.value }))}>
-              {DOA_KINDS.map((k) => <option key={k} value={k}>{ar ? DOA_KIND_LABELS[k].ar : DOA_KIND_LABELS[k].en}</option>)}
-            </select>
-          </label>
-          {DOA_KIND_LABELS[sim.kind]?.unit ? (
-            <label className="nv-od-field">{ar ? `القيمة (${unitWord(sim.kind)})` : `Amount (${unitWord(sim.kind)})`}
-              <input className="nv-od-input nv-od-num" inputMode="decimal" value={sim.amount} onChange={(e) => setSim((s) => ({ ...s, amount: e.target.value }))} />
-            </label>
-          ) : null}
-        </div>
-        {simResult ? (
-          <div className="nv-od-path" aria-live="polite">
-            {simResult.path.map((step, i) => (
-              <React.Fragment key={`${step.seatId}-${i}`}>
-                <span data-why={step.why === "row" || step.why === "escalated" ? undefined : step.why}>
-                  {step.title || seatById.get(step.seatId)?.title || "—"}{step.name ? ` · ${step.name}` : ""} — {ar ? WHY[step.why]?.ar : WHY[step.why]?.en}{step.via && step.via !== "holder" ? ` (${ar ? VIA[step.via].ar : VIA[step.via].en})` : ""}
-                </span>
-                {i < simResult.path.length - 1 ? <span aria-hidden>←</span> : null}
-              </React.Fragment>
-            ))}
-            {simResult.source === "doa" ? (
-              <strong style={{ color: "var(--nv-ink)" }}>{ar ? `يقرر: ${simResult.approvers[0].name}` : `Decides: ${simResult.approvers[0].name}`}</strong>
-            ) : (
-              <span>{ar ? `المسار الحالي — مدير الوحدة: ${simDefault.join("، ") || "رأس المنشأة"}` : `Default path — unit manager: ${simDefault.join(", ") || "company head"}`}</span>
-            )}
-          </div>
-        ) : <Note>{ar ? "المسار يظهر هنا حين تختار الموظف." : "The path shows here once you pick a person."}</Note>}
-      </Slab>
     </div>
   );
 }

@@ -88,6 +88,14 @@ export default function RestPlanPicker({ ar = true, shift, onDate, continuous103
   return (
     <RestCard ar={ar} note={note}>
       <div data-rest-plan="edit" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {flex.span === 720 ? (
+          // The 12-hour stay (four on · four off): the stay is 12 hours, one of them rest — Art. 98's weekly criterion.
+          <span data-rest-twelve="1" style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.6, padding: "6px 10px", borderRadius: 8, background: "var(--nv-soft, #F7F9F8)", border: "1px solid var(--nv-line)" }}>
+            {ar
+              ? "نظام 12 ساعة: بقاؤك 12 ساعة منها ساعة راحة، فعملك الفعلي 11 ساعة. في نظام 4 أيام عمل و4 راحة يُقاس العمل أسبوعياً لا يومياً (المادة 98)."
+              : "12-hour system: a 12-hour stay with one hour of rest, so 11 hours of actual work. On four days on and four off, work is measured weekly, not daily (Art. 98)."}
+          </span>
+        ) : null}
         <span data-rest-rule="1" style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.6 }}>
           {ar
             ? "كل جزء نصف ساعة على الأقل، ولا تعمل أكثر من 5 ساعات متصلة قبل الراحة أو بعدها. صلاة أثناء العمل خارج الراحة لا تُستقطع ولا تطيل دوامك."

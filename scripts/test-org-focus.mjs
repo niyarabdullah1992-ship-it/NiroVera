@@ -146,3 +146,14 @@ assert.equal(place.managerName, "أحمد سالم", "the unit manager stands in
 assert.equal(unseatedPlace(data, "ghost"), null);
 
 console.log("org-focus: ok");
+
+/* everyone reads the whole company ("all"): every person, but cards only — never file data */
+{
+  const all = buildOrgFocusTree(data, { viewerId: "w1", scope: "all", day: DAY });
+  assert.ok(all.nodes.size >= mine.nodes.size, "the full tree holds at least the pruned one");
+  for (const node of all.nodes.values()) {
+    for (const key of Object.keys(node)) {
+      assert.ok(!["employeeNumber", "salary", "baseSalary", "phone", "email", "profile", "hireDate", "nationalId"].includes(key), `no file field on a card: ${key}`);
+    }
+  }
+}

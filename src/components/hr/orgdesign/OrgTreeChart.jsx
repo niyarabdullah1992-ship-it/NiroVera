@@ -1263,7 +1263,8 @@ export default function OrgTreeChart({
   };
 
   /* drawers */
-  const hrDrawer = scope === "all";
+  // the HR file preview is HR's; everyone else reads the card drawer (name · title · unit · seat)
+  const hrDrawer = scope === "all" && canWrite;
   const chartNode = useMemo(() => {
     if (!hrDrawer || !details?.vacant) return null;
     const flat = buildWorkforceSeatChart(data, { ar }).flat;

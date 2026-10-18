@@ -42,15 +42,15 @@ export default function OrgStructure() {
       section={ar ? "ملفي" : "My file"}
       title={ar ? "مكاني في الهيكل" : "My place in the structure"}
       hint={ar
-        ? "للاطلاع فقط — سلسلة إدارتك وزملاؤك وفريقك. التغيير في الهيكل عبر الموارد البشرية."
-        : "Read-only — your management chain, peers and team. Structural changes go through HR."}
+        ? "للاطلاع — الشركة كلها: كل الفروع وكل الموظفين، والمخطط يفتح على بطاقتك. التغيير في الهيكل عبر الموارد البشرية."
+        : "Read-only — the whole company: every branch and every person; the chart opens on your card. Structural changes go through HR."}
     >
       {!data || !currentUser || !company ? (
         <p style={{ margin: 0, fontSize: 13, color: MUTED }}>{ar ? "جارٍ تحميل الهيكل…" : "Loading org structure…"}</p>
       ) : (
         <div className="nv-org-page" data-org-pane="mine">
           <PageErrorBoundary resetKey="mine">
-            <OrgChartEntry ar={ar} data={data} user={currentUser} scope="mine" />
+            <OrgChartEntry ar={ar} data={data} user={currentUser} scope="all" />
           </PageErrorBoundary>
         </div>
       )}

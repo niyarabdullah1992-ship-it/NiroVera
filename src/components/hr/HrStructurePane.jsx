@@ -122,11 +122,11 @@ export default function HrStructurePane({ ar = true, lang = "ar", data, currentU
       <div data-hr-structure="read" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <p style={{ margin: 0, fontSize: 12.5, color: MUTED, lineHeight: 1.7 }}>
           {ar
-            ? "للاطلاع فقط — سلسلة إدارتك وزملاؤك وفريقك. التغيير في الهيكل عبر الموارد البشرية."
-            : "Read-only — your management chain, peers and team. Structural changes go through HR."}
+            ? "للاطلاع — الشركة كلها بفروعها وموظفيها. التغيير في الهيكل عبر الموارد البشرية."
+            : "Read-only — the whole company, every branch and person. Structural changes go through HR."}
         </p>
-        <PageErrorBoundary resetKey="hr-structure-mine">
-          <OrgChartEntry ar={ar} data={data} user={currentUser} scope="mine" />
+        <PageErrorBoundary resetKey="hr-structure-read">
+          <OrgChartEntry ar={ar} data={data} user={currentUser} scope="all" />
         </PageErrorBoundary>
       </div>
     );

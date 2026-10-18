@@ -27,7 +27,7 @@ export default function OrgChartEntry({ ar, data, user, scope = "mine" }) {
       label={ar ? "المخطط الكامل" : "Full org chart"}
       title={ar ? "المخطط الكامل" : "Full org chart"}
       note={ar
-        ? "صفحة كاملة للهيكل: تفتح على بطاقتك وسلسلة إدارتك مفتوحة. اضغط الرقم «مباشر / الكل» أسفل أي بطاقة لفتح فريقها — وتبقى الفروع المفتوحة كما هي — وابحث عن أي شخص."
+        ? "صفحة كاملة للهيكل: الشركة كلها بفروعها وموظفيها، تفتح على بطاقتك وسلسلة إدارتك. اضغط الرقم «مباشر / الكل» أسفل أي بطاقة لفتح فريقها، وبدّل إلى «الفروع» لترى الشجرة بالفروع، وابحث عن أي شخص."
         : "The whole structure on one page: opens on your card with your chain open. Press the «direct / total» count on any card to open its team — open branches stay open — or search for anyone."}
       trailing={(
         <Link to={to} state={{ from }} className="nv-ot-entry__go" style={{ ...btnPrimary(), textDecoration: "none" }}>

@@ -128,7 +128,7 @@ export default function HrBranchesBoard({
                 {canWrite ? (
                   <button type="button" onClick={() => setFocusId(row.id)} style={{ ...openBtn, border: "none" }}>{ar ? "افتح" : "Open"}</button>
                 ) : (
-                  <Link to="/app/org/chart?view=branches&scope=mine" state={{ from: "/app/hr?tab=branches" }} style={openBtn}>{ar ? "افتح" : "Open"}</Link>
+                  <Link to="/app/org/chart?view=branches" state={{ from: "/app/hr?tab=branches" }} style={openBtn}>{ar ? "افتح" : "Open"}</Link>
                 )}
               </div>
             );

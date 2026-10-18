@@ -30,11 +30,13 @@ export default function OrgChart() {
   const from = typeof location.state?.from === "string" && location.state.from.startsWith("/app") ? location.state.from : "";
 
   const canWrite = Boolean(currentUser && (currentUser.id === data?.ownerId || HR_ROLES.includes(currentUser.role)));
-  const scope = canWrite && searchParams.get("scope") !== "mine" ? "all" : "mine";
+  // Everyone reads the whole company: every branch and every person (cards carry names, titles,
+  // units and seat states only — never file data). HR alone edits. ?scope=mine keeps the pruned view.
+  const scope = searchParams.get("scope") === "mine" ? "mine" : "all";
 
   const onBack = useCallback(() => {
     // «رجوع» returns into «الموارد البشرية › الهيكل» (or the employee's own place)
-    navigate(from || (scope === "all" ? "/app/hr?tab=org" : "/app/org?view=employee"));
+    navigate(from || (canWrite ? "/app/hr?tab=org" : "/app/org?view=employee"));
   }, [navigate, from, scope]);
 
   const onHire = useCallback((detail = {}) => {

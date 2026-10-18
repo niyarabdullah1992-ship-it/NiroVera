@@ -9,7 +9,8 @@ import {
 } from "@/lib/notificationKind";
 import { MUTED } from "@/lib/platformStyles";
 import StatusFilterPills from "@/components/shared/StatusFilterPills";
-import { bandAction, DayHeading, KindTile, NoticeFoot, NoticeHead, NoticeShell, rowChip } from "@/components/notifications/noticeChrome";
+import { bandAction, DayHeading, NoticeFoot, NoticeHead, NoticeShell, rowChip } from "@/components/notifications/noticeChrome";
+import { letterOf } from "@/components/schedules/rosterTile";
 const MONO = "'IBM Plex Mono', monospace";
 
 /** «اليوم» · «أمس» · «أقدم» — by the notice's own date. */
@@ -97,42 +98,38 @@ export default function NotificationPanel({
             const dismiss = () => (item.ids || [item.id]).forEach((id) => onDismiss(id));
             return (
               <SwipeToDeleteItem key={item.ids?.[0] || item.id} onDelete={dismiss}>
-                <div
-                  data-notice-row={unreadRow ? "unread" : "read"}
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 10,
-                    padding: "10px 10px 10px 8px",
-                    background: unreadRow ? "var(--nv-card)" : "var(--nv-card)",
-                    border: `1px solid ${unreadRow ? "var(--nv-ok-line)" : "var(--nv-line2)"}`,
-                    borderRadius: 10,
-                    boxShadow: unreadRow ? "inset 3px 0 0 var(--nv-ok-fill)" : "none",
-                  }}
-                >
-                  <KindTile Icon={kind.icon} tone={item.escalated ? "bad" : kind.tone} />
+                {/* The طلباتي kind card: white, hairline, radius 12, a letter mark, title then a quiet hint. */}
+                <div className="nv-req-kind-card" data-notice-row={unreadRow ? "unread" : "read"} style={{ cursor: "default", alignItems: "flex-start", padding: "11px 12px" }}>
+                  <span className="nv-req-kind-mark" aria-hidden style={item.escalated || kind.tone === "bad" ? { background: "var(--nv-bad-soft)", color: "var(--nv-bad-ink)" } : undefined}>
+                    {letterOf(ar ? kind.ar : kind.en)}
+                  </span>
                   <button
                     type="button"
+                    className="nv-req-kind-copy"
                     onClick={() => onOpen(item)}
-                    style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6, textAlign: "start", border: "none", background: "transparent", cursor: "pointer", fontFamily: "inherit", padding: 0, color: "inherit" }}
+                    style={{ flex: 1, textAlign: "start", border: "none", background: "transparent", cursor: "pointer", fontFamily: "inherit", padding: 0, color: "inherit", gap: 4 }}
                   >
-                    <span style={{ fontSize: 12.5, fontWeight: unreadRow ? 700 : 500, color: unreadRow ? "var(--nv-ink)" : "var(--nv-ink2)", lineHeight: 1.65 }}>{text}</span>
-                    <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                      <span style={rowChip(kind.tone)}>{ar ? kind.ar : kind.en}</span>
-                      {item.count > 1 ? <span dir="ltr" style={{ ...rowChip("navy"), fontFamily: MONO }}>{`×${item.count}`}</span> : null}
-                      {item.escalated ? <span style={rowChip("bad")}>{ar ? "تصعيد" : "Escalated"}</span> : null}
-                      <span dir="ltr" style={{ fontFamily: MONO, fontSize: 10.5, color: MUTED, unicodeBidi: "isolate" }}>{relativeNotificationTime(item.createdAt, lang)}</span>
-                      {unreadRow ? <span aria-label={ar ? "غير مقروء" : "Unread"} style={{ width: 7, height: 7, borderRadius: 999, background: "var(--nv-ok-fill)" }} /> : null}
+                    <span className="nv-req-kind-title" style={{ fontWeight: unreadRow ? 700 : 600, lineHeight: 1.6 }}>{text}</span>
+                    <span className="nv-req-kind-hint" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span>{ar ? kind.ar : kind.en}</span>
+                      <span aria-hidden>·</span>
+                      <span dir="ltr" style={{ fontFamily: MONO, unicodeBidi: "isolate" }}>{relativeNotificationTime(item.createdAt, lang)}</span>
+                      {item.count > 1 ? <><span aria-hidden>·</span><span dir="ltr" style={{ fontFamily: MONO, unicodeBidi: "isolate" }}>{`×${item.count}`}</span></> : null}
                     </span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={dismiss}
-                    aria-label={ar ? "إخفاء" : "Dismiss"}
-                    style={{ width: 26, height: 26, border: "1px solid var(--nv-line2)", borderRadius: 8, background: "var(--nv-card)", color: MUTED, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
-                  >
-                    <X style={{ width: 13, height: 13 }} />
-                  </button>
+                  <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
+                    {item.escalated
+                      ? <span style={rowChip("bad")}>{ar ? "تصعيد" : "Escalated"}</span>
+                      : unreadRow ? <span style={rowChip("ok")}>{ar ? "جديد" : "New"}</span> : null}
+                    <button
+                      type="button"
+                      onClick={dismiss}
+                      aria-label={ar ? "إخفاء" : "Dismiss"}
+                      style={{ width: 24, height: 24, border: "1px solid var(--nv-line2)", borderRadius: 8, background: "var(--nv-card)", color: MUTED, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                    >
+                      <X style={{ width: 12, height: 12 }} />
+                    </button>
+                  </span>
                 </div>
               </SwipeToDeleteItem>
             );

@@ -120,14 +120,18 @@ export default function BranchNoticePanel({
           {ar ? "لا إشعارات في هذا الفلتر." : "No notices in this filter."}
         </div>
       ) : rows.map((item) => (
-        <div key={item.id} data-scope-notice={item.band} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 10px 10px 8px", background: "var(--nv-card)", border: `1px solid ${item.band === "urgent" ? "var(--nv-bad-line)" : "var(--nv-line2)"}`, borderRadius: 10 }}>
-          <KindTile tone={bandTone(item.band)} letter={item.band === "urgent" ? "!" : item.band === "decision" ? "ق" : "i"} />
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0, flex: 1 }}>
-            <strong style={{ fontSize: 12.5, color: "var(--nv-ink)", lineHeight: 1.6 }}>{ar ? item.titleAr : item.titleEn}</strong>
-            <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-              <span style={rowChip("ok")}>{item.branch}</span>
-              <span style={rowChip("navy")}>{ar ? item.kindAr : item.kindEn}</span>
-              <span dir="ltr" style={{ ...rowChip(bandTone(item.band)), fontFamily: MONO, unicodeBidi: "isolate" }}>{`×${item.count}`}</span>
+        <div key={item.id} data-scope-notice={item.band} className="nv-req-kind-card" style={{ cursor: "default", alignItems: "flex-start", padding: "11px 12px" }}>
+          <span className="nv-req-kind-mark" aria-hidden style={item.band === "urgent" ? { background: "var(--nv-bad-soft)", color: "var(--nv-bad-ink)" } : item.band === "decision" ? { background: "var(--nv-warn-soft)", color: "var(--nv-warn-ink)" } : undefined}>
+            {String(ar ? item.kindAr : item.kindEn || "").replace(/^ال/u, "").slice(0, 1)}
+          </span>
+          <div className="nv-req-kind-copy" style={{ flex: 1, gap: 4 }}>
+            <span className="nv-req-kind-title" style={{ lineHeight: 1.6 }}>{ar ? item.titleAr : item.titleEn}</span>
+            <span className="nv-req-kind-hint" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span>{item.branch}</span>
+              <span aria-hidden>·</span>
+              <span>{ar ? item.kindAr : item.kindEn}</span>
+              <span aria-hidden>·</span>
+              <span dir="ltr" style={{ fontFamily: MONO, unicodeBidi: "isolate" }}>{`×${item.count}`}</span>
             </span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 5, alignItems: "stretch", flexShrink: 0 }}>

@@ -917,11 +917,27 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
                       ].filter(Boolean).join(" · ")}
                   </span>
                 </div>
-                {view === "team" ? (
-                  <div data-cmp-search style={{ position: "relative", display: "flex", flexDirection: "column", gap: 5, flex: "1 1 220px", maxWidth: 320 }}>
+              </div>
+
+              {view === "team" ? (
+                <div data-cmp-mode style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: OC.mid }}>{ar ? "المقارنة" : "Compare"}</span>
+                  <StatusFilterPills
+                    bare
+                    dataKey="cmp-mode"
+                    value={cmpMode}
+                    onChange={setCmpMode}
+                    items={[
+                      { id: "all", label: ar ? "كل النطاق" : "Whole scope" },
+                      { id: "pick", label: ar ? "بين موظفين" : "Between people", n: cmpMode === "pick" ? cmpPicked.length : undefined },
+                    ]}
+                  />
+                  <div data-cmp-search style={{ position: "relative", display: "flex", flexDirection: "column", gap: 5, width: "100%", maxWidth: 520 }}>
                     <label htmlFor="nv-cmp-q" style={{ fontSize: 11.5, fontWeight: 600, color: OC.mid }}>
                       {cmpMode === "pick" ? (ar ? "أضف موظفاً للمقارنة" : "Add a person to compare") : (ar ? "ابحث بالاسم" : "Search by name")}
                     </label>
+                    <span style={{ position: "relative", display: "block" }}>
+                    <span aria-hidden style={{ position: "absolute", insetInlineStart: 12, top: "50%", transform: "translateY(-50%)", width: 15, height: 15, color: OC.muted, display: "inline-flex" }}><SearchIcon /></span>
                     <input
                       id="nv-cmp-q"
                       value={cmpQuery}
@@ -929,8 +945,9 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
                       onKeyDown={(e) => { if (e.key === "Enter" && pickSuggestions[0]) addPicked(pickSuggestions[0].id); }}
                       placeholder={cmpMode === "pick" ? (ar ? "اكتب جزءاً من الاسم" : "Type part of a name") : (ar ? "اسم موظف في النطاق" : "A name in scope")}
                       autoComplete="off"
-                      style={{ fontFamily: "inherit", fontSize: 12.5, height: 36, padding: "0 12px", border: `1px solid ${OC.line}`, borderRadius: 10, outline: "none", background: "var(--nv-card)", color: OC.ink, width: "100%", boxSizing: "border-box" }}
+                      style={{ "--nv-input-start": "36px", fontFamily: "inherit", fontSize: 13, height: 40, paddingInlineEnd: 12, border: `1px solid ${OC.line}`, borderRadius: 10, outline: "none", background: "var(--nv-card)", color: OC.ink, width: "100%", boxSizing: "border-box" }}
                     />
+                    </span>
                     {cmpMode === "pick" && cmpQ ? (
                       <div role="listbox" data-cmp-suggest style={{ position: "absolute", top: "100%", insetInline: 0, marginTop: 4, zIndex: 5, background: "var(--nv-card)", border: `1px solid ${OC.line}`, borderRadius: 10, boxShadow: "0 12px 28px rgba(12,20,16,.14)", padding: 4, display: "flex", flexDirection: "column", gap: 2, maxHeight: 260, overflowY: "auto" }}>
                         {pickSuggestions.length ? pickSuggestions.map((row) => (
@@ -952,22 +969,6 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
                       </div>
                     ) : null}
                   </div>
-                ) : null}
-              </div>
-
-              {view === "team" ? (
-                <div data-cmp-mode style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 600, color: OC.mid }}>{ar ? "المقارنة" : "Compare"}</span>
-                  <StatusFilterPills
-                    bare
-                    dataKey="cmp-mode"
-                    value={cmpMode}
-                    onChange={setCmpMode}
-                    items={[
-                      { id: "all", label: ar ? "كل النطاق" : "Whole scope" },
-                      { id: "pick", label: ar ? "بين موظفين" : "Between people", n: cmpMode === "pick" ? cmpPicked.length : undefined },
-                    ]}
-                  />
                   {cmpMode === "pick" ? (
                     <div data-cmp-picked style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                       {pickedRows.length ? pickedRows.map((row) => (
@@ -977,7 +978,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
                           <button type="button" onClick={() => dropPicked(row.id)} aria-label={ar ? `أزل ${row.name}` : `Remove ${row.name}`} style={{ fontFamily: "inherit", border: "none", background: "transparent", color: "inherit", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "0 2px" }}>×</button>
                         </span>
                       )) : (
-                        <span style={{ fontSize: 11.5, color: OC.muted }}>{ar ? "ابحث بالاسم في الحقل أعلاه وأضف موظفين اثنين أو أكثر." : "Search a name above and add two or more people."}</span>
+                        <span style={{ fontSize: 11.5, color: OC.muted }}>{ar ? "ابحث بالاسم وأضف موظفين اثنين أو أكثر." : "Search a name above and add two or more people."}</span>
                       )}
                     </div>
                   ) : null}
@@ -1097,7 +1098,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
                 {view !== "team"
                   ? (ar ? "بدّل إلى «الفريق» أعلى الصفحة لمقارنة الموظفين." : "Switch to Team to compare people.")
                   : (top && topScore > 0
-                    ? (ar ? `الأعلى في «${cmpTitle}»: ${top.name} بـ${cmp === "ot" ? minutesPhrase(topScore, true) : topScore}، و${zero} بلا شيء منه.` : `Highest ${cmpTitle}: ${top.name} at ${topScore}; ${zero} with none.`)
+                    ? (ar ? `الأعلى في «${cmpTitle}»: ${top.name} بـ${cmp === "ot" ? minutesPhrase(topScore, true) : topScore}${zero ? `، و${zero} بلا شيء منه` : ""}.` : `Highest ${cmpTitle}: ${top.name} at ${topScore}; ${zero} with none.`)
                     : (ar ? `لا أحد سجّل «${cmpTitle}» في هذا المدى.` : `Nobody recorded ${cmpTitle} in this range.`))}
               </span>
             </div>

@@ -43,7 +43,7 @@ import { breakClockOf, countdownLabel, dutyContextOf } from "@/lib/dutyTicker";
 import { autoOvertimeLine } from "@/lib/autoOvertime";
 import { punchClockMinutes, resolveDayBreaks } from "@/lib/actualDuty";
 import { nursingCreditOf, nursingHourOn, nursingWindowsOf } from "@/lib/dutyRequests";
-import { checkFlexBreakPunchGate, checkRestPlanGate } from "@/lib/shiftDerivations";
+import { checkFlexBreakPunchGate, checkRestPlanGate, formatShiftHm } from "@/lib/shiftDerivations";
 import { hoursPolicyOf } from "@/lib/laborHoursPolicy";
 
 const STATUS_PILL = {
@@ -84,6 +84,11 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const { lang } = useI18n();
   const ar = lang === "ar";
   const { format } = useTimeFormat();
+  // The header's 12/24 choice reaches every clock on the card: each HH:MM in a value (a time or a range) is
+  // re-read in the chosen format; anything else passes as is.
+  const clockText = (value) => (format === "12" && typeof value === "string"
+    ? value.replace(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g, (hm) => formatShiftHm(hm, "12", lang))
+    : value);
   const local = isLocalPreviewActive();
   // The duty day: today, or last night's overnight shift after midnight — open, not punched yet
   // (a late check-in lands on its own date), or just checked out (the closed day, not «لا وردية»).
@@ -1291,12 +1296,12 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
               </span>
               <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
                 <span style={{ fontSize: 12, lineHeight: 1.7, fontWeight: currentAlert.breach ? 700 : 500, color: currentAlert.breach ? "var(--nv-warn-ink)" : "var(--nv-ink2)" }}>
-                  {ar ? currentAlert.textAr : currentAlert.textEn}
+                  {clockText(ar ? currentAlert.textAr : currentAlert.textEn)}
                 </span>
                 {currentAlert.hint ? <RightHint ar={ar} hint={attRightHint(currentAlert.hint.kind, currentAlert.hint.item, { view: "employee", ar, employee: dutyEmployee })} style={{ alignSelf: "flex-start" }} /> : null}
               </span>
               {currentAlert.at ? (
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: 12.5, fontWeight: 600, color: "var(--nv-ink)", paddingTop: 1 }}>{currentAlert.at}</span>
+                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: 12.5, fontWeight: 600, color: "var(--nv-ink)", paddingTop: 1 }}>{clockText(currentAlert.at)}</span>
               ) : null}
             </div>
           ) : null}
@@ -1325,7 +1330,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                         {step.action ? <Link to={step.action.to} data-heat-action="1" style={{ alignSelf: "flex-start", fontSize: 11.5, fontWeight: 700, color: "var(--nv-ok-ink)", textDecoration: "none" }}>{step.action.label}</Link> : null}
                         {step.hint ? <RightHint ar={ar} hint={step.hint} style={{ alignSelf: "flex-start" }} /> : null}
                       </span>
-                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: 12, fontWeight: 500, color: "var(--nv-ink2)", whiteSpace: "nowrap", paddingTop: 1 }}>{step.value}</span>
+                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: 12, fontWeight: 500, color: "var(--nv-ink2)", whiteSpace: "nowrap", paddingTop: 1 }}>{clockText(step.value)}</span>
                     </li>
                   );
                 }
@@ -1378,7 +1383,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                       {step.hint ? <RightHint ar={ar} hint={step.hint} style={{ alignSelf: "flex-start" }} /> : null}
                     </span>
                     <span style={{ whiteSpace: "nowrap", paddingTop: 1 }}>
-                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: step.kind === "punch" ? 15 : 13, fontWeight: step.kind === "punch" ? 700 : 500, color: step.value === "—" ? "var(--nv-mute-fill, #C5CEC9)" : step.kind === "punch" ? "var(--nv-ink)" : "var(--nv-ink2)" }}>{step.value}</span>
+                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: step.kind === "punch" ? 15 : 13, fontWeight: step.kind === "punch" ? 700 : 500, color: step.value === "—" ? "var(--nv-mute-fill, #C5CEC9)" : step.kind === "punch" ? "var(--nv-ink)" : "var(--nv-ink2)" }}>{clockText(step.value)}</span>
                     </span>
                   </li>
                 );

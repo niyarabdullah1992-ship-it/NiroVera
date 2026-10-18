@@ -10,7 +10,7 @@ assert.equal(railFaceHref("/app/signing", "", "manage"), "/app/signing?lane=mana
 
 const side = (id, keys) => ({ id, groups: [{ items: keys.map(([key, to]) => ({ key, to })) }] });
 const sides = [
-  side("employee", [["duty:employee", "/app/attendance"], ["compliance:employee", "/app/safety"], ["payslip:employee", "/app/payroll?view=self&tab=payslip"], ["org:employee", "/app/org?view=employee"]]),
+  side("employee", [["duty:employee", "/app/attendance"], ["compliance:employee", "/app/safety"], ["payslip:employee", "/app/payroll?view=self&tab=payslip"], ["org:employee", "/app/org/chart"]]),
   side("manage", [["duty:manage", "/app/attendance?lane=manage"], ["hse:manage", "/app/safety?lane=manage"], ["money:manage", "/app/payroll?view=manage"], ["hr:manage", "/app/hr"]]),
 ];
 // السلامة (موظف) → السلامة (إدارة): different section names on each side, one twin.
@@ -18,7 +18,9 @@ assert.equal(railSwitchHref({ pathname: "/app/safety", search: "", targetSide: "
 assert.equal(railSwitchHref({ pathname: "/app/safety", search: "?lane=manage&tab=inspect", targetSide: "employee", sides, activeKey: "hse:manage" }), "/app/safety");
 // قسيمتي ↔ الرواتب · الهيكل ↔ الموارد البشرية
 assert.equal(railSwitchHref({ pathname: "/app/payroll", search: "?view=self&tab=payslip", targetSide: "manage", sides, activeKey: "payslip:employee" }), "/app/payroll?view=manage");
-assert.equal(railSwitchHref({ pathname: "/app/hr", search: "", targetSide: "employee", sides, activeKey: "hr:manage" }), "/app/org?view=employee");
+// HR → الموظف never lands in the full-page chart: the employee's first section instead.
+assert.equal(railSwitchHref({ pathname: "/app/hr", search: "", targetSide: "employee", sides, activeKey: "hr:manage" }), "/app/attendance");
+assert.equal(railSwitchHref({ pathname: "/app/org/chart", search: "", targetSide: "manage", sides, activeKey: "org:employee" }), "/app/hr");
 // A section this person does not administer opens the other side's first section.
 const noHse = [sides[0], side("manage", [["duty:manage", "/app/attendance?lane=manage"]])];
 assert.equal(railSwitchHref({ pathname: "/app/safety", search: "", targetSide: "manage", sides: noHse, activeKey: "compliance:employee" }), "/app/attendance?lane=manage");

@@ -166,9 +166,11 @@ export function railFaceHref(pathname, search, targetSide) {
 }
 
 /** The other side's twin of a section — where a section has a different name on each side. */
+// «الهيكل» (org) opens the full-page chart outside the rail, so it is never a landing for a side switch:
+// HR → الموظف lands on the employee's first section, and the employee's الهيكل → الإدارة lands on HR.
 const RAIL_TWIN = {
   manage: { compliance: "hse", payslip: "money", org: "hr" },
-  employee: { hse: "compliance", money: "payslip", hr: "org", ministry: "org", files: "org" },
+  employee: { hse: "compliance", money: "payslip" },
 };
 
 /**

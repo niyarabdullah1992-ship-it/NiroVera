@@ -979,17 +979,36 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         note = ar ? "في موسم الحظر ولم يُحدَّد يومك «مكشوف / مظلّل». إن شُغّلت تحت الشمس في هذه الساعات فبلّغ." : "In the ban season and your day has no exposed/shaded mark. If you are put in the sun in these hours, report it.";
         action = { to: "/app/requests?kind=heat_report", label: ar ? "بلّغ عن عمل مكشوف ›" : "Report exposed work ›" };
       }
+      const heatBadge = heatCite?.article ? (ar ? `م ${heatCite.article}` : `Art. ${heatCite.article}`) : (ar ? "القرار 3337" : "Dec. 3337");
       placeByTime({
         key: "heat-ban",
         kind: "heat",
         at: banFrom,
         tone,
-        label: ar ? "حظر العمل تحت الشمس" : "Midday sun ban",
-        value: `${win.startLabel}–${win.endLabel}`,
-        badge: heatCite?.article ? (ar ? `م ${heatCite.article}` : `Art. ${heatCite.article}`) : (ar ? "القرار 3337" : "Dec. 3337"),
+        label: ar ? "بداية حظر الشمس" : "Sun ban starts",
+        value: win.startLabel,
+        badge: heatBadge,
         note,
         action,
       }, banFrom);
+      // The end mark: where the ban lifts — only while the shift is still running then.
+      if ([0, 1440].some((d) => shiftEnd >= d + banTo && band.start < d + banTo)) {
+        const endNote = !inSeason
+          ? (ar ? "خارج موسمه — لا قيد اليوم." : "Out of season — no limit today.")
+          : sunMark === SUN_FIELD
+            ? (ar ? "ينتهي الحظر — يجوز العمل المكشوف بعده." : "The ban lifts — exposed work is allowed after it.")
+            : (ar ? "ينتهي الحظر." : "The ban lifts.");
+        placeByTime({
+          key: "heat-ban-end",
+          kind: "heat",
+          at: banTo,
+          tone: !inSeason ? "cite" : (clockState === "after_window" ? "ok" : "cite"),
+          label: ar ? "نهاية حظر الشمس" : "Sun ban ends",
+          value: win.endLabel,
+          badge: heatBadge,
+          note: endNote,
+        }, banTo - 0.5); // before «نهاية الوردية» when both fall on the same minute
+      }
     }
   }
 

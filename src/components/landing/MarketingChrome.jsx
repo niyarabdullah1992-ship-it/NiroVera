@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Logo from "@/components/Logo";
 import LegalCertificatesStrip from "@/components/landing/LegalCertificatesStrip";
@@ -8,6 +8,7 @@ import {
   SURFACE,
   usePublicPlatformTheme,
 } from "@/lib/publicChrome";
+import { isBase44BackendConfigured, openApp, PREVIEW_ACCOUNTS, previewLogin } from "@/lib/localPreview";
 
 const PAD = { paddingLeft: 48, paddingRight: 48 };
 
@@ -34,6 +35,67 @@ function FootLink({ item, ar }) {
   const style = { fontSize: 13, color: ON_NAVY_MUTED, textDecoration: "none", lineHeight: 1.7 };
   if (item.to) return <Link to={item.to} style={style}>{label}</Link>;
   return <a href={item.href} style={style}>{label}</a>;
+}
+
+/**
+ * «تسجيل الدخول» in the header. With a server it is the link to the login page. In the preview build
+ * it opens a small panel right under it: the preview accounts, each a one-tap sign-in (no password,
+ * no code), and the full login page below them.
+ */
+function HeaderSignIn({ ar, loggedIn }) {
+  const T = (a, e) => (ar ? a : e);
+  const [open, setOpen] = useState(false);
+  const box = useRef(null);
+  const preview = !isBase44BackendConfigured();
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (event) => { if (box.current && !box.current.contains(event.target)) setOpen(false); };
+    const esc = (event) => { if (event.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  const linkStyle = { fontSize: 13, color: "#E7F0EA", fontWeight: 600, textDecoration: "none", padding: "0 4px" };
+  if (loggedIn || !preview) {
+    return <Link to={loggedIn ? "/app" : "/login"} style={linkStyle}>{loggedIn ? T("حسابي", "My account") : T("تسجيل الدخول", "Sign in")}</Link>;
+  }
+  return (
+    <div ref={box} style={{ position: "relative" }}>
+      <button type="button" data-header-signin="1" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((v) => !v)} style={{ ...linkStyle, fontFamily: "inherit", background: "transparent", border: "none", cursor: "pointer", height: 34, display: "inline-flex", alignItems: "center", gap: 6 }}>
+        {T("تسجيل الدخول", "Sign in")}
+        <span aria-hidden style={{ fontSize: 10, opacity: 0.8, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s ease" }}>▾</span>
+      </button>
+      {open ? (
+        <div role="menu" data-header-signin-panel="1" dir={ar ? "rtl" : "ltr"} style={{ position: "absolute", top: "calc(100% + 10px)", insetInlineEnd: 0, width: 300, background: "#fff", color: "#0F1A14", borderRadius: 12, boxShadow: "0 18px 44px rgba(6,30,20,.28)", border: "1px solid #E4E9E6", overflow: "hidden", zIndex: 60 }}>
+          <div style={{ padding: "12px 14px 10px", background: "linear-gradient(135deg,#0B3D27 0%,#0F5535 100%)", color: "#fff" }}>
+            <strong style={{ display: "block", fontSize: 13.5 }}>{T("ادخل المنصة", "Enter the platform")}</strong>
+            <span style={{ fontSize: 11, color: "#C5DBCD" }}>{T("نسخة المعاينة — اضغط الحساب، بلا كلمة مرور ولا رمز.", "Preview build — tap an account, no password, no code.")}</span>
+          </div>
+          {PREVIEW_ACCOUNTS.map((acc) => (
+            <button
+              key={acc.id}
+              type="button"
+              role="menuitem"
+              data-header-account={acc.id}
+              onClick={() => { if (previewLogin(acc.email)) openApp("/app"); }}
+              className="nv-hr-row"
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: "none", borderTop: "1px solid #EEF1EF", background: "transparent", cursor: "pointer", textAlign: "start", fontFamily: "inherit" }}
+            >
+              <span aria-hidden style={{ width: 30, height: 30, borderRadius: 999, background: "#E8F1EC", color: "#0B3D27", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{(ar ? acc.nameAr : acc.nameEn).split(" ").map((w) => w[0]).join("").slice(0, 2)}</span>
+              <span style={{ display: "flex", flexDirection: "column", gap: 1, flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>{ar ? acc.nameAr : acc.nameEn}</span>
+                <span style={{ fontSize: 11, color: "#6B7570" }}>{ar ? acc.roleAr : acc.roleEn}</span>
+              </span>
+              <span aria-hidden style={{ fontSize: 12, fontWeight: 700, color: "#0B3D27" }}>{T("دخول ›", "Enter ›")}</span>
+            </button>
+          ))}
+          <Link to="/login/company" onClick={() => setOpen(false)} style={{ display: "block", padding: "10px 14px", borderTop: "1px solid #EEF1EF", background: "#F6F8F7", fontSize: 12, fontWeight: 600, color: "#0B3D27", textDecoration: "none" }}>
+            {T("صفحة الدخول بالبريد ›", "Sign in with email ›")}
+          </Link>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function MarketingHeader({ ar, loggedIn, onToggleLang }) {
@@ -71,10 +133,8 @@ export function MarketingHeader({ ar, loggedIn, onToggleLang }) {
               {ar ? "EN" : "ع"}
             </button>
           ) : null}
-          {/* No trial or «enter» buttons (owner's rule) — one quiet link to the account. */}
-          <Link to={loggedIn ? "/app" : "/login"} style={{ fontSize: 13, color: "#E7F0EA", fontWeight: 600, textDecoration: "none", padding: "0 4px" }}>
-            {loggedIn ? T("حسابي", "My account") : T("تسجيل الدخول", "Sign in")}
-          </Link>
+          {/* No trial or «enter» buttons (owner's rule) — one quiet sign-in to the account. */}
+          <HeaderSignIn ar={ar} loggedIn={loggedIn} />
         </div>
       </div>
     </header>

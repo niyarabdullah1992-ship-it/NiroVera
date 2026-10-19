@@ -546,7 +546,7 @@ export default function Layout({ children }) {
         sidebarSide={sidebarSide}
         canOpenSettings={canOpenSettings}
         onSettings={() => navigate("/app/settings")}
-        onLogout={() => { logout(); navigate("/"); }}
+        onLogout={() => { logout(); navigate("/login/company"); }}
         onFeedback={() => window.dispatchEvent(new Event("powercare:open-feedback"))}
         user={currentUser}
         data={data}

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { useI18n } from "@/lib/i18n";
-import { isBase44BackendConfigured } from "@/lib/localPreview";
+import { isBase44BackendConfigured, openApp, previewLogin } from "@/lib/localPreview";
 
 function resolveKind(fixedKind, search) {
   if (fixedKind === "individual" || fixedKind === "company") return fixedKind;
@@ -68,9 +68,23 @@ export default function usePowerCareLogin(returnPath = "/login", fixedKind = nul
       ? "This account does not belong to the company portal — use the individual portal."
       : "This account does not belong to the individual portal — use the company portal.");
 
+  /** Preview build: sign straight in as a preview person — no password, no code. */
+  const enterAs = (address) => {
+    const local = previewLogin(address);
+    if (!local) { setError(lang === "ar" ? "لا حساب معاينة بهذا البريد" : "No preview account with this email"); return false; }
+    openApp("/app");
+    return true;
+  };
+
   const submit = async (event) => {
     event.preventDefault();
     setError(""); setLoading(true);
+    // No backend (the preview build): the preview accounts sign in locally with the preview password.
+    if (!isBase44BackendConfigured()) {
+      setLoading(false);
+      enterAs(email);
+      return;
+    }
     try {
       const result = await login(email, password, kind);
       if (!result) setError(lang === "ar" ? "البريد أو كلمة المرور غير صحيحة" : "Invalid email or password");
@@ -96,21 +110,21 @@ export default function usePowerCareLogin(returnPath = "/login", fixedKind = nul
   };
   const google = () => {
     if (!isBase44BackendConfigured()) {
-      window.location.assign(returnPath);
+      setError(lang === "ar" ? "الدخول بحسابات Google وMicrosoft وApple يعمل حين يتصل الخادم — ادخل هنا بالبريد وكلمة المرور." : "Google, Microsoft and Apple sign-in work once the server is connected — sign in here with email and password.");
       return;
     }
     base44.auth.loginWithProvider("google", `${returnPath}?google_login=1&type=${kind}`);
   };
   const microsoft = () => {
     if (!isBase44BackendConfigured()) {
-      window.location.assign(returnPath);
+      setError(lang === "ar" ? "الدخول بحسابات Google وMicrosoft وApple يعمل حين يتصل الخادم — ادخل هنا بالبريد وكلمة المرور." : "Google, Microsoft and Apple sign-in work once the server is connected — sign in here with email and password.");
       return;
     }
     base44.auth.loginWithProvider("microsoft", `${returnPath}?microsoft_login=1&type=${kind}`);
   };
   const apple = () => {
     if (!isBase44BackendConfigured()) {
-      window.location.assign(returnPath);
+      setError(lang === "ar" ? "الدخول بحسابات Google وMicrosoft وApple يعمل حين يتصل الخادم — ادخل هنا بالبريد وكلمة المرور." : "Google, Microsoft and Apple sign-in work once the server is connected — sign in here with email and password.");
       return;
     }
     base44.auth.loginWithProvider("apple", `${returnPath}?apple_login=1&type=${kind}`);
@@ -128,5 +142,5 @@ export default function usePowerCareLogin(returnPath = "/login", fixedKind = nul
     setLoading(false);
   };
   const backFromOtp = () => { setPendingId(null); setGoogleOtpAccountKey(null); };
-  return { kind, setKind, email, setEmail, password, setPassword, error, loading, pendingId, accounts, googleAccounts, setGoogleAccounts, submit, verify, resend, google, microsoft, apple, chooseGoogleAccount, backFromOtp };
+  return { enterAs, kind, setKind, email, setEmail, password, setPassword, error, loading, pendingId, accounts, googleAccounts, setGoogleAccounts, submit, verify, resend, google, microsoft, apple, chooseGoogleAccount, backFromOtp };
 }

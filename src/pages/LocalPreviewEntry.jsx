@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { enterLocalPreview } from "@/lib/localPreview";
+import { enterLocalPreview, LOCAL_PREVIEW_COMPANY_ID, openApp } from "@/lib/localPreview";
+import { getSession } from "@/lib/store";
 import PlatformBoot from "@/components/shared/PlatformBoot";
 
 /**
@@ -11,9 +12,11 @@ export default function LocalPreviewEntry() {
 
   useEffect(() => {
     try {
-      enterLocalPreview();
+      // a preview person already signed in keeps their session; the door seeds and opens the owner otherwise
+      const current = getSession();
+      enterLocalPreview({ userId: current?.companyId === LOCAL_PREVIEW_COMPANY_ID ? current.userId : null });
       // Full reload guarantees PowerCareAuth reads the new session.
-      window.location.replace("/app");
+      openApp("/app");
     } catch (err) {
       console.error(err);
       setError(err?.message || "preview_failed");

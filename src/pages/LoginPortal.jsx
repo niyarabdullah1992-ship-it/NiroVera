@@ -2,7 +2,6 @@ import React from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { Building2, Users } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
-import Logo from "@/components/Logo";
 import PowerCareLoginPanel from "@/components/auth/PowerCareLoginPanel";
 import { useI18n } from "@/lib/i18n";
 import { isBase44BackendConfigured } from "@/lib/localPreview";
@@ -77,34 +76,11 @@ export default function LoginPortal() {
             ? (kind === "individual" ? "بوابة أفراد" : "بوابة شركات")
             : (kind === "individual" ? "Individual portal" : "Company portal")}
         </div>
-        <a
-          href="/preview"
-          style={{
-            display: "flex",
-            width: "100%",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-            borderRadius: 9,
-            border: `1px solid ${BORDER}`,
-            background: SURFACE,
-            padding: "10px 0",
-            fontSize: 12,
-            fontWeight: 600,
-            color: INK,
-            textDecoration: "none",
-          }}
-        >
-          <span style={{ display: "inline-flex", height: 20, width: 20, alignItems: "center", justifyContent: "center" }}>
-            <Logo size={16} wordmark={false} />
-          </span>
-          {ar ? "معاينة الصفحات الداخلية الآن" : "Preview internal pages now"}
-        </a>
         {!cloudReady && (
           <p style={{ textAlign: "center", fontSize: 11, lineHeight: 1.6, color: MUTED }}>
             {ar
-              ? "خادم Base44 غير موصول محليًا — استخدم المعاينة لتصفح اللوحة."
-              : "Base44 backend is not connected locally — use preview to browse the dashboard."}
+              ? "نسخة المعاينة — الدخول بلا كلمة مرور ولا رمز: اضغط الحساب، أو اكتب بريده ثم «تسجيل الدخول»."
+              : "Preview build — no password and no code: tap an account, or type its email and sign in."}
           </p>
         )}
         <PowerCareLoginPanel fixedKind={kind} returnPath={returnPath} />

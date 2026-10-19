@@ -61,7 +61,7 @@ function uid(prefix) {
  * Seeds a rich local workspace and opens a director session
  * so /app works without Base44 cloud auth.
  */
-export function enterLocalPreview() {
+export function enterLocalPreview({ userId = null } = {}) {
   const companyId = LOCAL_PREVIEW_COMPANY_ID;
   const stationNorth = "st_north_preview";
   const stationEast = "st_east_preview";
@@ -494,20 +494,76 @@ export function enterLocalPreview() {
   localStorage.setItem(LOCAL_PREVIEW_FLAG, "1");
 
   // Prefer direct session write — avoids cloud email side-effects in ensureOwnerUser path.
+  // One write only: the person signing in (preview login) or the owner (the «معاينة» door).
+  const sessionUser = userId && (data.employees || []).some((row) => row.id === userId) ? userId : ownerId;
   try {
-    setSession({ companyId, userId: ownerId });
+    setSession({ companyId, userId: sessionUser });
   } catch {
-    localStorage.setItem("powercare_session", JSON.stringify({ companyId, userId: ownerId }));
+    localStorage.setItem("powercare_session", JSON.stringify({ companyId, userId: sessionUser }));
   }
 
   // Keep activate as a soft fallback if session helpers change.
   try {
     if (!getSession()?.userId) activateCompanySession(meta);
   } catch {
-    localStorage.setItem("powercare_session", JSON.stringify({ companyId, userId: ownerId }));
+    localStorage.setItem("powercare_session", JSON.stringify({ companyId, userId: sessionUser }));
   }
 
-  return { companyId, userId: ownerId };
+  return { companyId, userId: sessionUser };
+}
+
+/**
+ * Preview accounts — the people seeded in the local preview workspace, signed into by email alone.
+ * Only used when no Base44 backend is configured; a real deployment never reads it.
+ */
+export const PREVIEW_ACCOUNTS = Object.freeze([
+  { id: LOCAL_PREVIEW_OWNER_ID, email: "preview@nirovera.local", nameAr: "نيار عبدالله", nameEn: "Niyar Abdullah", roleAr: "المالك · الموارد البشرية", roleEn: "Owner · HR" },
+  { id: "emp_hse_preview", email: "sara@nirovera.local", nameAr: "سارة حسن", nameEn: "Sara Hassan", roleAr: "ضابطة سلامة", roleEn: "Safety officer" },
+  { id: "emp_field_preview", email: "omar@nirovera.local", nameAr: "عمر ناصر", nameEn: "Omar Nasser", roleAr: "موظف ميداني", roleEn: "Field employee" },
+]);
+
+/** Paths inside the app, written for the router in use: a hash route in the preview build, a path otherwise. */
+export function appLocation(path = "/app") {
+  if (typeof window === "undefined") return path;
+  const hashRouted = String(window.location.hash || "").startsWith("#/") || /\.html$/.test(window.location.pathname);
+  return hashRouted ? `${window.location.pathname}${window.location.search}#${path}` : path;
+}
+
+/** Full navigation into the app, so the auth provider reads the session written just before. */
+export function openApp(path = "/app") {
+  const target = appLocation(path);
+  if (typeof window === "undefined") return;
+  if (target.includes("#")) {
+    // replaceState fires no hashchange, so the router cannot redirect on the old in-memory session
+    // (e.g. RequireAuth → /preview) before the reload reads the new one
+    window.history.replaceState(null, "", target);
+    window.location.reload();
+  } else {
+    window.location.replace(target);
+  }
+}
+
+/**
+ * Sign in to the local preview by the account's email — no password and no emailed code in the
+ * preview build. Seeds the workspace if it is not there yet and opens that person's session in one
+ * write. Returns the account, or null when no preview person has that email.
+ */
+export function previewLogin(email) {
+  const key = String(email || "").trim().toLowerCase();
+  if (!key) return null;
+  const known = PREVIEW_ACCOUNTS.find((acc) => acc.email === key);
+  let data = null;
+  try { data = JSON.parse(localStorage.getItem(`powercare_company_${LOCAL_PREVIEW_COMPANY_ID}`) || "null"); } catch { data = null; }
+  let person = (data?.employees || []).find((row) => String(row.email || "").trim().toLowerCase() === key) || null;
+  if (!data) {
+    if (!known) return null;
+    enterLocalPreview({ userId: known.id });
+    return { companyId: LOCAL_PREVIEW_COMPANY_ID, userId: known.id };
+  }
+  if (!person) return null;
+  localStorage.setItem(LOCAL_PREVIEW_FLAG, "1");
+  setSession({ companyId: LOCAL_PREVIEW_COMPANY_ID, userId: person.id });
+  return { companyId: LOCAL_PREVIEW_COMPANY_ID, userId: person.id, name: person.name };
 }
 
 export function exitLocalPreview() {

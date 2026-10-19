@@ -517,9 +517,9 @@ export function enterLocalPreview({ userId = null } = {}) {
  * Only used when no Base44 backend is configured; a real deployment never reads it.
  */
 export const PREVIEW_ACCOUNTS = Object.freeze([
-  { id: LOCAL_PREVIEW_OWNER_ID, email: "preview@nirovera.local", nameAr: "نيار عبدالله", nameEn: "Niyar Abdullah", roleAr: "المالك · الموارد البشرية", roleEn: "Owner · HR" },
-  { id: "emp_hse_preview", email: "sara@nirovera.local", nameAr: "سارة حسن", nameEn: "Sara Hassan", roleAr: "ضابطة سلامة", roleEn: "Safety officer" },
-  { id: "emp_field_preview", email: "omar@nirovera.local", nameAr: "عمر ناصر", nameEn: "Omar Nasser", roleAr: "موظف ميداني", roleEn: "Field employee" },
+  { id: LOCAL_PREVIEW_OWNER_ID, email: "preview@nirovera.local", nameAr: "نيار عبدالله", nameEn: "Niyar Abdullah", roleAr: "قسما الموظف والإدارة · المالك", roleEn: "Employee and management · owner" },
+  { id: "emp_hse_preview", email: "sara@nirovera.local", nameAr: "سارة حسن", nameEn: "Sara Hassan", roleAr: "قسم الموظف · ضابطة سلامة", roleEn: "Employee side · safety officer" },
+  { id: "emp_field_preview", email: "omar@nirovera.local", nameAr: "عمر ناصر", nameEn: "Omar Nasser", roleAr: "قسم الموظف · موظف ميداني", roleEn: "Employee side · field employee" },
 ]);
 
 /** Paths inside the app, written for the router in use: a hash route in the preview build, a path otherwise. */

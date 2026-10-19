@@ -5732,6 +5732,7 @@ export function setOtDecision(companyId, employeeId, dateKey, {
   workerConsent,
   enjoyDate,
   windowAgreed,
+  reason,
 } = {}) {
   const live = getCompanyData(companyId);
   const employee = (live?.employees || []).find((row) => row.id === employeeId);
@@ -5743,6 +5744,7 @@ export function setOtDecision(companyId, employeeId, dateKey, {
     workerConsent,
     enjoyDate,
     windowAgreed,
+    reason,
     extraHoursYtd: otHoursInYearForCap(employee?.otherRequests, day.slice(0, 4)),
     extraCreditDaysYtd: compLeaveDaysInYearForCap(employee?.otherRequests, day.slice(0, 4)),
   });
@@ -5751,6 +5753,9 @@ export function setOtDecision(companyId, employeeId, dateKey, {
     d.otDecisions = d.otDecisions || {};
     d.otDecisions[plan.key] = { ...(d.otDecisions[plan.key] || {}), ...plan.entry };
   });
+  if (plan.entry?.rejectReason && plan.entry?.notWorked) {
+    addNotification(companyId, employeeId, `لم يُعتمد إضافي يوم ${day} — «لم يُعمل»: ${plan.entry.rejectReason}. لك الاعتراض من «صوت الموظف».`, { kind: "ot_not_worked", dateKey: day, to: "/app/complaints" });
+  }
   if (plan.capConsentRequested) {
     addNotification(companyId, employeeId, `طلب موافقتك على تجاوز سقف الإضافي السنوي ${plan.cap} ساعة (اللائحة م22) — ${day}.`, { kind: "ot_cap_consent", dateKey: day, to: "/app/requests" });
   }

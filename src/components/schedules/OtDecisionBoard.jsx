@@ -40,6 +40,7 @@ export default function OtDecisionBoard({
   const asOf = String(today || toRiyadhDateKey()).slice(0, 10);
   const [consent, setConsent] = useState({});
   const [enjoyDate, setEnjoyDate] = useState({});
+  const [notWorkedWhy, setNotWorkedWhy] = useState({});
   const [windowAgreed, setWindowAgreed] = useState({});
   const [busy, setBusy] = useState("");
   const cap = ruleValue("hours.ot.annualMaxHours", weekStart);
@@ -66,7 +67,7 @@ export default function OtDecisionBoard({
           ...(prev || { dateKey: key, kind: entry.kind || (entry.holiday ? "holiday" : "actual"), ruleId: "hours.ot.premium" }),
           overtimeMinutes: minutes,
           overtimeHours: Math.round((minutes / 60) * 100) / 100,
-          label: entry.holiday ? (ar ? HOLIDAY_WORK_LABEL_AR : HOLIDAY_WORK_LABEL_EN) : (prev?.label || (ar ? "ساعات عُملت فعلاً بحسب الحضور والانصراف — إضافي (المادة 107)" : "Hours actually worked per the punches — overtime (Art. 107)")),
+          label: entry.holiday ? (ar ? HOLIDAY_WORK_LABEL_AR : HOLIDAY_WORK_LABEL_EN) : (prev?.label || (ar ? "ساعات بعد الدوام بحسب الحضور والانصراف — المادة 107" : "Hours past the shift per the punches — Art. 107")),
           proven: !!entry.workedProven,
           plannedOnly: !!entry.holiday && !entry.workedProven,
         });
@@ -122,6 +123,7 @@ export default function OtDecisionBoard({
       workerConsent: consent[key] === true,
       enjoyDate: enjoyDate[key],
       windowAgreed: windowAgreed[key] === true,
+      reason: notWorkedWhy[key] || "",
       kinds,
       by: currentUser?.name,
     });
@@ -134,7 +136,9 @@ export default function OtDecisionBoard({
       description: result.capConsentRequested
         ? (ar ? result.reason : result.reasonEn)
         : result.decision === "reject"
-          ? (ar ? "أُغلق اليوم: العمل المخطط لم يُعمل." : "Closed: the planned work was not done.")
+          ? (notWorkedWhy[key]
+            ? (ar ? "أُغلق «لم يُعمل» — وصل السبب للعامل." : "Closed «not worked» — the worker received the reason.")
+            : (ar ? "أُغلق اليوم: العمل المخطط لم يُعمل." : "Closed: the planned work was not done."))
           : result.decision === "comp_leave"
           ? (ar ? "سُجّلت إجازة تعويضية بموافقة العامل." : "Compensatory leave recorded with the worker's consent.")
           : (ar ? "سُجّل صرف الإضافي." : "Overtime pay recorded."),
@@ -217,9 +221,11 @@ export default function OtDecisionBoard({
                       : (ar ? "من الجدول المنشور — لا يُصرف قبل أن يُعمل ويثبته الحضور والانصراف." : "From the published roster — not payable until worked and proven by the punches.")}
                   </span>
                 ) : null}
-                {item.proven ? (
-                  <span data-ot-proven="1" style={{ fontSize: 11, color: SW.ink, lineHeight: 1.7 }}>
-                    {ar ? "مثبتة بالحضور والانصراف — تُصرف أو تُعوَّض بإجازة، ولا تُرفض." : "Proven by the punches — paid or taken as compensatory leave, never rejected."}
+                {item.proven && !saved ? (
+                  <span data-ot-proven={item.status.ordered ? "ordered" : "punch"} style={{ fontSize: 11, color: SW.ink, lineHeight: 1.7 }}>
+                    {item.status.ordered
+                      ? (ar ? "بتكليف معتمد أو دوام عطلة مجدول، والحضور والانصراف يثبتانها — تُصرف أو تُعوَّض بإجازة، ولا تُغلق «لم يُعمل»." : "Under an approved assignment or a rostered holiday, proven by the punches — paid or taken as compensatory leave, never closed «not worked».")
+                      : (ar ? "مسجّلة من بصمة الانصراف بلا تكليف — قرارك: صرف، أو إجازة تعويضية بموافقة العامل، أو «لم يُعمل» بسبب مكتوب يصله وله الاعتراض عليه." : "Recorded from the checkout with no assignment — your call: pay, compensatory leave with consent, or «not worked» with a written reason he receives and may object to.")}
                   </span>
                 ) : null}
                 {item.open?.decision === "pending_worker_cap_consent" ? (
@@ -239,7 +245,9 @@ export default function OtDecisionBoard({
                       ? (ar ? "إجازة تعويضية بموافقة مسجّلة" : "Compensatory leave with recorded consent")
                       : saved.decision === "reject"
                         ? (saved.notWorked
-                          ? (ar ? "أُغلق — العمل المخطط لم يُعمل" : "Closed — the planned work was not done")
+                          ? (saved.rejectReason
+                            ? (ar ? `أُغلق «لم يُعمل» — ${saved.rejectReason}` : `Closed «not worked» — ${saved.rejectReason}`)
+                            : (ar ? "أُغلق — العمل المخطط لم يُعمل" : "Closed — the planned work was not done"))
                           : (ar ? "رُفض الصرف — الساعات مسجّلة" : "Pay rejected — hours stay recorded"))
                         : (ar ? `${premium} — معتمد للمسير` : `${premium} — approved for payroll`)}
                   </span>
@@ -292,11 +300,20 @@ export default function OtDecisionBoard({
                       {premium}
                     </button>
                     </>) : null}
+                    {item.status.closable && item.status.needsReason ? (
+                      <input
+                        data-ot-not-worked-reason="1"
+                        value={notWorkedWhy[key] || ""}
+                        onChange={(e) => setNotWorkedWhy((prev) => ({ ...prev, [key]: e.target.value }))}
+                        placeholder={ar ? "سبب «لم يُعمل» — يصل للعامل" : "Why «not worked» — the worker receives it"}
+                        style={{ fontFamily: "inherit", fontSize: 11, padding: "5px 8px", minWidth: 220, flex: "1 1 220px", border: `1px solid ${SW.line}`, borderRadius: 8, background: SW.card, color: SW.ink }}
+                      />
+                    ) : null}
                     {item.status.closable ? (
                       <button
                         type="button"
                         data-ot-not-worked="1"
-                        disabled={busy === key}
+                        disabled={busy === key || (item.status.needsReason && String(notWorkedWhy[key] || "").trim().length < 3)}
                         onClick={() => decide(row.employee.id, item.dateKey, "reject", item.overtimeMinutes, [item.kind])}
                         style={{ fontFamily: "inherit", fontSize: 11, padding: "6px 10px", border: `1px solid ${SW.line}`, background: SW.card, color: SW.mid, cursor: "pointer" }}
                       >

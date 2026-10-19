@@ -236,14 +236,22 @@ const week = (schedule, employees, weekStart, extra = {}) => checkWeekPublishGat
   ok(nb.flags.some((f) => f.error === "ACTUAL_NO_BREAK"), "six hours with no recorded break flagged");
   const late = deriveActualDuty({ checkIn: "09:00", checkOut: "17:30", shift: { start: "09:00", end: "17:30", restMinutes: 30 }, onDate: "2026-10-12", employee: person("a", "أ") });
   eq(`${late.lateMinutes}/${late.overtimeMinutes}`, "0/0", "read against the rostered 09:00 start, not 07:00");
-  eq(checkOtDecisionGate({ overtimeMinutes: 60, decision: "reject", workedProven: true, onDate: "2026-10-12" }).error, "OT_WORKED_NO_REJECT", "worked overtime cannot be rejected");
+  eq(checkOtDecisionGate({ overtimeMinutes: 60, decision: "reject", workedProven: true, onDate: "2026-10-12" }).error, "OT_WORKED_NO_REJECT", "a caller that does not say the hours were unordered stays strict");
+  eq(checkOtDecisionGate({ overtimeMinutes: 60, decision: "reject", workedProven: true, ordered: false, onDate: "2026-10-12" }).error, "OT_REJECT_REASON", "unordered: the reason is required");
+  eq(checkOtDecisionGate({ overtimeMinutes: 60, decision: "reject", workedProven: true, ordered: false, reason: "لم يُعمل", onDate: "2026-10-12" }).ok, true, "unordered with a reason: the manager may close it");
   eq(checkOtDecisionGate({ overtimeMinutes: 60, decision: "approve", workedProven: true, onDate: "2026-10-12" }).ok, true, "pay remains open");
   const draft = { employees: [person("a", "أ")], schedules: [{ stationId: "st", shiftTypes: [{ id: "s", ...shift }], assignments: { "2026-10-12": { s: ["a"] } } }], otDecisions: {} };
   const row = { employeeId: "a", date: "2026-10-12", checkInAt: "07:00", checkOutAt: "18:00" };
   stampActualOvertime(draft, draft.employees[0], "2026-10-12", row);
   const e = draft.otDecisions["a:2026-10-12"];
   eq(`${e.decision}/${e.overtimeMinutes}/${e.workedProven}/${e.source}`, "pending/150/true/actual_punch", "actual OT fed to otDecisions for the manager");
-  eq(planOtDecision(draft, "a", "2026-10-12", { decision: "reject", overtimeMinutes: 150 }).error, "OT_WORKED_NO_REJECT", "manager plan refuses rejection of proven hours");
+  // A late/forgotten checkout with no assignment: the manager decides — «not worked» needs a written reason.
+  eq(planOtDecision(draft, "a", "2026-10-12", { decision: "reject", overtimeMinutes: 150 }).error, "OT_REJECT_REASON", "unordered punched hours close «not worked» only with a reason");
+  const closed = planOtDecision(draft, "a", "2026-10-12", { decision: "reject", overtimeMinutes: 150, reason: "نسي البصمة ثم بصم بعد ساعتين" });
+  eq(`${closed.ok}/${closed.entry.decision}/${closed.entry.notWorked}/${closed.entry.rejectReason}`, "true/reject/true/نسي البصمة ثم بصم بعد ساعتين", "closed «not worked» with the reason kept");
+  // The same hours under an approved paid assignment are owed: never «not worked».
+  const ordered = { ...draft, otDecisions: { "a:2026-10-12": { ...draft.otDecisions["a:2026-10-12"], source: "actual_punch", assignmentMinutes: 60 } } };
+  eq(planOtDecision(ordered, "a", "2026-10-12", { decision: "reject", overtimeMinutes: 150, reason: "أي سبب" }).error, "OT_WORKED_NO_REJECT", "ordered punched hours cannot be closed «not worked»");
   eq(planOtDecision(draft, "a", "2026-10-12", { decision: "approve", overtimeMinutes: 60 }).entry.overtimeMinutes, 150, "the proven minutes win over a smaller figure");
 }
 

@@ -244,7 +244,8 @@ export function restampWeekAfter(d, employee, dayKey) {
 
 /**
  * The manager's overtime decision as a plan: `{ ok, key, entry, result }`, or a named refusal.
- * - Proven work (punches / confirmed holiday duty) cannot be rejected (Art. 107).
+ * - Punched hours the employer ordered cannot be closed «not worked» (Art. 107); punched hours with no
+ *   order may, with a written reason (`reason`).
  * - Passing the annual 720h cap needs the WORKER's consent (Regs Art. 22): without it the plan records
  *   «pending_worker_cap_consent» (consent requested) instead of deciding — a manager tick is not consent.
  */
@@ -258,6 +259,7 @@ export function planOtDecision(live, employeeId, dateKey, {
   extraHoursYtd = 0,
   extraCreditDaysYtd = 0,
   today,
+  reason = "",
 } = {}) {
   const day = String(dateKey || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
@@ -288,7 +290,10 @@ export function planOtDecision(live, employeeId, dateKey, {
     };
   }
   const usage = overtimeYearUsageOutsideAssignments(live?.otDecisions, employeeId, day);
+  const ordered = otHoursOrdered(existing);
   const gate = checkOtDecisionGate({
+    ordered,
+    reason,
     overtimeMinutes: minutes,
     decision,
     alreadyDecided: !!existing && !isOtDecisionOpen(existing),
@@ -340,7 +345,8 @@ export function planOtDecision(live, employeeId, dateKey, {
       annualCapConsent: workerCapConsent ? true : undefined,
       enjoyDate: enjoyDate || undefined,
       windowAgreed: windowAgreed === true ? true : undefined,
-      notWorked: plannedOnly && gate.decision === "reject" ? true : undefined,
+      notWorked: gate.decision === "reject" && (plannedOnly || (workedProven && !ordered)) ? true : undefined,
+      rejectReason: gate.decision === "reject" && String(reason || "").trim() ? String(reason).trim() : undefined,
     },
     result: { ok: true, decision: gate.decision },
   };
@@ -353,18 +359,29 @@ export const PLANNED_OT_LABEL_EN = "Planned — not worked yet";
 
 /**
  * How the decision board treats one day — the same rules as planOtDecision:
- * - punches proved it → a decision the manager owes (pay or compensatory leave, never reject);
+ * - punches proved it → the manager decides: ordered hours (assignment / rostered holiday) are owed —
+ *   pay or compensatory leave; unordered hours (a late or forgotten checkout) may also close «not worked»
+ *   with a written reason the worker receives;
  * - a holiday entry stamped from the published roster but unproven → «planned»; payable only once the
  *   day has passed (OT_NOT_WORKED_YET before), and closable as «not worked»;
  * - roster-named overtime with no entry at all → «planned», not payable: the decision opens when the
  *   punches stamp the day (stampActualOvertime);
  * - any other open entry (an assignment re-opened, a cap-consent request) → decidable as before.
  */
+/** Hours the employer ordered: an approved overtime assignment inside the day, or a rostered holiday duty. */
+export function otHoursOrdered(entry) {
+  return !!entry && (entry.holiday === true || entry.source === "ot_assignment" || Number(entry.assignmentMinutes) > 0);
+}
+
 export function otDayStatus(entry, dateKey, today) {
   const day = OT_KEY_DAY(dateKey);
   const asOf = String(today || toRiyadhDateKey()).slice(0, 10);
   if (entry && !isOtDecisionOpen(entry)) return { planned: false, payable: false, closable: false, decided: true };
-  if (entry?.workedProven === true) return { planned: false, payable: true, closable: false, decided: false };
+  // Punched hours: the manager decides. Ordered ones are owed (pay or leave); unordered ones may also close «not worked».
+  if (entry?.workedProven === true) {
+    const ordered = otHoursOrdered(entry);
+    return { planned: false, payable: true, closable: !ordered, decided: false, ordered, needsReason: !ordered };
+  }
   if (entry?.holiday === true) return { planned: true, payable: day < asOf, closable: true, decided: false };
   if (entry) return { planned: false, payable: true, closable: false, decided: false };
   return { planned: true, payable: false, closable: false, decided: false };

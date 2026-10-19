@@ -243,7 +243,8 @@ const person = (id, name, profile = {}, extra = {}) => ({ id, name, stationId: "
   eq(otDayStatus(null, "2026-10-19", today), { planned: true, payable: false, closable: false, decided: false }, "roster plan only → planned, not payable");
   eq(otDayStatus({ decision: "pending", holiday: true }, "2026-10-19", today).payable, false, "future planned holiday → not payable (OT_NOT_WORKED_YET)");
   eq(otDayStatus({ decision: "pending", holiday: true }, "2026-10-19", today).closable, true, "planned holiday → closable as not worked");
-  eq(otDayStatus({ decision: "pending", workedProven: true }, "2026-10-12", today), { planned: false, payable: true, closable: false, decided: false }, "proven → payable");
+  eq(otDayStatus({ decision: "pending", workedProven: true }, "2026-10-12", today), { planned: false, payable: true, closable: true, decided: false, ordered: false, needsReason: true }, "punched, no order → payable, or closed «not worked» with a reason");
+  eq(otDayStatus({ decision: "pending", workedProven: true, holiday: true }, "2026-10-12", today), { planned: false, payable: true, closable: false, decided: false, ordered: true, needsReason: false }, "punched rostered holiday → owed, never «not worked»");
   eq(otDayStatus({ decision: "approve" }, "2026-10-12", today).decided, true, "decided stays decided");
   eq(PLANNED_OT_LABEL_AR, "مخطط — لم يُعمل بعد", "planned label");
   const board = readFileSync(new URL("../src/components/schedules/OtDecisionBoard.jsx", import.meta.url), "utf8");

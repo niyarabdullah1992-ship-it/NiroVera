@@ -68,6 +68,8 @@
     --icon-halo: 154 76% 27%;
     --nv-navy: #0B3D27;
     --nv-ink: #111418;
+    --nv-logo-ink: #0B3D27;
+    --nv-logo-accent: #C49A2C;
     --nv-ink2: #3A4048;
     --nv-ink3: #555C66;
     --nv-muted: #555C66;
@@ -176,6 +178,8 @@
     --icon-ink-soft: 145 12% 72%;
     --icon-halo: 145 32% 48%;
     --nv-ink: #E7F0EA;
+    --nv-logo-ink: #E7F0EA;
+    --nv-logo-accent: #D5AE4A;
     --nv-ink2: #C3D4CA;
     --nv-ink3: #9AADA3;
     --nv-muted: #9AADA3;
@@ -696,6 +700,8 @@ svg.lucide:is(.text-destructive, .text-red-500, .text-red-600, .text-green-500, 
   --icon-halo: 145 32% 48%;
   --nv-navy: #0B3D27;
   --nv-ink: #E7F0EA;
+  --nv-logo-ink: #E7F0EA;
+  --nv-logo-accent: #D5AE4A;
   --nv-ink2: #C3D4CA;
   --nv-ink3: #9AADA3;
   --nv-muted: var(--nv-night-hint);
@@ -745,6 +751,8 @@ html:not(.dark) .powercare-shell,
 html:not(.dark) .nv-v7-portal {
   --nv-navy: #0B3D27;
   --nv-ink: #111418;
+  --nv-logo-ink: #0B3D27;
+  --nv-logo-accent: #C49A2C;
   --nv-ink2: #3A4048;
   --nv-ink3: #555C66;
   --nv-muted: #555C66;

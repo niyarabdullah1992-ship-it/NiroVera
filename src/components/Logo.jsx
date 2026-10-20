@@ -45,8 +45,8 @@ function NiroVeraMark({ size, className }) {
  */
 export default function Logo({ size = 48, className = "", wordmark = true, iconOnly = false, onDark = false }) {
   const markOnly = iconOnly || wordmark === false;
-  const ink = onDark ? "#FFFFFF" : "var(--nv-ink, #14284B)";
-  const accent = "var(--nv-accent, #1E9E63)";
+  const ink = onDark ? "#FFFFFF" : "var(--nv-logo-ink, #0B3D27)";
+  const accent = "var(--nv-logo-accent, #C49A2C)";
   if (markOnly) {
     return <NiroVeraMark size={size} className={className} />;
   }

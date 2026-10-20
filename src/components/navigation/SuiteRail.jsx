@@ -25,6 +25,7 @@ import {
 import { RAIL_SIDE_COLOR, railBadgeTone, railFooter } from "@/lib/suiteRailFrame";
 import { railSwitchHref, routeRailSide, useExplicitRailSide, useSetRailSide } from "@/lib/railSide";
 import NvIcon from "@/components/shared/NvIcon";
+import { POWERCARE_MARK_URL } from "@/lib/brand";
 
 const LINE = "var(--nv-line)";
 const INK = "var(--nv-ink)";
@@ -257,7 +258,7 @@ export default function SuiteRail({
         {logoUrl ? (
           <img src={logoUrl} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: "contain", flexShrink: 0, border: `1px solid ${LINE}`, background: "var(--nv-card)" }} />
         ) : (
-          <span style={{ width: 30, height: 30, borderRadius: 6, background: "#3C7D50", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#fff", fontFamily: "'IBM Plex Mono',monospace", fontWeight: 700, fontSize: 13 }}>NV</span>
+          <img src={POWERCARE_MARK_URL} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: "contain", flexShrink: 0, border: `1px solid ${LINE}`, background: "#fff" }} />
         )}
         <span className="nv-rail-brand-copy" style={{ display: "flex", flexDirection: "column", lineHeight: 1.35, minWidth: 0 }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: INK, letterSpacing: "-.01em" }}>{ar ? "نيروفيرا" : "NiroVera"}</span>

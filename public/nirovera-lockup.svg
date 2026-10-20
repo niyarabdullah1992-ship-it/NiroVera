@@ -2,6 +2,6 @@
   <image href="nirovera-mark.png" x="0" y="0" width="80" height="80" preserveAspectRatio="xMidYMid meet"/>
   <line x1="92" y1="18" x2="92" y2="62" stroke="#C5CAD3" stroke-width="1"/>
   <text x="108" y="48" font-family="Inter Tight, IBM Plex Sans, Arial, sans-serif" font-size="32" font-weight="600" letter-spacing="-0.4">
-    <tspan fill="#14284B">Niro</tspan><tspan fill="#1E9E63">V</tspan><tspan fill="#14284B">era</tspan>
+    <tspan fill="#0B3D27">Niro</tspan><tspan fill="#C49A2C">V</tspan><tspan fill="#0B3D27">era</tspan>
   </text>
 </svg>

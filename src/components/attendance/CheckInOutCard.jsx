@@ -989,15 +989,37 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     }
   }
 
-  // Decision 3337: the midday sun ban sits on «مسار اليوم» whenever the shift touches its hours — every day of
-  // the year. Outside its season it reads as reference; in season it says what the day's sun mark means and
-  // gives the way: refuse exposed work and report it from طلباتي («بلاغ عمل مكشوف»).
+  // Decision 3337: the midday sun ban sits on «مسار اليوم» every day of the year, for every shift. When the
+  // shift touches its hours it is placed by time inside the path (start and end marks); when it does not
+  // (a night or evening shift) it stands as one reference line after the shift, so the worker always sees
+  // the window and its season. Outside its season it reads as reference; in season it says what the day's
+  // sun mark means and gives the way: refuse exposed work and report it («بلاغ عمل مكشوف»).
   if (band && dutyShift) {
     const win = heatBanWindow(dutyDay);
     const banFrom = win.startHour * 60;
     const banTo = win.endHour * 60;
     const shiftEnd = band.start + (band.spanMin || band.targetMin || 0);
     const touches = [0, 1440].some((d) => Math.min(shiftEnd, d + banTo) > Math.max(band.start, d + banFrom));
+    if (!touches) {
+      const inSeason = isHeatBanDate(dutyDay);
+      const heatCite = citeRule("hours.heat.startHour", dutyDay);
+      const outIdx = steps.findIndex((st) => st.key === "out");
+      steps.splice(outIdx < 0 ? steps.length : outIdx, 0, {
+        key: "heat-ban",
+        kind: "heat",
+        at: null,
+        tone: "cite",
+        season: inSeason,
+        live: false,
+        label: ar ? "حظر العمل تحت الشمس" : "Midday sun ban",
+        value: `${win.startLabel}–${win.endLabel}`,
+        badge: heatCite?.article ? (ar ? `م ${heatCite.article}` : `Art. ${heatCite.article}`) : (ar ? "القرار 3337" : "Dec. 3337"),
+        note: inSeason
+          ? (ar ? `خارج ساعات ورديتك اليوم. في الموسم لا عمل مكشوف ${win.startLabel}–${win.endLabel} — إن كُلِّفت به في هذه الساعات فبلّغ.` : `Outside your shift today. In season no exposed work ${win.startLabel}–${win.endLabel} — report it if you are assigned any.`)
+          : (ar ? `خارج ساعات ورديتك اليوم، وخارج موسمه — يُطبَّق ${win.seasonAr}.` : `Outside your shift today and out of season — it applies ${win.seasonEn}.`),
+        action: inSeason ? { to: "/app/complaints?channel=heat", label: ar ? "بلّغ عن عمل مكشوف ›" : "Report exposed work ›" } : null,
+      });
+    }
     if (touches) {
       const inSeason = isHeatBanDate(dutyDay);
       const sunMark = sunExposureMark(dutySchedule, currentUser?.id, dutyDay, dutyShift).mark;

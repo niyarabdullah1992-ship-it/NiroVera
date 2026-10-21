@@ -560,3 +560,158 @@ export function filterPeopleHits(people, query, limit = 8) {
   if (!q) return [];
   return (people || []).filter((person) => peopleQueryMatches(peopleSearchHay(person), q)).slice(0, limit);
 }
+
+function apexPersonId(person) {
+  return String(person?.id || person?.employeeId || "").trim();
+}
+
+function apexWorkspaceCompanyId(data) {
+  return String(data?.companyId || data?.id || "").trim();
+}
+
+function apexPersonExists(data, personId) {
+  const want = String(personId || "").trim();
+  if (!want) return false;
+  return (data?.employees || []).some((item) => apexPersonId(item) === want);
+}
+
+export function sameCompanyScope(person, data) {
+  const companyId = apexWorkspaceCompanyId(data);
+  const personCompany = String(person?.companyId || "").trim();
+  if (companyId && personCompany && companyId !== personCompany) return false;
+  return true;
+}
+
+function hasWorkplaceSuperior(employee, data, id) {
+  const stations = data?.stations || [];
+  const seat = (data?.orgSeats || []).find((row) => String(row.employeeId) === id);
+  const homeId = String(employee?.stationId || employee?.profile?.stationId || seat?.stationId || "").trim();
+  const managed = stations.filter((station) => String(station.managerId || "") === id);
+  const home = stations.find((station) => String(station.id || station.stationId) === homeId);
+  const start = managed.find((station) => {
+    const parent = String(station.parentStationId || station.parentBranchId || "");
+    return !parent || !managed.some((row) => String(row.id || row.stationId) === parent);
+  }) || managed[0] || home;
+  if (!start) return false;
+  const homeManager = String(start.managerId || "").trim();
+  if (!managed.length && homeManager && homeManager !== id && apexPersonExists(data, homeManager)) return true;
+  const byId = new Map(stations.map((station) => [String(station.id || station.stationId), station]));
+  let cursor = start;
+  const seen = new Set();
+  while (cursor) {
+    const parentId = String(cursor.parentStationId || cursor.parentBranchId || "").trim();
+    if (!parentId || seen.has(parentId)) break;
+    seen.add(parentId);
+    cursor = byId.get(parentId);
+    if (!cursor) break;
+    const mid = String(cursor.managerId || "").trim();
+    if (mid && mid !== id && apexPersonExists(data, mid)) return true;
+  }
+  return false;
+}
+
+export function isTopAuthority(employee, data) {
+  const id = apexPersonId(employee);
+  if (!id) return false;
+  if (!sameCompanyScope(employee, data)) return false;
+  if (data?.ownerId) return String(data.ownerId) === id;
+  if (employee?.role === "owner" || employee?.isOwner === true) return true;
+  if (employee?.role !== "director") return false;
+  const seat = (data?.orgSeats || []).find((row) => String(row.employeeId) === id);
+  const reported = String(seat?.reportsToEmployeeId || employee?.profile?.directManagerId || "").trim();
+  if (reported && reported !== id && apexPersonExists(data, reported)) return false;
+  return !hasWorkplaceSuperior(employee, data, id);
+}
+
+export function isCompanyOwner(employee, data) {
+  const id = apexPersonId(employee);
+  if (!id) return false;
+  if (!sameCompanyScope(employee, data)) return false;
+  if (data?.ownerId) return String(data.ownerId) === id;
+  return employee?.role === "owner" || employee?.isOwner === true;
+}
+
+export function checkTransferCompanyOwnershipGate(data, nextOwnerId) {
+  const next = String(nextOwnerId || "").trim();
+  if (!next) {
+    return {
+      ok: false,
+      error: "NEXT_OWNER",
+      reason: "اختر الموظف الذي تنتقل إليه أعلى سلطة في المنشأة.",
+      reasonEn: "Choose the employee who becomes the highest authority.",
+    };
+  }
+  const nextEmp = (data?.employees || []).find((item) => apexPersonId(item) === next);
+  if (!nextEmp) {
+    return { ok: false, error: "MISSING", reason: "الموظف غير موجود.", reasonEn: "Employee not found." };
+  }
+  if (!sameCompanyScope(nextEmp, data)) {
+    return {
+      ok: false,
+      error: "COMPANY_MISMATCH",
+      reason: "لا تُنقل أعلى سلطة إلى شركة أخرى.",
+      reasonEn: "Ownership cannot move to another company.",
+    };
+  }
+  if (data?.ownerId && String(data.ownerId) === next) {
+    return {
+      ok: false,
+      error: "ALREADY_OWNER",
+      reason: "هذا الموظف هو أعلى سلطة في المنشأة.",
+      reasonEn: "This employee is already the highest authority.",
+    };
+  }
+  return { ok: true, ownerId: next };
+}
+
+export function applyCompanyOwnershipTransfer(data, nextOwnerId) {
+  const gate = checkTransferCompanyOwnershipGate(data, nextOwnerId);
+  if (!gate.ok) return gate;
+  const next = String(nextOwnerId);
+  const previousOwner = String(data.ownerId || "");
+  (data.employees || []).forEach((item) => {
+    if (apexPersonId(item) === next) item.isOwner = true;
+    else if (item.isOwner) item.isOwner = false;
+  });
+  data.ownerId = next;
+  return { ok: true, ownerId: next, previousOwner };
+}
+
+/** Owner is apex; never invent a manager above them. */
+export function hasOrgSuperior(employee, data) {
+  if (!employee) return false;
+  if (isTopAuthority(employee, data)) return false;
+  const id = apexPersonId(employee);
+  if (!id) return false;
+  const seat = (data?.orgSeats || []).find((row) => String(row.employeeId) === id);
+  const reported = String(seat?.reportsToEmployeeId || employee.profile?.directManagerId || "").trim();
+  if (reported && reported !== id && apexPersonExists(data, reported)) return true;
+
+  const stations = data?.stations || [];
+  const homeId = String(employee.stationId || employee.profile?.stationId || seat?.stationId || "").trim();
+  const managed = stations.filter((station) => String(station.managerId || "") === id);
+  const home = stations.find((station) => String(station.id || station.stationId) === homeId);
+  const start = managed.find((station) => {
+    const parent = String(station.parentStationId || station.parentBranchId || "");
+    return !parent || !managed.some((row) => String(row.id || row.stationId) === parent);
+  }) || managed[0] || home;
+  if (start) {
+    const homeManager = String(start.managerId || "").trim();
+    if (!managed.length && homeManager && homeManager !== id && apexPersonExists(data, homeManager)) return true;
+    const byId = new Map(stations.map((station) => [String(station.id || station.stationId), station]));
+    let cursor = start;
+    const seen = new Set();
+    while (cursor) {
+      const parentId = String(cursor.parentStationId || cursor.parentBranchId || "").trim();
+      if (!parentId || seen.has(parentId)) break;
+      seen.add(parentId);
+      cursor = byId.get(parentId);
+      if (!cursor) break;
+      const mid = String(cursor.managerId || "").trim();
+      if (mid && mid !== id && apexPersonExists(data, mid)) return true;
+    }
+  }
+
+  const owner = (data?.employees || []).find((item) => isCompanyOwner(item, data));
+  return !!(owner && apexPersonId(owner) !== id);
+}

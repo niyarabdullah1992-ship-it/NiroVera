@@ -1,9 +1,9 @@
 import React from "react";
-import { POWERCARE_MARK_URL } from "@/lib/brand";
+import { POWERCARE_MARK_URL, POWERCARE_MARK_ON_DARK_URL } from "@/lib/brand";
 
 const LOCKUP_RATIO = 4.5;
 
-function NiroVeraMark({ size, className }) {
+function NiroVeraMark({ size, className, onDark = false }) {
   return (
     <span
       className={className}
@@ -15,11 +15,22 @@ function NiroVeraMark({ size, className }) {
         height: size,
         flexShrink: 0,
         overflow: "hidden",
-        background: "var(--nv-card)",
+        background: onDark ? "transparent" : "var(--nv-card)",
       }}
     >
+      {onDark ? null : (
+        <img
+          className="nv-mark-on-dark"
+          src={POWERCARE_MARK_ON_DARK_URL}
+          alt=""
+          width={size}
+          height={size}
+          style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", margin: "auto" }}
+        />
+      )}
       <img
-        src={POWERCARE_MARK_URL}
+        className={onDark ? undefined : "nv-mark-on-light"}
+        src={onDark ? POWERCARE_MARK_ON_DARK_URL : POWERCARE_MARK_URL}
         alt=""
         width={size}
         height={size}
@@ -48,7 +59,7 @@ export default function Logo({ size = 48, className = "", wordmark = true, iconO
   const ink = onDark ? "#FFFFFF" : "var(--nv-logo-ink, #0B3D27)";
   const accent = "var(--nv-logo-accent, #C49A2C)";
   if (markOnly) {
-    return <NiroVeraMark size={size} className={className} />;
+    return <NiroVeraMark size={size} className={className} onDark={onDark} />;
   }
   return (
     <span
@@ -61,7 +72,7 @@ export default function Logo({ size = 48, className = "", wordmark = true, iconO
         width: size * LOCKUP_RATIO,
       }}
     >
-      <NiroVeraMark size={size} />
+      <NiroVeraMark size={size} onDark={onDark} />
       <span
         aria-hidden
         style={{ width: 1, height: size * 0.56, background: onDark ? "rgba(255,255,255,.28)" : "var(--nv-line, #E2E8F0)", flexShrink: 0 }}

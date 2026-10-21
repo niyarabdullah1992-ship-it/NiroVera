@@ -25,7 +25,7 @@ import {
 import { RAIL_SIDE_COLOR, railBadgeTone, railFooter } from "@/lib/suiteRailFrame";
 import { railSwitchHref, routeRailSide, useExplicitRailSide, useSetRailSide } from "@/lib/railSide";
 import NvIcon from "@/components/shared/NvIcon";
-import { POWERCARE_MARK_URL } from "@/lib/brand";
+import { POWERCARE_MARK_URL, POWERCARE_MARK_ON_DARK_URL } from "@/lib/brand";
 
 const LINE = "var(--nv-line)";
 const INK = "var(--nv-ink)";
@@ -258,7 +258,10 @@ export default function SuiteRail({
         {logoUrl ? (
           <img src={logoUrl} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: "contain", flexShrink: 0, border: `1px solid ${LINE}`, background: "var(--nv-card)" }} />
         ) : (
-          <img src={POWERCARE_MARK_URL} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: "contain", flexShrink: 0, border: `1px solid ${LINE}`, background: "#fff" }} />
+          <>
+            <img className="nv-mark-on-light" src={POWERCARE_MARK_URL} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: "contain", flexShrink: 0, border: `1px solid ${LINE}`, background: "#fff" }} />
+            <img className="nv-mark-on-dark" src={POWERCARE_MARK_ON_DARK_URL} alt="" style={{ width: 30, height: 30, objectFit: "contain", flexShrink: 0 }} />
+          </>
         )}
         <span className="nv-rail-brand-copy" style={{ display: "flex", flexDirection: "column", lineHeight: 1.35, minWidth: 0 }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: INK, letterSpacing: "-.01em" }}>{ar ? "نيروفيرا" : "NiroVera"}</span>

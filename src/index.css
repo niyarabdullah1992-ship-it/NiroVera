@@ -4412,3 +4412,7 @@ html.dark .nv-heat-glow { background: linear-gradient(270deg, rgba(232,163,23,.2
 /* الموارد البشرية › نظرة عامة — every row is the link; hover lifts it quietly like a «طلباتي» card */
 .nv-hr-row:hover { background: var(--nv-soft, #F6F8F7); }
 .nv-hr-row:focus-visible { outline: 2px solid #C8A45A; outline-offset: -2px; }
+
+/* Brand mark: white-ground artwork on light surfaces, white-and-gold artwork on dark/green ones. */
+html.dark .nv-mark-on-light { display: none !important; }
+html:not(.dark) .nv-mark-on-dark { display: none !important; }

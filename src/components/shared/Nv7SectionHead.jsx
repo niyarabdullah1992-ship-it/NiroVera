@@ -88,7 +88,7 @@ export function Nv7Band({ kicker, title, hint, num = "" }) {
       }}
     >
       {kicker || index ? (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "#A9CDB8", fontWeight: 600, fontSize: 10.5, letterSpacing: 0 }}>
+        <span className="nv7-section-kicker" style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "#A9CDB8", fontWeight: 600, fontSize: 10.5, letterSpacing: 0 }}>
           <span aria-hidden style={{ width: 12, height: 2, background: "#C8A45A", borderRadius: 8, display: "inline-block" }} />
           {index ? <span dir={arabicIndex ? undefined : "ltr"} style={{ fontFamily: arabicIndex ? "inherit" : "var(--font-mono, 'IBM Plex Mono', monospace)", letterSpacing: ".04em" }}>{index}</span> : null}
           {rest ? <span>{rest}</span> : null}
@@ -96,7 +96,7 @@ export function Nv7Band({ kicker, title, hint, num = "" }) {
       ) : null}
       <h1 className="nv-h" style={{ margin: 0, fontFamily: "var(--font-heading)", fontSize: 18, fontWeight: 700, color: "#fff", lineHeight: 1.4, letterSpacing: 0 }}>{title}</h1>
       {hint ? (
-        <div style={{ margin: 0, fontSize: 12, lineHeight: 1.7, color: "#C5DBCD", maxWidth: 720 }}>{hint}</div>
+        <div className="nv7-section-hint" style={{ margin: 0, fontSize: 12, lineHeight: 1.7, color: "#C5DBCD", maxWidth: 720 }}>{hint}</div>
       ) : null}
     </header>
   );

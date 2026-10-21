@@ -4475,3 +4475,72 @@ html:not(.dark) .nv-mark-on-dark { display: none !important; }
 @media (prefers-reduced-motion: reduce) {
   .nv-suite-rail.nv-rail-mobile-open, .nv-rail-scrim { animation: none; }
 }
+
+/* Phone: folded panels open with one full-width tap target. */
+.nv-fold-toggle {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: 0 14px 14px; padding: 12px 14px; min-height: 46px;
+  border: 1px solid var(--nv-line); border-radius: 10px; background: var(--nv-soft, #F6F8FA);
+  color: var(--nv-navy, #0B3D27); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.dark .nv-fold-toggle { color: #E7F0EA; }
+.nv-fold-toggle__chev { font-size: 18px; line-height: 1; transition: transform .15s; }
+.nv-fold-toggle__chev[data-open="true"] { transform: rotate(180deg); }
+
+/* ── Phone pages: an app, not a shrunken website ─────────────────── */
+@media (max-width: 767px) {
+  /* App bar: sticky, one line of identity, one line of context. */
+  .nv-frame { gap: 10px !important; margin-bottom: 10px !important; }
+  .nv-app-topbar {
+    position: relative; z-index: 30;
+    border-radius: 0 0 14px 14px !important;
+    margin: -20px -20px 0 !important;
+    border-inline: 0 !important; border-top: 0 !important;
+    box-shadow: 0 6px 18px rgba(11, 61, 39, .07);
+  }
+  .nv-hdr-main { padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 8px !important; }
+  .nv-hdr-ctx { padding: 6px 16px 10px !important; border-top: 0 !important; }
+  .nv-hdr-crumb { display: none !important; }
+  .nv-hdr-title { font-size: 18px !important; font-weight: 700; }
+  .nv-hdr-facts .nv-hdr-fact-label { display: none; }
+  .nv-hdr-facts .nv-hdr-fact + .nv-hdr-fact { display: none; }
+  .nv-hdr-fact { padding-inline: 0 !important; }
+
+  /* Section band: the app bar already names the page — keep only the line that says what to do. */
+  .nv7-section-head { padding: 12px 14px !important; border-radius: 12px !important; box-shadow: none !important; }
+  .nv7-section-head .nv7-section-kicker { display: none !important; }
+  .nv7-section-head h1 { font-size: 16px !important; }
+  .nv7-section-head .nv7-section-hint { font-size: 12.5px !important; }
+
+  /* Page tabs: one swipeable row with comfortable targets. */
+  .nv-section-pages { margin-inline: -20px; padding-inline: 20px !important; scroll-snap-type: x proximity; }
+  .nv-section-pages > a { height: 38px !important; scroll-snap-align: start; }
+
+  /* Main column: room for the bottom bar. */
+  main.platform-main-scroll { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important; }
+}
+
+/* Phone: one clear primary action that unfolds a form. */
+.nv-raise-cta {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 52px; padding: 0 18px; border-radius: 12px; border: 0;
+  background: var(--nv-navy, #0B3D27); color: #fff; font: inherit; font-size: 15.5px; font-weight: 700; cursor: pointer;
+  box-shadow: 0 6px 16px rgba(11, 61, 39, .18);
+}
+.nv-raise-cta[data-open="true"] { background: var(--nv-card); color: var(--nv-ink); border: 1px solid var(--nv-line); box-shadow: none; }
+.nv-raise-cta__plus {
+  display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%;
+  background: #C49A2C; color: #0B3D27; font-size: 18px; font-weight: 700; line-height: 1;
+}
+.nv-raise-cta[data-open="true"] .nv-raise-cta__plus { background: var(--nv-soft, #EEF2EE); color: var(--nv-ink); }
+
+@media (max-width: 767px) {
+  /* Section tools (المسير، البنود، …): one swipeable row instead of a wall of buttons. */
+  [data-sec-strip] > nav {
+    flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none;
+    margin-inline: -12px; padding-inline: 12px; scroll-snap-type: x proximity;
+  }
+  [data-sec-strip] > nav::-webkit-scrollbar { display: none; }
+  [data-sec-strip] > nav > button { flex: none; min-height: 38px; scroll-snap-align: start; }
+  [data-sec-strip] > nav > span { display: none; }
+}

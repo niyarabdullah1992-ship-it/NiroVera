@@ -1211,7 +1211,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                   ? <LogOut style={{ width: 22, height: 22 }} strokeWidth={1.75} />
                   : null}
             <strong style={{ fontSize: 24, lineHeight: 1.2 }}>{orbLabel}</strong>
-            <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.85, whiteSpace: "nowrap" }}>{orbSub}</span>
+            <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.85, maxWidth: "78%", textAlign: "center", lineHeight: 1.4, textWrap: "balance" }}>{orbSub}</span>
           </button>
           <span style={{ fontSize: 13.5, fontWeight: 700, color: statusColor, textAlign: "center", lineHeight: 1.6 }}>{statusText}</span>
           {confirmBlock}
@@ -1576,7 +1576,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                 ? <LogOut style={{ width: 20, height: 20 }} strokeWidth={1.9} />
                 : <LogIn style={{ width: 20, height: 20 }} strokeWidth={1.9} />}
             <strong style={{ fontSize: 17, fontWeight: 700 }}>{orbLabel}</strong>
-            <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.85, whiteSpace: "nowrap" }}>{orbSub}</span>
+            <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.85, maxWidth: "78%", textAlign: "center", lineHeight: 1.4, textWrap: "balance" }}>{orbSub}</span>
           </button>
         </div>,
         document.body,

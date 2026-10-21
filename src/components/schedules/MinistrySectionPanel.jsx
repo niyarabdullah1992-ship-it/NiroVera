@@ -3,6 +3,8 @@ import { mono, SectionHead, slab } from "@/components/schedules/scheduleChrome";
 import MinistrySourceCards, { Counter, ministryBadgeStyle, MinistryRow, RegsSourceLine } from "@/components/schedules/MinistrySourceCards";
 import RightHint from "@/components/shared/RightHint";
 import useHashScroll from "@/hooks/useHashScroll";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useLocation } from "react-router-dom";
 import { buildMinistrySection } from "@/lib/ministrySections";
 
 /**
@@ -37,6 +39,10 @@ export function MinistryCounters({ totals, ar = true, size }) {
 
 export default function MinistrySectionPanel({ section: given, sectionKey, lane = "employee", inputs = {}, ar = true, today, id }) {
   const [source, setSource] = useState("all");
+  // Phone: the panel opens folded — head and totals only; the rules list is one tap away.
+  const phone = useIsMobile();
+  const { hash } = useLocation();
+  const [unfolded, setUnfolded] = useState(false);
   const section = useMemo(
     () => given || buildMinistrySection(sectionKey, { lane, ar, today, ...inputs }),
     [given, sectionKey, lane, ar, today, inputs],
@@ -55,6 +61,7 @@ export default function MinistrySectionPanel({ section: given, sectionKey, lane 
     .map((card) => ({ card, rows: rows.filter((row) => row.source === card.key) }));
   const citesRegs = cards.some((card) => card.key === "regs" || card.key === "model");
   const n = rows.length;
+  const folded = phone && !unfolded && hash !== `#${anchor}`;
 
   return (
     <section
@@ -70,6 +77,19 @@ export default function MinistrySectionPanel({ section: given, sectionKey, lane 
           : <>Read only · <Num>{n}</Num> rule{n === 1 ? "" : "s"}; each row says whether the platform meets it now.</>}
         trailing={<div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}><MinistryCounters totals={totals} ar={ar} /></div>}
       />
+      {phone ? (
+        <button
+          type="button"
+          className="nv-fold-toggle"
+          aria-expanded={!folded}
+          onClick={() => setUnfolded((open) => !open)}
+        >
+          <span>{folded ? (ar ? `اعرض القواعد (${n})` : `Show the rules (${n})`) : (ar ? "اطوِ القواعد" : "Fold the rules")}</span>
+          <span aria-hidden className="nv-fold-toggle__chev" data-open={folded ? "false" : "true"}>⌄</span>
+        </button>
+      ) : null}
+      {folded ? null : (
+      <>
       <div style={{ padding: "14px 18px 12px", borderBottom: "1px solid var(--nv-line2, #EEF2F7)" }}>
         <MinistrySourceCards cards={shown} active={source} onPick={setSource} ar={ar} />
       </div>
@@ -101,6 +121,8 @@ export default function MinistrySectionPanel({ section: given, sectionKey, lane 
         </div>
       ))}
       {citesRegs ? <RegsSourceLine ar={ar} /> : null}
+      </>
+      )}
     </section>
   );
 }

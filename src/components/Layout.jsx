@@ -585,7 +585,7 @@ export default function Layout({ children }) {
 
       <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} items={orderedNavItems} data={data} currentUser={currentUser} lang={lang} />
       {/* Native-style bottom tab bar (mobile only) */}
-      <BottomTabBar />
+      <BottomTabBar sides={railClusters} activeKey={activeRailKey} />
       <ProductFeedbackPrompt companyId={company.id} role={currentUser.role} />
     </div>
     </RailSideProvider>

@@ -36,7 +36,7 @@ const DANGER = "var(--nv-bad-ink)";
 const GOLD = RAIL_SIDE_COLOR.employee;
 const GREEN = RAIL_SIDE_COLOR.manage;
 
-const ICONS = {
+export const ICONS = {
   duty: CalendarClock,
   signing: PenLine,
   performance: BarChart3,
@@ -57,7 +57,7 @@ const ICONS = {
   files: Folder,
 };
 
-function keyOnSide(side, activeKey) {
+export function keyOnSide(side, activeKey) {
   const keys = new Set((side?.groups || []).flatMap((group) => (group.items || []).map((item) => item.key)));
   if (!activeKey) return "";
   if (keys.has(activeKey)) return activeKey;
@@ -193,6 +193,20 @@ export default function SuiteRail({
     try { return window.localStorage.getItem("nv7-nav") !== "closed"; } catch { return true; }
   });
   const [menuOpen, setMenuOpen] = React.useState(false);
+  // Phone: the rail is a drawer opened from the bottom bar's «القائمة» button.
+  const [mobileOpen, setMobileOpen] = React.useState(false);
+  React.useEffect(() => {
+    const onOpen = () => setMobileOpen(true);
+    window.addEventListener("powercare:rail-open", onOpen);
+    return () => window.removeEventListener("powercare:rail-open", onOpen);
+  }, []);
+  React.useEffect(() => { setMobileOpen(false); }, [location.pathname, location.search]);
+  React.useEffect(() => {
+    if (!mobileOpen) return undefined;
+    const onKey = (event) => { if (event.key === "Escape") setMobileOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mobileOpen]);
   const toggleRail = () => {
     setOpen((current) => {
       const next = !current;
@@ -202,11 +216,22 @@ export default function SuiteRail({
   };
 
   return (
+    <>
+    {mobileOpen ? (
+      <button
+        type="button"
+        className="nv-rail-scrim md:hidden"
+        aria-label={ar ? "إغلاق القائمة" : "Close menu"}
+        onClick={() => setMobileOpen(false)}
+      />
+    ) : null}
     <aside
       data-nv="sidebar"
       data-rail-side={side?.id || ""}
-      data-collapsed={open ? "false" : "true"}
-      className={`corporate-sidebar nv-group-rail nv-suite-rail hidden md:flex z-40 h-full shrink-0 pt-safe ${sidebarSide}`}
+      data-collapsed={open || mobileOpen ? "false" : "true"}
+      aria-modal={mobileOpen ? "true" : undefined}
+      role={mobileOpen ? "dialog" : undefined}
+      className={`corporate-sidebar nv-group-rail nv-suite-rail hidden md:flex z-40 h-full shrink-0 pt-safe ${sidebarSide} ${mobileOpen ? "nv-rail-mobile-open" : ""}`}
     >
       <button
         type="button"
@@ -497,5 +522,6 @@ export default function SuiteRail({
         ) : null}
       </div>
     </aside>
+    </>
   );
 }

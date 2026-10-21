@@ -6,10 +6,10 @@
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F7F8FA",
-  "theme_color": "#14284B",
+  "theme_color": "#0B3D27",
   "icons": [
     {
-      "src": "/nirovera-mark.png",
+      "src": "/nirovera-mark-v2.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"

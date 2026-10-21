@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 80" fill="none" role="img" aria-label="NiroVera">
-  <image href="nirovera-mark.png" x="0" y="0" width="80" height="80" preserveAspectRatio="xMidYMid meet"/>
+  <image href="nirovera-mark-v2.png" x="0" y="0" width="80" height="80" preserveAspectRatio="xMidYMid meet"/>
   <line x1="92" y1="18" x2="92" y2="62" stroke="#C5CAD3" stroke-width="1"/>
   <text x="108" y="48" font-family="Inter Tight, IBM Plex Sans, Arial, sans-serif" font-size="32" font-weight="600" letter-spacing="-0.4">
     <tspan fill="#0B3D27">Niro</tspan><tspan fill="#C49A2C">V</tspan><tspan fill="#0B3D27">era</tspan>

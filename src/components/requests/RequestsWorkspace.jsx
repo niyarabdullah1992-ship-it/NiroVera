@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { hoursPolicyOf } from "@/lib/laborHoursPolicy";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { cleanNotificationText } from "@/lib/notificationKind";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { setStationScope } from "@/lib/stationScopeStore";
 import { postponeResignation, recordIddahBirth, recordMaternityBirth, recordLeaveBreach, setHajjAnnualQuota, answerNightRotate, answerOtAssignment, attachExamSatProof, attachWrittenConsentPaper, creditEmployeeLeaveBalance, grantDiscretionaryDays, markLeaveDecisionSeen, openDueNightRotateCycles, remindNightDue, setLeaveRequestStatus, setOtherRequestStatus, submitLeaveRequest, submitOtherRequest, submitOtAssignment, withdrawNightRotate } from "@/lib/store";
@@ -3011,7 +3012,7 @@ export default function RequestsWorkspace({
                 return (
                   <div data-annual-law="1" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {alerts.map((a) => (
-                      <span key={`${a.kind}-${a.start}`} data-carry-alert={a.kind} style={{ fontSize: 11, lineHeight: 1.8, color: a.kind === "overdue" ? BAD : WARN }}>{ar ? a.ar : a.en}</span>
+                      <span key={`${a.kind}-${a.start}`} data-carry-alert={a.kind} style={{ fontSize: 11, lineHeight: 1.8, color: a.kind === "overdue" || a.kind === "unconsented" ? BAD : WARN }}>{cleanNotificationText(ar ? a.ar : a.en, ar ? "ar" : "en")}</span>
                     ))}
                     <button type="button" data-advance-leave="1" onClick={() => setAdvanceLeave((v) => !v)} style={chip(advanceLeave)}>
                       {advanceLeave

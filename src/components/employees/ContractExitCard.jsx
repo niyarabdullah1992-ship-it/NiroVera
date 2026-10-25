@@ -101,7 +101,13 @@ export default function ContractExitCard({ employee, companyId, ar, canManage })
         <select
           value={reason}
           disabled={!canManage}
-          onChange={(e) => setReason(e.target.value)}
+          onChange={(e) => {
+            const next = e.target.value;
+            setReason(next);
+            // The reason names who ended it — Arts. 75–77 read the party from here.
+            if (next === "employer_termination") setParty("employer");
+            else if (next === "resignation" || next === "article_81" || next === "worker_force_majeure") setParty("worker");
+          }}
           style={{ ...field, marginTop: 6 }}
         >
           <option value="">{ar ? "اختر السبب" : "Pick a reason"}</option>

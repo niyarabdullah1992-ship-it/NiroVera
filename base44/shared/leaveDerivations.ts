@@ -1025,6 +1025,9 @@ export function annualBalanceBuckets(profile: any, requests: any[] | undefined, 
     b.unagreed = i === curIdx ? 0 : round2(Math.max(0, b.left - b.agreed));
     b.warnFrom = b.deadline ? addCalendarDays(b.deadline, -60) : "";
     b.warn = b.status === "carried" && b.left > 0 && !!b.warnFrom && day >= b.warnFrom;
+    // Art. 110(2): employer-only deferral ends 90 days after the year; then written consent is required.
+    b.employerUntil = i === curIdx ? "" : addCalendarDays(b.end, ruleValue("leave.annual.deferMaxDays", b.end) ?? 90);
+    b.pastEmployerLimit = i !== curIdx && !!b.employerUntil && day > b.employerUntil;
   });
   return buckets;
 }

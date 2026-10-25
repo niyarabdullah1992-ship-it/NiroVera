@@ -1067,7 +1067,8 @@ const afterSeen = { ...emptySelf, leaveRequests: [{ ...approvedLeave, decisionSe
 assert.equal(isLiveInboxRequest(flattenWorkspaceRows([afterSeen])[0]), false, "after the worker sees the decision the card leaves ملفي");
 assert.equal(isEndedInboxRequest(flattenWorkspaceRows([afterSeen])[0]), true, "seen approved leave is ended for the inbox");
 // The archive rule: a seen approved leave stays under «معتمدة» until its last day + 30 days, then «الأرشيف».
-assert.equal(collectRequestArchive([afterSeen]).rows.length, 0, "seen approved leave stays under «معتمدة» before it ends");
+// A fixed clock (the leave runs on 2026-10-20): the test must not depend on the day it is run.
+assert.equal(collectRequestArchive([afterSeen], "ar", Date.parse("2026-09-20T00:00:00Z")).rows.length, 0, "seen approved leave stays under «معتمدة» before it ends");
 assert.equal(collectRequestArchive([afterSeen], "ar", LATER).rows.length, 1, "after the window it sits in الأرشيف");
 
 const examSeenNoSat = {

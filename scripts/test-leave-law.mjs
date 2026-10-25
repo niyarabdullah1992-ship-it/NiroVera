@@ -162,9 +162,18 @@ const approvedAnnual = (id, startDate, endDate) => ({ id, type: "annual", status
   const profile = { hireDate: "2025-01-01" };
   const alerts = annualCarryAlerts(profile, [], "2026-11-15");
   assert.ok(alerts.some((a) => a.kind === "expiring" && a.deadline === "2026-12-31" && /تنتهي في/.test(a.ar)));
-  assert.ok(alerts.some((a) => a.kind === "unagreed" && /مؤجلة دون موافقة/.test(a.ar)));
+  // Art. 110(2): past 90 days after the year (2026-03-31) without written consent → «unconsented».
+  assert.ok(alerts.some((a) => a.kind === "unconsented" && a.employerUntil === "2026-03-31" && /مؤجلة دون موافقة العامل الكتابية/.test(a.ar)));
+  assert.ok(!alerts.some((a) => a.kind === "unagreed"), "past the 90 days the softer line is replaced");
+  // Inside the employer's 90 days: «unagreed» with the 90-day limit named.
+  const early = annualCarryAlerts(profile, [], "2026-02-15");
+  assert.ok(early.some((a) => a.kind === "unagreed" && a.employerUntil === "2026-03-31" && /مؤجلة دون موافقة/.test(a.ar) && /90 يوماً/.test(a.ar)));
+  assert.ok(!early.some((a) => a.kind === "unconsented"));
+  // The 90th day itself is still inside the employer's limit.
+  assert.ok(annualCarryAlerts(profile, [], "2026-03-31").some((a) => a.kind === "unagreed"));
+  assert.ok(annualCarryAlerts(profile, [], "2026-04-01").some((a) => a.kind === "unconsented"));
   const agreed = { ...profile, leaveCarryAgreed: [{ days: 21, at: "2025-11-01T00:00:00Z" }] };
-  assert.ok(!annualCarryAlerts(agreed, [], "2026-11-15").some((a) => a.kind === "unagreed"), "approved carry covers the days");
+  assert.ok(!annualCarryAlerts(agreed, [], "2026-11-15").some((a) => a.kind === "unagreed" || a.kind === "unconsented"), "approved carry covers the days");
   assert.ok(!annualCarryAlerts(profile, [], "2026-06-01").some((a) => a.kind === "expiring"), "no «تنتهي في» before 60 days");
   const overdue = annualCarryAlerts(profile, [], "2027-03-01");
   assert.ok(overdue.some((a) => a.kind === "overdue" && /ما زالت مستحقة/.test(a.ar)), "past the limit: still owed, schedule");

@@ -3135,7 +3135,7 @@ export function setHajjAnnualQuota(companyId, quota) {
 
 /**
  * Art. 110 carry notices — once per bucket and kind: the worker gets «تنتهي في» 60 days before the
- * deferral limit; the manager gets the «مؤجلة دون موافقة» / overdue line to schedule the days.
+ * deferral limit; the manager gets the «مؤجلة دون موافقة» (inside / past the employer's 90 days) or overdue line.
  */
 export function openDueAnnualCarryNotices(companyId, onDate) {
   const data = getCompanyData(companyId);

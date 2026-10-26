@@ -319,9 +319,10 @@ export function checkOtDecisionGate(input: {
   creditDaysYtd?: number | null;
   enjoyDate?: string | null;
   windowAgreed?: boolean | null;
-  workedProven?: boolean | null;
-  note?: string | null;
   onDate?: string | Date | null;
+  workedProven?: boolean | null;
+  ordered?: boolean | null;
+  reason?: string | null;
 }) {
   const ot = Math.max(0, Number(input.overtimeMinutes) || 0);
   if (ot <= 0) {
@@ -352,16 +353,26 @@ export function checkOtDecisionGate(input: {
       reasonEn: "Approve overtime for pay, reject it, or grant compensatory leave with the worker's consent — hours stay recorded.",
     };
   }
-  // Art. 107 twin of attendanceDerivations.js: a punch proves presence, not that the work was
-  // ordered. Ruling the hours unworked is allowed, but only in writing, on the record.
+  // Art. 107 — the manager decides the punched hours. Hours the employer ordered (an approved overtime
+  // assignment, or a rostered holiday duty) and the punches proved are owed: pay or compensatory leave,
+  // never «not worked». Punches past the shift with no order (a late or forgotten checkout) are the
+  // manager's call: pay, compensatory leave, or «not worked» with a written reason the worker receives.
   if (decision === "reject" && input.workedProven === true) {
-    const note = String(input.note || "").trim();
-    if (note.length < 3) {
+    const ordered = input.ordered !== false;
+    if (ordered) {
+      return {
+        ok: false as const,
+        error: "OT_WORKED_NO_REJECT",
+        reason: "موقوف — المادة 107: ساعات بتكليف معتمد أو دوام عطلة مجدول، والحضور والانصراف يثبتان أنها عُملت، فأجرها واجب. اختر الصرف بأجر الساعة + 50% أو إجازة تعويضية بموافقة العامل.",
+        reasonEn: "Blocked — Article 107: hours under an approved assignment or a rostered holiday duty, proven by the punches, are owed. Choose pay at hourly + 50% or compensatory leave with the worker's consent.",
+      };
+    }
+    if (String(input.reason || "").trim().length < 3) {
       return {
         ok: false as const,
         error: "OT_REJECT_REASON",
-        reason: "اكتب سبب الرفض — المادة 107: البصمة تثبت البقاء لا الأمر بالعمل. إن كان نسيان بصمة انصراف فاكتبه؛ الساعات تبقى في السجل، وللعامل أن يطلب تصحيح انصراف.",
-        reasonEn: "Write the reason for the rejection — Article 107: a punch proves presence, not that the work was ordered. If it was a forgotten checkout, say so; the minutes stay on the record and the worker may raise a checkout correction.",
+        reason: "يبقى: اكتب سبب «لم يُعمل» — يصل للعامل ويُحفظ في سجل التدقيق، وله الاعتراض عليه.",
+        reasonEn: "Still needed: write why the hours were not worked — the worker receives it, it is kept in the audit trail, and he may object.",
       };
     }
   }

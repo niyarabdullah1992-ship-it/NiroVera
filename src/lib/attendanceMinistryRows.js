@@ -200,7 +200,7 @@ export function attendanceMinistryRows({ d, employee, today, ar = true, lane = "
     key: "labour-107",
     source: "labour",
     badge: badgeOf("hours.ot.premium", ar, day),
-    title: T(ar, `الإضافي يُسجَّل تلقائياً عند الانصراف — بأجر الساعة + ${Math.round((premium - 1) * 100)}% أو إجازة تعويضية بموافقتك؛ العطلة الرسمية ويوم الراحة كلها إضافي`, `Overtime is recorded at checkout — paid at the hour + ${Math.round((premium - 1) * 100)}% or compensatory leave by consent; an official holiday or rest day is all overtime`),
+    title: T(ar, `ساعات ما بعد الدوام تُسجَّل عند الانصراف ويقررها المدير — بأجر الساعة + ${Math.round((premium - 1) * 100)}% أو إجازة تعويضية بموافقتك، أو «لم يُعمل» بسبب مكتوب لك الاعتراض عليه؛ التكليف المعتمد والعطلة المجدولة أجرها واجب`, `Hours past the shift are recorded at checkout and decided by the manager — paid at the hour + ${Math.round((premium - 1) * 100)}%, compensatory leave by consent, or «not worked» with a written reason you may object to; an approved assignment or a rostered holiday is always owed`),
     note: citeRule("hours.ot.premium", day)?.[ar ? "hintAr" : "hintEn"] || "",
     status: manage && f.openCount ? "waiting" : "settled",
     pill: f.openCount

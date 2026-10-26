@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import * as beAttendance from "../base44/shared/attendanceDerivations.ts";
 import {
   ATT_STATUS,
   GEO_VERDICT,
@@ -111,6 +112,16 @@ assert.equal(checkOtDecisionGate({ overtimeMinutes: 60, decision: "approve", ove
 assert.equal(checkOtDecisionGate({ overtimeMinutes: 60, decision: "approve", overtimeHoursYtd: 720, annualCapConsent: true }).ok, true);
 assert.equal(checkOtDecisionGate({ overtimeMinutes: 90, decision: "comp_leave", workerConsent: true, onDate: "2026-09-13", enjoyDate: "2027-01-01" }).error, "COMP_LEAVE_WINDOW");
 assert.equal(checkOtDecisionGate({ overtimeMinutes: 90, decision: "comp_leave", workerConsent: true, onDate: "2026-09-13", enjoyDate: "2027-01-01", windowAgreed: true }).ok, true);
+// «not worked» on punched hours: ordered → blocked; unordered → a written reason (client and server twin agree)
+for (const input of [
+  { overtimeMinutes: 120, decision: "reject", workedProven: true },
+  { overtimeMinutes: 120, decision: "reject", workedProven: true, ordered: false },
+  { overtimeMinutes: 120, decision: "reject", workedProven: true, ordered: false, reason: "نسي البصمة" },
+]) {
+  const client = checkOtDecisionGate(input);
+  const server = beAttendance.checkOtDecisionGate(input);
+  assert.equal(`${client.ok}/${client.error || ""}`, `${server.ok}/${server.error || ""}`, `twin parity for ${JSON.stringify(input)}`);
+}
 assert.equal(checkOtDecisionGate({ overtimeMinutes: 480, decision: "comp_leave", workerConsent: true, onDate: "2026-09-13", creditDaysYtd: 30 }).error, "COMP_LEAVE_YEAR_CAP");
 
 // Roster + chips filter by stable IDs

@@ -495,17 +495,26 @@ export function checkOtDecisionGate(input) {
       reasonEn: "Approve overtime for pay, reject it, or grant compensatory leave with the worker's consent — hours stay recorded.",
     };
   }
-  // Art. 107: a punch proves presence, not that the work was ordered. A late checkout is very often a
-  // forgotten punch, so the manager may rule the hours unworked — but only in writing, on the record.
-  // The minutes stay recorded either way, and the worker's way back is a checkout-correction request.
+  // Art. 107 — the manager decides the punched hours. Hours the employer ordered (an approved overtime
+  // assignment, or a rostered holiday duty) and the punches proved are owed: pay or compensatory leave,
+  // never «not worked». Punches past the shift with no order (a late or forgotten checkout) are the
+  // manager's call: pay, compensatory leave, or «not worked» with a written reason the worker receives.
   if (decision === "reject" && input.workedProven === true) {
-    const note = String(input.note || "").trim();
-    if (note.length < 3) {
+    const ordered = input.ordered !== false;
+    if (ordered) {
+      return {
+        ok: false,
+        error: "OT_WORKED_NO_REJECT",
+        reason: "موقوف — المادة 107: ساعات بتكليف معتمد أو دوام عطلة مجدول، والحضور والانصراف يثبتان أنها عُملت، فأجرها واجب. اختر الصرف بأجر الساعة + 50% أو إجازة تعويضية بموافقة العامل.",
+        reasonEn: "Blocked — Article 107: hours under an approved assignment or a rostered holiday duty, proven by the punches, are owed. Choose pay at hourly + 50% or compensatory leave with the worker's consent.",
+      };
+    }
+    if (String(input.reason || "").trim().length < 3) {
       return {
         ok: false,
         error: "OT_REJECT_REASON",
-        reason: "اكتب سبب الرفض — المادة 107: البصمة تثبت البقاء لا الأمر بالعمل. إن كان نسيان بصمة انصراف فاكتبه؛ الساعات تبقى في السجل، وللعامل أن يطلب تصحيح انصراف.",
-        reasonEn: "Write the reason for the rejection — Article 107: a punch proves presence, not that the work was ordered. If it was a forgotten checkout, say so; the minutes stay on the record and the worker may raise a checkout correction.",
+        reason: "يبقى: اكتب سبب «لم يُعمل» — يصل للعامل ويُحفظ في سجل التدقيق، وله الاعتراض عليه.",
+        reasonEn: "Still needed: write why the hours were not worked — the worker receives it, it is kept in the audit trail, and he may object.",
       };
     }
   }
@@ -626,10 +635,9 @@ export function overtimeYearUsageOutsideAssignments(otDecisions, employeeId, yea
     if (row?.source === "ot_assignment") continue;
     const d = row?.decision;
     if (!["approve", "pay", "comp_leave", "credit"].includes(d)) continue;
-    // When punches exceed a PAID assignment the entry is rewritten as «actual_punch» holding the
-    // full actual minutes, with the assignment's own minutes kept on `assignmentMinutes`. The
-    // caller adds the assignment hours separately, so those minutes must come off here or the
-    // same hours are counted twice against the 720 h year (Regs Art. 22).
+    // حين تتجاوز البصمات تكليفاً مدفوعاً يُعاد كتابة القيد «actual_punch» حاملاً الدقائق الفعلية
+    // كاملة، ودقائق التكليف محفوظة على assignmentMinutes. والمُنادي يجمع ساعات التكليف على حدة،
+    // فلا بد من خصمها هنا وإلا حُسبت الساعة مرتين على سنة الـ720 ساعة (اللائحة م22).
     const assigned = Math.max(0, Number(row.assignmentMinutes) || 0);
     const m = Math.max(0, (Number(row.overtimeMinutes) || 0) - assigned);
     minutes += m;

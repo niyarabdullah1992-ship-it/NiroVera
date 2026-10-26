@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { hoursPolicyOf } from "@/lib/laborHoursPolicy";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cleanNotificationText } from "@/lib/notificationKind";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { setStationScope } from "@/lib/stationScopeStore";
 import { postponeResignation, recordIddahBirth, recordMaternityBirth, recordLeaveBreach, setHajjAnnualQuota, answerNightRotate, answerOtAssignment, attachExamSatProof, attachWrittenConsentPaper, creditEmployeeLeaveBalance, grantDiscretionaryDays, markLeaveDecisionSeen, openDueNightRotateCycles, remindNightDue, setLeaveRequestStatus, setOtherRequestStatus, submitLeaveRequest, submitOtherRequest, submitOtAssignment, withdrawNightRotate } from "@/lib/store";
@@ -273,10 +275,31 @@ function DutyRequestDecisionPanel({ row, data, ar }) {
 
 /** إدارة: raising for a worker is the exception — folded under the decision list. ملفي: the form stays open. */
 /** Raise column. Employee and management share one frame — the sheet's SectionHead names the lane. */
-function RaiseFold({ manage, children }) {
+const RAISE_DEEP_LINK = ["kind", "right", "doc", "leave"];
+
+function RaiseFold({ manage, children, ar = true }) {
+  // Phone, employee side: the raise form waits behind one «طلب جديد» button so the
+  // person sees their own requests first. A link that names a request kind opens it.
+  const phone = useIsMobile();
+  const { search } = useLocation();
+  const asked = RAISE_DEEP_LINK.some((key) => new URLSearchParams(search || "").get(key));
+  const [open, setOpen] = React.useState(false);
+  const folded = phone && !manage && !open && !asked;
   return (
     <div className={manage ? "nv-req-raise nv-req-manage-raise" : "nv-req-raise"} data-manage-raise={manage ? "1" : undefined} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {children}
+      {phone && !manage ? (
+        <button
+          type="button"
+          className="nv-raise-cta"
+          aria-expanded={!folded}
+          data-open={folded ? "false" : "true"}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <span aria-hidden className="nv-raise-cta__plus">{folded ? "+" : "×"}</span>
+          <span>{folded ? (ar ? "طلب جديد" : "New request") : (ar ? "إغلاق الطلب الجديد" : "Close new request")}</span>
+        </button>
+      ) : null}
+      {folded ? null : children}
     </div>
   );
 }
@@ -2985,7 +3008,7 @@ export default function RequestsWorkspace({
                 return (
                   <div data-annual-law="1" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {alerts.map((a) => (
-                      <span key={`${a.kind}-${a.start}`} data-carry-alert={a.kind} style={{ fontSize: 11, lineHeight: 1.8, color: a.kind === "overdue" ? BAD : WARN }}>{ar ? a.ar : a.en}</span>
+                      <span key={`${a.kind}-${a.start}`} data-carry-alert={a.kind} style={{ fontSize: 11, lineHeight: 1.8, color: a.kind === "overdue" || a.kind === "unconsented" ? BAD : WARN }}>{cleanNotificationText(ar ? a.ar : a.en, ar ? "ar" : "en")}</span>
                     ))}
                     <button type="button" data-advance-leave="1" onClick={() => setAdvanceLeave((v) => !v)} style={chip(advanceLeave)}>
                       {advanceLeave

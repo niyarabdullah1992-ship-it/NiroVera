@@ -679,6 +679,10 @@ export function annualBalanceBuckets(profile, requests, onDate, company, employe
     b.unagreed = i === curIdx ? 0 : round2(Math.max(0, b.left - b.agreed));
     b.warnFrom = b.deadline ? addCalendarDays(b.deadline, -warnDays) : "";
     b.warn = b.status === "carried" && b.left > 0 && !!b.warnFrom && day >= b.warnFrom;
+    // Art. 110(2): the employer alone may postpone up to 90 days after the year ends; beyond that
+    // only with the worker's written consent (an agreed carry covers it), never past `deadline`.
+    b.employerUntil = i === curIdx ? "" : addCalendarDays(b.end, ruleValue("leave.annual.deferMaxDays", b.end) ?? 90);
+    b.pastEmployerLimit = i !== curIdx && !!b.employerUntil && day > b.employerUntil;
   });
   return buckets;
 }
@@ -731,7 +735,8 @@ export function unusedAnnualDaysAtExit(profile, requests, exitDate, company, emp
 /**
  * Art. 110 carry alerts. Days are never silently dropped: Art. 109(2) forbids waiving them and Art. 111
  * pays them at exit; the employer must let the worker take them. So:
- *  - "unagreed": carried days with no approved Art. 110(1) carry → «مؤجلة دون موافقة» to the manager.
+ *  - "unagreed": carried days with no approved carry, still inside the employer's 90 days (Art. 110(2)).
+ *  - "unconsented": the same days past those 90 days with no written consent — already a breach.
  *  - "expiring": 60 days before the end of the following year (the Art. 110(2) limit) → «تنتهي في».
  *  - "overdue": past that limit → still owed; the manager must schedule them.
  */
@@ -755,11 +760,17 @@ export function annualCarryAlerts(profile, requests, onDate, company, employee) 
         en: `The deferral of ${b.left} days from ${yearAr} ends on ${b.deadline} (Art. 110) — request them before then. They do not lapse, but must be scheduled.`,
       });
     }
-    if (b.unagreed > 0) {
+    if (b.unagreed > 0 && b.pastEmployerLimit) {
       out.push({
-        kind: "unagreed", start: b.start, days: b.unagreed, deadline: b.deadline,
-        ar: `${b.unagreed} يوماً من سنة ${yearAr} مؤجلة دون موافقة على الترحيل (المادة 110/1) — جدولها مع العامل قبل ${b.deadline}.`,
-        en: `${b.unagreed} days from ${yearAr} are carried without an agreed carry (Art. 110(1)) — schedule them with the worker before ${b.deadline}.`,
+        kind: "unconsented", start: b.start, days: b.unagreed, deadline: b.deadline, employerUntil: b.employerUntil,
+        ar: `${b.unagreed} يوماً من سنة ${yearAr} مؤجلة دون موافقة العامل الكتابية منذ ${b.employerUntil} — تأجيل المنشأة وحدها لا يتعدى 90 يوماً بعد سنة الاستحقاق (المادة 110/2). خذ موافقته كتابةً أو جدولها الآن، ولا يتعدى التأجيل في كل حال ${b.deadline}.`,
+        en: `${b.unagreed} days from ${yearAr} have been deferred without the worker's written consent since ${b.employerUntil} — the employer alone may defer no more than 90 days after the entitlement year (Art. 110(2)). Get his written consent or schedule them now; deferral may never pass ${b.deadline}.`,
+      });
+    } else if (b.unagreed > 0) {
+      out.push({
+        kind: "unagreed", start: b.start, days: b.unagreed, deadline: b.deadline, employerUntil: b.employerUntil,
+        ar: `${b.unagreed} يوماً من سنة ${yearAr} مؤجلة دون موافقة على الترحيل — للمنشأة تأجيلها حتى ${b.employerUntil} فقط (90 يوماً، المادة 110/2)، وبعده تلزم موافقة العامل كتابةً. جدولها معه أو وثّق موافقته.`,
+        en: `${b.unagreed} days from ${yearAr} are carried without an agreed carry — the employer may defer them only until ${b.employerUntil} (90 days, Art. 110(2)); after that the worker's written consent is required. Schedule them with him or record his consent.`,
       });
     }
   }

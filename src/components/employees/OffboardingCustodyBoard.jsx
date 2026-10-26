@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from "react";
+import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import { formatDate } from "@/lib/dateFormat";
 import { Link } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
@@ -279,7 +281,8 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
     exitDate: exitRow.effectiveDate || exitRow.lastDay || "",
     monthlyWage: eos.wage,
     custodyDebt,
-    extras: comp.amount,
+    // Art. 76: notice short on the employer's side is wage owed to the worker — part of the settlement.
+    extras: comp.amount + (eos.noticePay?.inSettlement ? eos.noticePay.amount : 0),
     deadline: settlement,
   }) : null;
   const markSettlementPaid = () => {
@@ -569,27 +572,38 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
                   </span>
                 </div>
               ))}
+              {eos.noticePay?.amount > 0 ? (
+                <div data-notice-pay={eos.noticePay.payer} style={{ marginTop: 10, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, paddingBottom: 10, borderBottom: "1px solid var(--nv-line)" }}>
+                  <span style={{ display: "inline-flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontSize: 12, color: MUTED }}>
+                    {eos.noticePay.payer === "employer"
+                      ? (ar ? `أجر مهلة الإشعار الناقصة (${eos.noticePay.days} يوماً) — مستحق للعامل ومُضاف إلى التصفية (المادة 76)` : `Wage for the notice short (${eos.noticePay.days} days) — owed to the worker, added to the settlement (Art. 76)`)
+                      : (ar ? `أجر مهلة الإشعار الناقصة (${eos.noticePay.days} يوماً) — لصاحب العمل أن يطالب به، ولا يُحسم من الأجر بلا اتفاق (المادة 76)` : `Wage for the notice short (${eos.noticePay.days} days) — the employer may claim it; not set off from wages without agreement (Art. 76)`)}
+                    <LaborArticleCite ruleId="contract.notice.compensation.cite" ar={ar} />
+                  </span>
+                  <span dir="ltr" style={{ fontSize: "13px", fontWeight: 500, fontFamily: "'IBM Plex Sans',sans-serif", textAlign: "right", color: NAVY }}>{fmt(eos.noticePay.amount)}</span>
+                </div>
+              ) : null}
               {eos.unlawful?.applies ? (
-                <div style={{ marginTop: 10 }}>
-                  <div style={{
-                    display: "flex",
-                    alignItems: "baseline",
-                    justifyContent: "space-between",
-                    gap: "12px",
-                    paddingBottom: "10px",
-                    borderBottom: "1px solid var(--nv-line)",
-                  }}
-                  >
-                    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontSize: "12px", color: MUTED }}>
-                      {ar
-                        ? "تعويض الإنهاء غير المشروع إن ثبت — لا يُضاف إلى الإجمالي"
-                        : "Unlawful-termination indemnity if proven — not added to the total"}
-                      <RightHint ar={ar} hint={payHintFor("unlawful", { ...hintCtx, amount: eos.unlawful.amount })} />
-                    </span>
+                <div data-art77={eos.unlawful.direction} style={{ marginTop: 10, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, paddingBottom: 10, borderBottom: "1px solid var(--nv-line)" }}>
+                  <span style={{ display: "inline-flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontSize: 12, color: eos.unlawful.missing ? "var(--nv-warn-ink)" : MUTED, lineHeight: 1.7 }}>
+                    {eos.unlawful.missing
+                      ? (eos.unlawful.missing === "contract_type"
+                        ? (ar ? "تعويض المادة 77 لا يُحسب: نوع العقد (محدد / غير محدد) غير مسجّل في الملف — أكمله ليُحسب." : "Art. 77 compensation not computed: the contract type is missing from the file — complete it.")
+                        : (ar ? "تعويض المادة 77 لا يُحسب: العقد محدد المدة بلا تاريخ نهاية في الملف — أكمله ليُحسب أجر المدة الباقية." : "Art. 77 compensation not computed: a fixed term with no end date on file — complete it to price the remaining term."))
+                      : eos.unlawful.direction === "to_employer"
+                        ? (ar ? `ترك العقد المحدد قبل نهايته (${eos.unlawful.remainingDays} يوماً باقية) — لصاحب العمل أن يطالب بتعويض المادة 77 إن لم يكن للترك سبب مشروع، ولا يُحسم من المستحقات بلا حكم` : `Fixed term left early (${eos.unlawful.remainingDays} days left) — the employer may claim Art. 77 if there was no legitimate reason; not set off without a ruling`)
+                        : eos.unlawful.basis === "contract"
+                          ? (ar ? "تعويض الإنهاء غير المشروع المنصوص عليه في العقد — إن ثبت، ولا يُضاف إلى الإجمالي (المادة 77)" : "The contract's own unlawful-termination compensation — if proven, not added to the total (Art. 77)")
+                          : eos.unlawful.term === "fixed"
+                            ? (ar ? `تعويض الإنهاء غير المشروع إن ثبت: أجر المدة الباقية من العقد (${eos.unlawful.remainingDays} يوماً حتى ${formatDate(eos.unlawful.contractEndDate, "ar", { day: "numeric", month: "long", year: "numeric" }) || eos.unlawful.contractEndDate})، وبحد أدنى أجر شهرين — لا يُضاف إلى الإجمالي` : `Unlawful-termination compensation if proven: wage for the ${eos.unlawful.remainingDays} days left to ${eos.unlawful.contractEndDate}, at least two months — not added to the total`)
+                            : (ar ? `تعويض الإنهاء غير المشروع إن ثبت: أجر 15 يوماً عن كل سنة (${eos.unlawful.years} سنة)، وبحد أدنى أجر شهرين — لا يُضاف إلى الإجمالي` : `Unlawful-termination compensation if proven: 15 days' wage per year (${eos.unlawful.years} years), at least two months — not added to the total`)}
+                    {eos.unlawful.missing ? null : <RightHint ar={ar} hint={payHintFor("unlawful", { ...hintCtx, amount: eos.unlawful.amount })} />}
+                  </span>
+                  {eos.unlawful.amount != null && !eos.unlawful.missing ? (
                     <span dir="ltr" style={{ fontSize: "13px", fontWeight: 500, fontFamily: "'IBM Plex Sans',sans-serif", textAlign: "right", color: NAVY }}>
                       {fmt(eos.unlawful.amount)}
                     </span>
-                  </div>
+                  ) : null}
                 </div>
               ) : null}
               <div style={{ marginTop: 10 }}>

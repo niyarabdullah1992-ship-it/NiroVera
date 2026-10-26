@@ -257,12 +257,15 @@ export function unusedAnnualDays(annualLeaveUsed: number, entitlement = ANNUAL_E
 
 function contractTypeOf(caseRow: OffboardingCaseLike) {
   const raw = String(
-    caseRow.contractType
-    || caseRow.profile?.contractType
-    || caseRow.profile?.contract?.type
+    (caseRow as any).contractType
+    || (caseRow.profile as any)?.contractType
+    || (caseRow.profile as any)?.contract?.type
     || "",
-  ).toLowerCase();
-  return raw === "fixed" ? "fixed" as const : "indefinite" as const;
+  ).trim().toLowerCase();
+  if (!raw) return "";
+  if (/indefinite|open|unlimited|غير\s*محدد/.test(raw)) return "indefinite";
+  if (/fixed|limited|محدد/.test(raw)) return "fixed";
+  return "";
 }
 
 function remainingTermDays(endIso: string | undefined, onDate: string) {
@@ -272,39 +275,94 @@ function remainingTermDays(endIso: string | undefined, onDate: string) {
   return Math.round((b.getTime() - a.getTime()) / 86400000);
 }
 
-/** Article 77 unlawful-termination indemnity — informational, never added to eos.total. */
+/** Art. 77 — who may claim it, by exit reason: the employer ended the contract, or the worker left under Art. 81. */
+export const ART77_TO_WORKER = new Set(["employer_termination", "article_81"]);
+/** Resigning a fixed term before its end is the worker ending it — the employer may claim the same Art. 77 sum. */
+export const ART77_TO_EMPLOYER = new Set(["resignation"]);
+
+/**
+ * Article 77 — compensation for ending the contract without a legitimate reason. Informational: whether
+ * the reason was legitimate is for the labour court, so it is never added to eos.total.
+ *  - Measured to the exit day (eosEndMs), never to today.
+ *  - Applies only when one party ended it: the employer (or the worker under Art. 81) → owed to the
+ *    worker; the worker resigning a fixed term early → the employer may claim it.
+ *  - A compensation written in the contract replaces the statutory sum («ما لم يتضمن العقد تعويضاً محدداً»).
+ *  - Fixed term: wage for the days left; open-ended: 15 days per year of service; at least two months.
+ *  - Unknown contract type, or a fixed term with no end date → no figure; the file must be completed.
+ */
 export function deriveArt77Compensation(caseRow: OffboardingCaseLike, nowMs = Date.now()) {
-  const onDate = localIso(nowMs);
+  const endMs = eosEndMs(caseRow, nowMs);
+  const onDate = localIso(endMs);
   const hireDate = caseRow.hireDate || caseRow.profile?.hireDate || null;
-  const preStart = isPreStart(hireDate, nowMs);
-  const years = preStart ? 0 : serviceYears(hireDate, nowMs);
-  const wage = finalWage(Number(caseRow.base) || 0, Number(caseRow.allowances) || 0);
+  const preStart = isPreStart(hireDate, endMs);
+  const suspended = preStart ? 0 : suspendedDaysFromUnpaidLeave((caseRow as any).leaveRequests || (caseRow.profile as any)?.leaveRequests || [], hireDate, onDate);
+  const years = preStart ? 0 : serviceYears(hireDate, endMs, suspended);
+  const wage = finalWage(Number(caseRow.base ?? (caseRow.profile as any)?.baseSalary ?? (caseRow.profile as any)?.base) || 0, Number(caseRow.allowances ?? (caseRow.profile as any)?.allowances) || 0);
   const cite = citeRule("eos.unlawful.cite", onDate);
   const perYearDays = ruleValue("eos.unlawful.perYearDays", onDate);
   const minMonths = ruleValue("eos.unlawful.minMonths", onDate);
-  const reason = String(caseRow.contractExit?.reason || caseRow.exitReason || "").trim();
-  const applies = !preStart && reason !== "article_80";
+  const exit: any = caseRow.contractExit || (caseRow.profile as any)?.contractExit || {};
+  const reason = String(exit.reason || (caseRow as any).exitReason || "").trim();
   const term = contractTypeOf(caseRow);
-  const endIso = caseRow.contractEndDate || caseRow.profile?.contractEndDate || caseRow.profile?.contract?.endDate;
-  let raw = 0;
-  if (applies && wage > 0) {
-    if (term === "fixed" && endIso) {
-      raw = (wage / 30) * remainingTermDays(endIso, onDate);
-    } else {
-      raw = (wage / 30) * perYearDays * years;
-    }
+  const endIso = (caseRow as any).contractEndDate || (caseRow.profile as any)?.contractEndDate || (caseRow.profile as any)?.contract?.endDate || "";
+  const remainingDays = term === "fixed" && endIso ? remainingTermDays(endIso, onDate) : 0;
+  let direction: "" | "to_worker" | "to_employer" = "";
+  if (ART77_TO_WORKER.has(reason)) direction = "to_worker";
+  else if (ART77_TO_EMPLOYER.has(reason) && term === "fixed" && remainingDays > 0) direction = "to_employer";
+  const applies = !preStart && !!direction;
+  const missing = !applies ? "" : !term ? "contract_type" : term === "fixed" && !endIso ? "contract_end" : "";
+  const agreed = Number((caseRow.profile as any)?.contract?.terminationCompensation ?? (caseRow.profile as any)?.terminationCompensation ?? (caseRow as any).terminationCompensation);
+  let amount = 0;
+  let basis: "" | "contract" | "law" = "";
+  if (applies && Number.isFinite(agreed) && agreed > 0) {
+    amount = Math.round(agreed);
+    basis = "contract";
+  } else if (applies && !missing && wage > 0) {
+    const raw = term === "fixed" ? (wage / 30) * remainingDays : (wage / 30) * perYearDays * years;
+    amount = Math.max(Math.round(raw), Math.round(wage * minMonths));
+    basis = "law";
   }
-  const floor = applies ? wage * minMonths : 0;
-  const amount = Math.max(Math.round(raw), Math.round(floor));
   return {
     applies,
+    direction,
+    reason,
     term,
+    missing,
+    basis,
+    endDate: onDate,
+    contractEndDate: endIso || null,
+    remainingDays,
+    years: Math.round(years * 100) / 100,
+    wage,
     perYearDays,
     minMonths,
-    amount,
+    amount: missing && basis !== "contract" ? null : amount,
     includedInTotal: false,
     cite,
     citeRuleId: "eos.unlawful.cite" as const,
+  };
+}
+
+/**
+ * Article 76 — notice not observed on an open-ended contract: the party that ended it pays the other
+ * the wage for the days short. Owed to the worker (employer ended it) → part of the final settlement;
+ * owed to the employer (worker ended it) → shown only; it is not set off from wages without agreement.
+ */
+export function deriveNoticePay(caseRow: OffboardingCaseLike, wage: number) {
+  const exit: any = caseRow.contractExit || (caseRow.profile as any)?.contractExit || {};
+  const days = Math.max(0, Number(exit.noticeShortfall) || 0);
+  const reason = String(exit.reason || (caseRow as any).exitReason || "").trim();
+  const noNotice = ["article_80", "article_81", "death", "worker_force_majeure", "mutual", "contract_end"].includes(reason);
+  const payer = exit.party === "worker" || reason === "resignation" ? "worker" : "employer";
+  const w = Math.max(0, Number(wage) || 0);
+  const amount = !noNotice && days > 0 ? Math.round((w / 30) * days) : 0;
+  return {
+    days: noNotice ? 0 : days,
+    payer,
+    amount,
+    inSettlement: amount > 0 && payer === "employer",
+    cite: citeRule("contract.notice.compensation.cite"),
+    citeRuleId: "contract.notice.compensation.cite" as const,
   };
 }
 
@@ -435,6 +493,7 @@ export function deriveEos(caseRow: OffboardingCaseLike, nowMs = eosEndMs(caseRow
     leaveCiteRuleId: "eos.unusedLeave.cite",
     leaveCite: citeRule("eos.unusedLeave.cite", onDate),
     unlawful: deriveArt77Compensation(caseRow, nowMs),
+    noticePay: deriveNoticePay(caseRow, wage),
     gratuity,
     leaveCash: leave,
     total: gratuity + leave,

@@ -123,7 +123,8 @@ assert.equal(eos.art81, false);
 assert.equal(eos.art87, false);
 assert.equal(eos.unlawful.includedInTotal, false);
 assert.equal(eos.total, eos.gratuity + eos.leaveCash);
-assert.ok(eos.unlawful.amount >= eos.wage * 2);
+// No exit reason on this case → Art. 77 does not apply (it needs one party ending the contract).
+assert.equal(eos.unlawful.applies, false);
 assert.equal(eos.unlawful.cite?.article, "77");
 
 const resigned = deriveEos({ ...caseRow, contractExit: { reason: "resignation" } }, NOW);

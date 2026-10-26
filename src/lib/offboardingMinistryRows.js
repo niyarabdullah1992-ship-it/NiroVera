@@ -15,6 +15,7 @@
  * inside its window or short · settled = met · void = for reference / not applicable.
  * Pure (node-testable); the panel only lays the rows out.
  */
+import { formatDate } from "./dateFormat.js";
 import { deriveEos, deriveSettlementDeadline, eosEndMs } from "./offboardingDerivations.js";
 import { deriveNotice, TERMINATION_REASONS } from "./contractLawDerivations.js";
 import { checkContractTermGate } from "./complianceDerivations.js";
@@ -139,11 +140,25 @@ export function offboardingMinistryRows({ employee = {}, caseRow = null, eos: eo
     note: ar
       ? `الإشعار من صاحب العمل ${ruleValue("contract.notice.employerMonthlyDays", day)} يوماً ومن العامل ${ruleValue("contract.notice.workerMonthlyDays", day)} يوماً لذي الأجر الشهري (75)، والنقص يُعوَّض بأجر المدة (76).`
       : `Employer notice ${ruleValue("contract.notice.employerMonthlyDays", day)} days, worker ${ruleValue("contract.notice.workerMonthlyDays", day)} days on a monthly wage (75); a shortfall is paid at the wage (76).`,
-    sub: hasExit && art77.applies && art77.amount
-      ? (ar ? `إن كان الإنهاء لغير سبب مشروع: تعويض لا يقل عن ${money(art77.amount, ar)} (77) — خارج التصفية.` : `If the end had no valid reason: at least ${money(art77.amount, ar)} (77) — outside the settlement.`)
-      : undefined,
+    sub: !hasExit || !art77.applies
+      ? undefined
+      : art77.missing
+        ? (art77.missing === "contract_type"
+          ? (ar ? "تعويض المادة 77 لا يُحسب: نوع العقد غير مسجّل في الملف — أكمله." : "Art. 77 not computed: the contract type is missing — complete the file.")
+          : (ar ? "تعويض المادة 77 لا يُحسب: العقد محدد المدة بلا تاريخ نهاية — أكمله." : "Art. 77 not computed: fixed term with no end date — complete the file."))
+        : art77.direction === "to_employer"
+          ? (ar ? `ترك العقد المحدد قبل نهايته بـ${art77.remainingDays} يوماً — لصاحب العمل أن يطالب بتعويض المادة 77 إن لم يكن للترك سبب مشروع (${money(art77.amount, ar)})، ولا يُحسم بلا حكم.` : `Fixed term left ${art77.remainingDays} days early — the employer may claim Art. 77 (${money(art77.amount, ar)}) if there was no legitimate reason; not set off without a ruling.`)
+          : art77.basis === "contract"
+            ? (ar ? `إن كان الإنهاء لغير سبب مشروع: التعويض المنصوص عليه في العقد ${money(art77.amount, ar)} (77) — خارج التصفية.` : `If the end had no valid reason: the contract's own compensation ${money(art77.amount, ar)} (77) — outside the settlement.`)
+            : art77.term === "fixed"
+              ? (ar ? `إن كان الإنهاء لغير سبب مشروع: أجر المدة الباقية (${art77.remainingDays} يوماً حتى ${formatDate(art77.contractEndDate, "ar", { day: "numeric", month: "long", year: "numeric" }) || art77.contractEndDate}) ${money(art77.amount, ar)}، وبحد أدنى أجر شهرين (77) — خارج التصفية.` : `If the end had no valid reason: wage for the ${art77.remainingDays} days left to ${art77.contractEndDate}, ${money(art77.amount, ar)}, at least two months (77) — outside the settlement.`)
+              : (ar ? `إن كان الإنهاء لغير سبب مشروع: أجر 15 يوماً عن كل سنة خدمة ${money(art77.amount, ar)}، وبحد أدنى أجر شهرين (77) — خارج التصفية.` : `If the end had no valid reason: 15 days' wage per year of service, ${money(art77.amount, ar)}, at least two months (77) — outside the settlement.`),
     ...(term.term !== "indefinite"
-      ? { status: "void", pill: ar ? "محدد المدة — ينتهي بمدته" : "Fixed term — ends at its term" }
+      ? (hasExit && art77.applies && art77.term === "fixed" && art77.remainingDays > 0
+        ? { status: "alert", pill: art77.direction === "to_employer"
+          ? (ar ? `تُرك قبل نهاية مدته بـ${art77.remainingDays} يوماً (77)` : `Left ${art77.remainingDays} days before its term (77)`)
+          : (ar ? `أُنهي قبل نهاية مدته بـ${art77.remainingDays} يوماً (77)` : `Ended ${art77.remainingDays} days before its term (77)`) }
+        : { status: "void", pill: ar ? "محدد المدة — ينتهي بمدته" : "Fixed term — ends at its term" })
       : !hasExit
         ? { status: "void", pill: ar ? `${notice.required} يوماً عند الإنهاء` : `${notice.required} days at the end` }
         : NO_NOTICE.has(reason)
@@ -151,7 +166,9 @@ export function offboardingMinistryRows({ employee = {}, caseRow = null, eos: eo
           : notice.pending
             ? { status: "waiting", pill: ar ? "تاريخ الإشعار أو آخر يوم غير مسجّل" : "Notice date or last day not recorded" }
             : notice.shortfall > 0
-              ? { status: "alert", pill: ar ? `نقص ${notice.shortfall} يوماً — أجرها في التصفية (76)` : `${notice.shortfall} days short — paid in the settlement (76)` }
+              ? { status: "alert", pill: party === "worker"
+                ? (ar ? `نقص ${notice.shortfall} يوماً من العامل — لصاحب العمل أجرها ${money(eos.noticePay?.amount || 0, ar)} (76)` : `${notice.shortfall} days short by the worker — the employer may claim ${money(eos.noticePay?.amount || 0, ar)} (76)`)
+                : (ar ? `نقص ${notice.shortfall} يوماً — أجرها ${money(eos.noticePay?.amount || 0, ar)} في التصفية (76)` : `${notice.shortfall} days short — ${money(eos.noticePay?.amount || 0, ar)} in the settlement (76)`) }
               : { status: "settled", pill: ar ? `${notice.served} من ${notice.required} يوماً` : `${notice.served} of ${notice.required} days` }),
   });
 

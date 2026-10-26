@@ -25,6 +25,7 @@ import {
 import { RAIL_SIDE_COLOR, railBadgeTone, railFooter } from "@/lib/suiteRailFrame";
 import { railSwitchHref, routeRailSide, useExplicitRailSide, useSetRailSide } from "@/lib/railSide";
 import NvIcon from "@/components/shared/NvIcon";
+import { POWERCARE_MARK_URL, POWERCARE_MARK_ON_DARK_URL } from "@/lib/brand";
 
 const LINE = "var(--nv-line)";
 const INK = "var(--nv-ink)";
@@ -35,7 +36,7 @@ const DANGER = "var(--nv-bad-ink)";
 const GOLD = RAIL_SIDE_COLOR.employee;
 const GREEN = RAIL_SIDE_COLOR.manage;
 
-const ICONS = {
+export const ICONS = {
   duty: CalendarClock,
   signing: PenLine,
   performance: BarChart3,
@@ -56,7 +57,7 @@ const ICONS = {
   files: Folder,
 };
 
-function keyOnSide(side, activeKey) {
+export function keyOnSide(side, activeKey) {
   const keys = new Set((side?.groups || []).flatMap((group) => (group.items || []).map((item) => item.key)));
   if (!activeKey) return "";
   if (keys.has(activeKey)) return activeKey;
@@ -192,6 +193,20 @@ export default function SuiteRail({
     try { return window.localStorage.getItem("nv7-nav") !== "closed"; } catch { return true; }
   });
   const [menuOpen, setMenuOpen] = React.useState(false);
+  // Phone: the rail is a drawer opened from the bottom bar's «القائمة» button.
+  const [mobileOpen, setMobileOpen] = React.useState(false);
+  React.useEffect(() => {
+    const onOpen = () => setMobileOpen(true);
+    window.addEventListener("powercare:rail-open", onOpen);
+    return () => window.removeEventListener("powercare:rail-open", onOpen);
+  }, []);
+  React.useEffect(() => { setMobileOpen(false); }, [location.pathname, location.search]);
+  React.useEffect(() => {
+    if (!mobileOpen) return undefined;
+    const onKey = (event) => { if (event.key === "Escape") setMobileOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mobileOpen]);
   const toggleRail = () => {
     setOpen((current) => {
       const next = !current;
@@ -201,11 +216,22 @@ export default function SuiteRail({
   };
 
   return (
+    <>
+    {mobileOpen ? (
+      <button
+        type="button"
+        className="nv-rail-scrim md:hidden"
+        aria-label={ar ? "إغلاق القائمة" : "Close menu"}
+        onClick={() => setMobileOpen(false)}
+      />
+    ) : null}
     <aside
       data-nv="sidebar"
       data-rail-side={side?.id || ""}
-      data-collapsed={open ? "false" : "true"}
-      className={`corporate-sidebar nv-group-rail nv-suite-rail hidden md:flex z-40 h-full shrink-0 pt-safe ${sidebarSide}`}
+      data-collapsed={open || mobileOpen ? "false" : "true"}
+      aria-modal={mobileOpen ? "true" : undefined}
+      role={mobileOpen ? "dialog" : undefined}
+      className={`corporate-sidebar nv-group-rail nv-suite-rail hidden md:flex z-40 h-full shrink-0 pt-safe ${sidebarSide} ${mobileOpen ? "nv-rail-mobile-open" : ""}`}
     >
       <button
         type="button"
@@ -257,7 +283,10 @@ export default function SuiteRail({
         {logoUrl ? (
           <img src={logoUrl} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: "contain", flexShrink: 0, border: `1px solid ${LINE}`, background: "var(--nv-card)" }} />
         ) : (
-          <span style={{ width: 30, height: 30, borderRadius: 6, background: "#3C7D50", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#fff", fontFamily: "'IBM Plex Mono',monospace", fontWeight: 700, fontSize: 13 }}>NV</span>
+          <>
+            <img className="nv-mark-on-light" src={POWERCARE_MARK_URL} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: "contain", flexShrink: 0, border: `1px solid ${LINE}`, background: "#fff" }} />
+            <img className="nv-mark-on-dark" src={POWERCARE_MARK_ON_DARK_URL} alt="" style={{ width: 30, height: 30, objectFit: "contain", flexShrink: 0 }} />
+          </>
         )}
         <span className="nv-rail-brand-copy" style={{ display: "flex", flexDirection: "column", lineHeight: 1.35, minWidth: 0 }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: INK, letterSpacing: "-.01em" }}>{ar ? "نيروفيرا" : "NiroVera"}</span>
@@ -493,5 +522,6 @@ export default function SuiteRail({
         ) : null}
       </div>
     </aside>
+    </>
   );
 }

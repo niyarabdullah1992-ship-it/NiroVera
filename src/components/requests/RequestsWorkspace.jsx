@@ -6,7 +6,7 @@ import { setStationScope } from "@/lib/stationScopeStore";
 import { postponeResignation, recordIddahBirth, recordMaternityBirth, recordLeaveBreach, setHajjAnnualQuota, answerNightRotate, answerOtAssignment, attachExamSatProof, attachWrittenConsentPaper, creditEmployeeLeaveBalance, grantDiscretionaryDays, markLeaveDecisionSeen, openDueNightRotateCycles, remindNightDue, setLeaveRequestStatus, setOtherRequestStatus, submitLeaveRequest, submitOtherRequest, submitOtAssignment, withdrawNightRotate } from "@/lib/store";
 import { approvedLeaveWithdrawWindow, chargeableLeaveDays, checkApproveLeaveGate, checkExamSittingSettleGate, checkLeaveGenderGate, checkRejectLeaveGate, checkSubmitLeaveGate, examNoticeFilesOf, examSatFileOf, examSatState, hasLeaveAttachment, isRealSupportingFile, leaveNeedsAttachment, leaveNeedsArticle118Ack, leaveSpanIncludesOfficialHolidays, hajjAnnualQuotaOf, sickLeaveEndingBefore } from "@/lib/leaveDerivations";
 import { grantedLeaveBalances, usedLeaveDays } from "@/lib/leaveTypes";
-import { weeklyOffDaysInRange, weeklyOffLabels } from "@/lib/leaveEidOverlap.js";
+import { weeklyOffDaysInRange } from "@/lib/leaveEidOverlap.js";
 import {
   checkApproveOtherRequestGate,
   checkApproveStudyConsentGate,
@@ -63,11 +63,10 @@ import {
   checkRefuseOtAssignmentGate,
   isArticle106Assignment,
   isOvertimeAssignment,
-  otCreditDays,
 } from "@/lib/overtimeAssignment";
 import { nightRotateStage } from "@/lib/nightRotateCycle";
 import { ownPendingAwaitingNote, requestMayDecideOnLane } from "@/lib/dutyScope";
-import { requestSelfEmployee, viewerEmployeeId } from "@/lib/employeeFileView";
+import { requestSelfEmployee } from "@/lib/employeeFileView";
 import { CONSENT_MINISTRY_HINT_AR, CONSENT_MINISTRY_HINT_EN, hashConsentFile, nightWrittenConsentGlow, readConsentFile } from "@/lib/writtenConsent";
 import ConsentFileLink from "@/components/requests/ConsentFileLink";
 import { refreshUnpaidLeaveWage } from "@/lib/deductionGenerators";
@@ -110,7 +109,6 @@ import {
   isOwnMineLaneRow,
   isArchivedRequestRow,
   isEndedInboxRequest,
-  requestRegardingLine,
   employeeStationName,
   isAllowedSupportingFile,
   isPendingDecideStatus,
@@ -128,12 +126,11 @@ import { citeLeaveType, isRamadanHoursSubject, religionOnFile } from "@/lib/labo
 import { profileGender } from "@/lib/employeeProfileFields";
 import { DUTY_REQUEST_META, DUTY_REQUEST_TYPES, checkDutyRequestFields, nursingRightUntil, dutyRequestDetail, dutyRequestEffect, dutyRequestRosterFacts, isDutyRequestType } from "@/lib/dutyRequests";
 import { performsNightWork, pregnancyNightBan } from "@/lib/decision18632";
-import { checkResignationFields, checkPostponeResignationGate, EXIT_ROUTE_NOTICE75, RESIGNATION_REASON_HINT_AR, RESIGNATION_REASON_HINT_EN, resignationDetail, resignationFacts, resignationRouteFor, resignationState, RESIGNATION_TYPE } from "@/lib/exitRequests";
+import { checkPostponeResignationGate, EXIT_ROUTE_NOTICE75, RESIGNATION_REASON_HINT_AR, RESIGNATION_REASON_HINT_EN, resignationDetail, resignationFacts, resignationRouteFor, resignationState, RESIGNATION_TYPE } from "@/lib/exitRequests";
 import { sunExposureMark } from "@/lib/shiftWeek";
 import { rosterPersonHref } from "@/components/schedules/dutyLinks";
 import { leaveApprovalCardNote } from "@/lib/leaveEntitlementCycle";
 import { BORDER, CARD, CONTROL_RADIUS, MUTED, NAVY, PILL_RADIUS, SURFACE } from "@/lib/platformStyles";
-import { REQUESTS_LAW_FOOT_AR, REQUESTS_LAW_FOOT_EN, REQUESTS_LAW_LEDE_AR, REQUESTS_LAW_LEDE_EN } from "@/lib/platformJudgment";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import RightHint from "@/components/shared/RightHint";
 import { rightHintFor } from "@/lib/rightHints";
@@ -154,7 +151,6 @@ import AnnualLeaveBreakdown from "@/components/requests/AnnualLeaveBreakdown";
 import RequestsMinistryPanel from "@/components/requests/RequestsMinistryPanel";
 import RequestFilesBoard from "@/components/requests/RequestFilesBoard";
 import { requestPublicRef } from "@/lib/requestWorkspace";
-import RequestInboxSlab from "@/components/requests/RequestInboxSlab";
 import { checkRaiseSignableGate, isLetterSignableType } from "@/lib/requestSigning";
 import RequestDecisionComposer from "@/components/requests/RequestDecisionComposer";
 import KindFrameCard from "@/components/requests/KindFrameCard";

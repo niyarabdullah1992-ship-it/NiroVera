@@ -1,5 +1,5 @@
 import React from "react";
-import { BORDER, CARD, MUTED, RADIUS, STAGE, SURFACE } from "@/lib/platformStyles";
+import { BORDER, CARD, MUTED, RADIUS, STAGE } from "@/lib/platformStyles";
 import { StampNestContext } from "@/components/shared/stampNestContext";
 
 const mono = { fontFamily: "'IBM Plex Mono', monospace" };

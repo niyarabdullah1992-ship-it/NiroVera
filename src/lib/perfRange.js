@@ -3,8 +3,9 @@
 import { formatDayMonthYear, formatMonthYear } from "./dateFormat.js";
 import { employeeScheduledOn, hasPublishedScheduleOn } from "./attendanceCalendar.js";
 import { countPersonalHseDuty, deriveFairHseRates, PERF_WEIGHTS } from "./perfDerivations.js";
-import { taskBelongsTo, taskIsProven } from "./hcmDerivations.js";
+import { provenTaskWeight, taskBelongsTo, taskIsProven } from "./hcmDerivations.js";
 import { taskQualitySummary } from "./taskQuality.js";
+import { toRiyadhDateKey } from "./riyadhDate.js";
 
 export const MIN_PROOF = 5;
 
@@ -165,7 +166,11 @@ function leaveCovers(request, day) {
 }
 
 function punchedOn(employee, day, data) {
+  // `personalAttendance` is the canonical home (facts/attendance.js). `data.attendance` and
+  // `data.attendanceRows` never exist on the company blob, so coverage read nothing at all.
   const rows = [
+    ...(Array.isArray(data?.personalAttendance) ? data.personalAttendance : []),
+    ...(Array.isArray(data?.attendanceLedger) ? data.attendanceLedger : []),
     ...(Array.isArray(data?.attendance) ? data.attendance : []),
     ...(Array.isArray(data?.attendanceRows) ? data.attendanceRows : []),
     ...(Array.isArray(employee?.attendance) ? employee.attendance : []),
@@ -201,6 +206,8 @@ function daysOfMonth(monthKey, from, to) {
 
 function attendanceRowsOf(data) {
   return [
+    ...(Array.isArray(data?.personalAttendance) ? data.personalAttendance : []),
+    ...(Array.isArray(data?.attendanceLedger) ? data.attendanceLedger : []),
     ...(Array.isArray(data?.attendance) ? data.attendance : []),
     ...(Array.isArray(data?.attendanceRows) ? data.attendanceRows : []),
     ...(Array.isArray(data?.employees) ? data.employees.flatMap((person) => Array.isArray(person.attendance) ? person.attendance : []) : []),
@@ -227,11 +234,12 @@ export function coverPctFor(employee, from, to, data) {
       if (punchedOn(employee, day, data) || onLeaveOn(employee, day)) covered += 1;
     }
   }
-  const pts = Number(employee?.coverPoints) || 0;
-  const max = Math.max(1, ...(data?.employees || []).map((row) => Number(row.coverPoints) || 0), 1);
-  const fromPoints = pts > 0 ? Math.min(100, Math.round((pts / max) * 100)) : 100;
-  if (scheduled > 0 && punchesInRange(data, from, to)) return Math.round((covered / scheduled) * 100);
-  return fromPoints;
+  // No scheduled day in the range means there is nothing to cover — that is a full score, not a
+  // guess. `coverPoints` is read in four places and written in none, so the old fallback handed
+  // everyone a flat 100%, and `punchesInRange` made one person's figure depend on other people's
+  // punches. Both are gone: coverage is now the person's own scheduled days against their own.
+  if (scheduled <= 0) return 100;
+  return Math.round((covered / scheduled) * 100);
 }
 
 function safePctFor(employee, data) {
@@ -261,11 +269,21 @@ export function personFacts(employee, from, to, data) {
   });
   const assigned = inRange.length;
   const proof = proven.length + proofs.length;
-  const done = assigned > 0 ? Math.round((proven.length / assigned) * 100) : (proof ? 100 : 0);
+  // Achievement by EARNED WEIGHT, not by headcount: the approver is made to pick a quality level
+  // and the toast promises «تظهر في الأداء», but a count ratio ignored `pointsAwarded` entirely, so
+  // the level moved nothing. Each task's share is its own awarded points over what it could award.
+  const earned = proven.reduce((sum, task) => sum + (Number(provenTaskWeight(task, employee.id)) || 0), 0);
+  const possible = inRange.reduce((sum, task) => sum + (Number(provenTaskWeight({ ...task, pointsAwarded: 0 }, "")) || 0), 0);
+  const done = possible > 0
+    ? Math.min(100, Math.round((earned / possible) * 100))
+    : (assigned > 0 ? Math.round((proven.length / assigned) * 100) : (proof ? 100 : 0));
+  // A task closed but never approved is not «on time» — nobody ruled on it yet. And the comparison
+  // is made on Riyadh day keys, so an approval at 00:30 Riyadh is not read as the previous day.
   const ontime = proven.length
     ? Math.round((proven.filter((task) => {
-      if (!task.dueAt || !task.approvedAt) return true;
-      return String(task.approvedAt).slice(0, 10) <= String(task.dueAt).slice(0, 10);
+      if (!task.dueAt) return true;
+      if (!task.approvedAt) return false;
+      return toRiyadhDateKey(task.approvedAt) <= String(task.dueAt).slice(0, 10);
     }).length / proven.length) * 100)
     : (proof ? 100 : 0);
   return {

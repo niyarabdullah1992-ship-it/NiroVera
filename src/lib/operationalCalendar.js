@@ -81,7 +81,11 @@ export function clockOf(iso) {
   if (!iso) return "—";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "—";
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  // Riyadh, not the viewer's device: every other attendance reader uses the Riyadh clock, so a
+  // manager abroad was shown punch times hours away from the ones the lateness was judged against.
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Riyadh", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(date);
 }
 
 export function pct(part, whole) {
@@ -168,12 +172,23 @@ export function tasksOnDay(tasks, dateKey, currentUser, todayKey) {
   return { mine, team };
 }
 
+/**
+ * Open safety reports on a day. Every writer — the inspection round, the report form, the server's
+ * own hazard action — puts the report on `incidentLog`; `hazards` is the older hand-added list and
+ * was the only thing this counter read, so no safety report ever reached the attendance board.
+ * Both are read now, and the day comes from the field each one actually stores (`at` / `openedAt`).
+ */
 function openHazardsOnDay(safety, dateKey) {
   const out = [];
   for (const rec of Array.isArray(safety) ? safety : []) {
+    for (const incident of rec?.incidentLog || []) {
+      if (incident?.closedAt || incident?.resolvedAt || String(incident?.status || "") === "closed") continue;
+      const day = isoDayKey(incident.at || incident.openedAt || incident.createdAt || incident.date);
+      if (day === dateKey) out.push({ ...incident, stationId: rec.stationId });
+    }
     for (const hazard of rec?.hazards || []) {
       if (hazard?.closedAt || hazard?.resolvedAt) continue;
-      const day = isoDayKey(hazard.createdAt || hazard.date || hazard.at || rec.createdAt);
+      const day = isoDayKey(hazard.openedAt || hazard.createdAt || hazard.date || hazard.at || rec.createdAt);
       if (day === dateKey) out.push({ ...hazard, stationId: rec.stationId });
     }
   }
@@ -406,7 +421,7 @@ export function eventGroups(rec, ar, currentUser, { manage = true } = {}) {
       scopeBg: OC.absBg,
       scopeBorder: OC.absBd,
       rows: rec.hazards.map((hazard) => ({
-        text: hazard.title || hazard.text || hazard.name || (ar ? "بلاغ مفتوح" : "Open report"),
+        text: hazard.title || hazard.description || hazard.text || hazard.name || (ar ? "بلاغ مفتوح" : "Open report"),
         state: ar ? "مفتوح" : "Open",
         stColor: OC.abs,
         time: clockOf(hazard.createdAt || hazard.at),

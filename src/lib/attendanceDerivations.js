@@ -495,15 +495,19 @@ export function checkOtDecisionGate(input) {
       reasonEn: "Approve overtime for pay, reject it, or grant compensatory leave with the worker's consent — hours stay recorded.",
     };
   }
-  // Art. 107: hours the punches (or a confirmed holiday duty) prove were worked are owed —
-  // the manager chooses pay or compensatory leave, never «unpaid».
+  // Art. 107: a punch proves presence, not that the work was ordered. A late checkout is very often a
+  // forgotten punch, so the manager may rule the hours unworked — but only in writing, on the record.
+  // The minutes stay recorded either way, and the worker's way back is a checkout-correction request.
   if (decision === "reject" && input.workedProven === true) {
-    return {
-      ok: false,
-      error: "OT_WORKED_NO_REJECT",
-      reason: "موقوف — المادة 107: الحضور والانصراف يثبتان أن الساعات عُملت فعلاً، وأجرها واجب. اختر الصرف بأجر الساعة + 50% أو إجازة تعويضية بموافقة العامل.",
-      reasonEn: "Blocked — Article 107: the punches prove these hours were worked and their pay is owed. Choose pay at hourly + 50% or compensatory leave with the worker's consent.",
-    };
+    const note = String(input.note || "").trim();
+    if (note.length < 3) {
+      return {
+        ok: false,
+        error: "OT_REJECT_REASON",
+        reason: "اكتب سبب الرفض — المادة 107: البصمة تثبت البقاء لا الأمر بالعمل. إن كان نسيان بصمة انصراف فاكتبه؛ الساعات تبقى في السجل، وللعامل أن يطلب تصحيح انصراف.",
+        reasonEn: "Write the reason for the rejection — Article 107: a punch proves presence, not that the work was ordered. If it was a forgotten checkout, say so; the minutes stay on the record and the worker may raise a checkout correction.",
+      };
+    }
   }
   const onDate = laborDayKey(input.onDate);
   if (decision === "comp_leave") {
@@ -622,7 +626,12 @@ export function overtimeYearUsageOutsideAssignments(otDecisions, employeeId, yea
     if (row?.source === "ot_assignment") continue;
     const d = row?.decision;
     if (!["approve", "pay", "comp_leave", "credit"].includes(d)) continue;
-    const m = Math.max(0, Number(row.overtimeMinutes) || 0);
+    // When punches exceed a PAID assignment the entry is rewritten as «actual_punch» holding the
+    // full actual minutes, with the assignment's own minutes kept on `assignmentMinutes`. The
+    // caller adds the assignment hours separately, so those minutes must come off here or the
+    // same hours are counted twice against the 720 h year (Regs Art. 22).
+    const assigned = Math.max(0, Number(row.assignmentMinutes) || 0);
+    const m = Math.max(0, (Number(row.overtimeMinutes) || 0) - assigned);
     minutes += m;
     if (d === "comp_leave" || d === "credit") days += ((m / 60) * perHour) / dayHours;
   }

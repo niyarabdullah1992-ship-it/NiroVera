@@ -31,11 +31,8 @@ import ProofPeoplePanel from "@/components/proof/ProofPeoplePanel";
 import { getCompanyData } from "@/lib/store";
 import { toast } from "@/components/ui/use-toast";
 import {
-  BORDER,
   CARD,
   MUTED,
-  NAVY,
-  SURFACE,
   ui,
   field,
 } from "@/lib/platformStyles";
@@ -52,7 +49,7 @@ import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import ComposerModalShell from "@/components/shared/ComposerModalShell";
 import SectionBackLink from "@/components/shared/SectionBackLink";
 import OpsTaskSection from "@/components/tasks/detail/OpsTaskSection";
-import { DetailHero, Fact, HeroBar, HeroFigure, HeroPill, HeroPrintButton } from "@/components/tasks/detail/DetailKit";
+import { DetailHero, Fact, HeroFigure, HeroPill, HeroPrintButton } from "@/components/tasks/detail/DetailKit";
 import { printSheet } from "@/lib/printSheet";
 import { workProofSheet } from "@/lib/printRecords";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";

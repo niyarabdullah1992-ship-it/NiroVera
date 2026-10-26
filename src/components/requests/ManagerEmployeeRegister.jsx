@@ -1,5 +1,4 @@
 import React, { useEffect } from "react";
-import { BORDER, CARD, MUTED, NAVY, NAVY_FILL, PAPER_SHADOW, RADIUS, SURFACE } from "@/lib/platformStyles";
 import { managerEmployeeRegister } from "@/lib/requestWorkspace";
 
 /**

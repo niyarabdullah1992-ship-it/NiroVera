@@ -53,7 +53,10 @@ export function weeklyRestDayCountOf(company, employee) {
   const fromFile = countOneOrTwo(employee?.profile?.weeklyRestDayCount ?? employee?.weeklyRestDayCount);
   if (fromFile) return fromFile;
   const fromCompany = countOneOrTwo(postingOf(company).weeklyRestDayCount ?? postingOf(company).companyRestDays);
-  return fromCompany || 2;
+  // Art. 104 gives ONE weekly rest day. When the file and the posting record nothing we fall back to
+  // that statutory floor — never to a second day, because the extra day would mint rest-day overtime
+  // (every minute at 1.5×, Art. 107(3)) out of a figure nobody recorded.
+  return fromCompany || 1;
 }
 
 /** Weekdays that must not be charged against Article 109 for this employee. */
@@ -85,11 +88,22 @@ function weekKeysAround(dateKey) {
 }
 
 /** Days of this person's week that hold work: a rostered shift (any branch) or a punched check-in. */
+/** An approved leave day is consumed from the balance — it is not also a day worked. */
+function onApprovedLeaveDay(employee, key) {
+  return (employee?.leaveRequests || []).some((row) => {
+    if (String(row?.status || "") !== "approved") return false;
+    const from = String(row?.startDate || row?.date || "").slice(0, 10);
+    const to = String(row?.endDate || row?.startDate || row?.date || "").slice(0, 10);
+    if (!from) return false;
+    return key >= from && key <= (to || from);
+  });
+}
+
 export function weekWorkedKeys(company, employee, dateKey) {
   const id = employee?.id;
   if (id == null) return [];
   const keys = weekKeysAround(dateKey);
-  return keys.filter((key) => (
+  return keys.filter((key) => !onApprovedLeaveDay(employee, key) && (
     (company?.schedules || []).some((schedule) => employeeAssignedOn(schedule, id, key))
     || (company?.personalAttendance || []).some((row) => (
       String(row?.employeeId ?? row?.employee_id) === String(id)

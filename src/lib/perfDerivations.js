@@ -26,7 +26,7 @@ export function deriveFairHseRates(input = {}) {
   if (assignedOpen > 0 || notes > 0) {
     reportPct = reportPts <= 0 ? 0 : (maxReport > 0 ? Math.round((reportPts / maxReport) * 100) : 100);
   } else if (reportPts > 0 && maxReport > 0) {
-    reportPct = Math.max(100, Math.round((reportPts / maxReport) * 100));
+    reportPct = Math.min(100, Math.round((reportPts / maxReport) * 100));
   }
   const safeClosure = Math.min(100, Math.max(0, closurePct));
   const safeReport = Math.min(100, Math.max(0, reportPct));

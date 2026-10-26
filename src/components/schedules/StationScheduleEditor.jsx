@@ -12,7 +12,6 @@ import { duplicateShiftGroups, nextDistinctShift, checkConsecutiveWorkGate, form
 import { useTimeFormat } from "@/hooks/useTimeFormat";
 import { ruleValue } from "@/lib/laborRules";
 import { toast } from "@/components/ui/use-toast";
-import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import RightHint from "@/components/shared/RightHint";
 import { attRightHint } from "@/lib/rightHints.att.js";
 import PolicyDeviationAlert from "@/components/shared/PolicyDeviationAlert";

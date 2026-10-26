@@ -72,7 +72,8 @@ export function isGateOpen(gate: GateResult | null | undefined): gate is Extract
 }
 
 export function gateMessage(gate: GateResult | null | undefined, ar = true): string {
-  if (!gate) return "";
-  if (gate.ok) return "";
+  // strictNullChecks مطفأ في jsconfig، وفيه لا يضيّق `if (gate.ok)` الاتحاد المميَّز.
+  // المقارنة بالقيمة الحرفية تضيّقه، فيرى المصرّف فرع ok:false وحقولَه.
+  if (!gate || gate.ok === true) return "";
   return ar ? gate.reason : (gate.reasonEn || gate.reason);
 }

@@ -1169,6 +1169,19 @@ export function checkLeaveSelfRaiseGate(request: LeaveRequestLike | null | undef
   const subjectId = String(extras.employee?.id || extras.employeeId || request?.employeeId || "").trim();
   if (!actorId || !subjectId) return { ok: true as const };
   if (actorId === subjectId) return { ok: true as const };
+  // Twin of leaveDerivations.js: management may RECORD leave on the worker's behalf when it carries
+  // the supporting paper (a sick report, the event document). Without this branch the same request
+  // was accepted by the client and refused by the server — one rule, two answers.
+  const papers = (Array.isArray(request?.files) ? request.files : []).filter(Boolean);
+  if (extras.employerRecorded === true && papers.length) return { ok: true as const, onBehalf: true as const };
+  if (extras.employerRecorded === true) {
+    return {
+      ok: false as const,
+      error: "LEAVE_ON_BEHALF_PAPER",
+      reason: "تسجيل الإجازة نيابة عن الموظف يحتاج المستند المؤيد (تقرير أو ورقة الواقعة).",
+      reasonEn: "Recording leave on a worker's behalf needs the supporting paper (report or event document).",
+    };
+  }
   return {
     ok: false as const,
     error: "LEAVE_EMPLOYEE_ONLY",

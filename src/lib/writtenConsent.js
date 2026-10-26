@@ -1,4 +1,4 @@
-import { consentFileKind, normalizeSignMark } from "./documentReadGate.js";
+import { checkDocumentReadGate, consentFileKind, normalizeSignMark } from "./documentReadGate.js";
 
 /** Written consent raised by a manager and signed from My Requests. */
 
@@ -284,12 +284,33 @@ export function checkRaiseConsentGate({ employeeId, body, deadline, file, paper 
   return { ok: true };
 }
 
-export function checkAcceptConsentGate({ ack, paper }) {
+export function checkAcceptConsentGate({ ack, paper, readAt, file, pageCount, seen }) {
+  // «لا إقرار قبل قراءة الملف» — checkDocumentReadGate كانت معرَّفة وغير مستدعاة، وهذه البوابة
+  // كانت تستقبل readAt وترميه، فتصل الموافقة موقَّعة وما فُتح المستند.
+  const doc = file || null;
+  const read = checkDocumentReadGate({
+    required: !!doc,
+    pageCount: Number(pageCount) || Number(doc?.pageCount) || 1,
+    seen,
+    readAt,
+  });
+  if (!read.ok) return read;
   return checkConfirmConsentPaperGate({ paper, ack });
 }
 
-export function checkRefuseConsentGate() {
-  return { ok: true };
+export function checkRefuseConsentGate({ note } = {}) {
+  // Every blocking action names its reason — a refusal is the worker's or the manager's ruling,
+  // and it was being written with an empty `reply` because this gate read nothing.
+  const written = String(note || "").trim();
+  if (written.length < 3) {
+    return {
+      ok: false,
+      error: "REFUSE_REASON_REQUIRED",
+      reason: "اكتب سبب الرفض — يُحفظ مع الطلب في سجل التدقيق باسم من رفض.",
+      reasonEn: "Write the reason for refusing — it is kept with the request in the audit trail, in the name of whoever refused.",
+    };
+  }
+  return { ok: true, note: written };
 }
 
 export async function hashConsentFile(file) {

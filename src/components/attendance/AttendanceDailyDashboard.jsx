@@ -150,7 +150,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
     const onUpdated = () => load();
     window.addEventListener("attendance-updated", onUpdated);
     return () => window.removeEventListener("attendance-updated", onUpdated);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [employees.map((e) => e.id).join(","), company?.id]);
 
   const isManager = currentUser?.id === data?.ownerId || ["station_manager", "ops_manager", "director"].includes(currentUser?.role);
@@ -163,6 +163,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
       time,
       reason,
       by: currentUser?.name,
+      byId: currentUser?.id,
       stationId: employee.stationId,
     });
     if (!result.ok) {

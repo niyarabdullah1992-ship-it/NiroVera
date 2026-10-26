@@ -319,6 +319,8 @@ export function checkOtDecisionGate(input: {
   creditDaysYtd?: number | null;
   enjoyDate?: string | null;
   windowAgreed?: boolean | null;
+  workedProven?: boolean | null;
+  note?: string | null;
   onDate?: string | Date | null;
 }) {
   const ot = Math.max(0, Number(input.overtimeMinutes) || 0);
@@ -349,6 +351,19 @@ export function checkOtDecisionGate(input: {
       reason: "يلزم اعتماد الإضافي للصرف، أو رفضه، أو إجازة تعويضية بموافقة العامل — الساعات تبقى مسجّلة.",
       reasonEn: "Approve overtime for pay, reject it, or grant compensatory leave with the worker's consent — hours stay recorded.",
     };
+  }
+  // Art. 107 twin of attendanceDerivations.js: a punch proves presence, not that the work was
+  // ordered. Ruling the hours unworked is allowed, but only in writing, on the record.
+  if (decision === "reject" && input.workedProven === true) {
+    const note = String(input.note || "").trim();
+    if (note.length < 3) {
+      return {
+        ok: false as const,
+        error: "OT_REJECT_REASON",
+        reason: "اكتب سبب الرفض — المادة 107: البصمة تثبت البقاء لا الأمر بالعمل. إن كان نسيان بصمة انصراف فاكتبه؛ الساعات تبقى في السجل، وللعامل أن يطلب تصحيح انصراف.",
+        reasonEn: "Write the reason for the rejection — Article 107: a punch proves presence, not that the work was ordered. If it was a forgotten checkout, say so; the minutes stay on the record and the worker may raise a checkout correction.",
+      };
+    }
   }
   const onDate = laborDayKey(input.onDate);
   if (decision === "comp_leave") {

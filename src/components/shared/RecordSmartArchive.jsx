@@ -220,7 +220,7 @@ export default function RecordSmartArchive({
   useEffect(() => {
     if (!preview) return;
     listRef.current?.querySelector(`[data-archive-row="${CSS.escape(String(preview.id))}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [previewId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [previewId]);  
 
   const onListKey = (e) => {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;

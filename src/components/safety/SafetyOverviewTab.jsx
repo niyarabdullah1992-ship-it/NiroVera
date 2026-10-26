@@ -849,7 +849,8 @@ export default function SafetyOverviewTab({
                 disabled={!canEdit}
                 max={new Date().toISOString().slice(0, 10)}
                 value={rec?.lastInspection ? String(rec.lastInspection).slice(0, 10) : ""}
-                onChange={(next) => onUpdate({ lastInspection: next ? new Date(`${next}T00:00:00`).toISOString() : null })}
+                /* ظهيرة الرياض: منتصف ليل الجهاز كان يخزّن يوماً مختلفاً لكل منطقة زمنية لنفس التاريخ المختار. */
+                onChange={(next) => onUpdate({ lastInspection: next ? new Date(`${next}T12:00:00+03:00`).toISOString() : null })}
               />
             </label>
 

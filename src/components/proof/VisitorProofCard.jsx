@@ -5,7 +5,7 @@ import OpsTaskSection from "@/components/tasks/detail/OpsTaskSection";
 import { DetailHero, Fact, HeroBar, HeroFigure, HeroPill, HeroPrintButton } from "@/components/tasks/detail/DetailKit";
 import { printSheet } from "@/lib/printSheet";
 import { visitorPassSheet } from "@/lib/printRecords";
-import { BRAND, BRAND_DEEP, BRAND_SOFT, CARD, MUTED, field } from "@/lib/platformStyles";
+import { BRAND, CARD, MUTED, field } from "@/lib/platformStyles";
 import ProofAttachments from "@/components/proof/ProofAttachments";
 import ProofPeoplePanel from "@/components/proof/ProofPeoplePanel";
 import { cleanedPeople, cleanedVehicles } from "@/lib/workProofCrew";

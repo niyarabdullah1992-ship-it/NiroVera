@@ -41,6 +41,7 @@ export default function OtDecisionBoard({
   const [consent, setConsent] = useState({});
   const [enjoyDate, setEnjoyDate] = useState({});
   const [windowAgreed, setWindowAgreed] = useState({});
+  const [rejectNote, setRejectNote] = useState({});
   const [busy, setBusy] = useState("");
   const cap = ruleValue("hours.ot.annualMaxHours", weekStart);
   const premium = formatOtPremiumLabel(weekStart, ar);
@@ -119,6 +120,7 @@ export default function OtDecisionBoard({
     const result = setOtDecision(companyId, employeeId, dateKey, {
       decision,
       overtimeMinutes,
+      note: rejectNote[key],
       workerConsent: consent[key] === true,
       enjoyDate: enjoyDate[key],
       windowAgreed: windowAgreed[key] === true,
@@ -292,7 +294,19 @@ export default function OtDecisionBoard({
                       {premium}
                     </button>
                     </>) : null}
-                    {item.status.closable ? (
+                    {item.status.closable ? (<>
+                      {item.status.payable ? (
+                        <label style={{ fontSize: 11, display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                          {ar ? "سبب الرفض" : "Reason to reject"}
+                          <input
+                            type="text"
+                            value={rejectNote[key] || ""}
+                            onChange={(e) => setRejectNote((prev) => ({ ...prev, [key]: e.target.value }))}
+                            placeholder={ar ? "نسيان بصمة الانصراف — لم يُكلَّف بعمل" : "Forgotten checkout — no work was ordered"}
+                            style={{ fontFamily: "inherit", fontSize: 11, padding: "4px 6px", border: `1px solid ${SW.line}`, background: SW.card, color: SW.ink, minWidth: 0, width: 220 }}
+                          />
+                        </label>
+                      ) : null}
                       <button
                         type="button"
                         data-ot-not-worked="1"
@@ -302,7 +316,7 @@ export default function OtDecisionBoard({
                       >
                         {ar ? "لم يُعمل — إغلاق" : "Not worked — close"}
                       </button>
-                    ) : null}
+                    </>) : null}
                     {item.status.payable ? (
                     <button
                       type="button"

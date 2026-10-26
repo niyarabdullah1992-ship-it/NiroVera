@@ -59,6 +59,7 @@ import { appendOrgStructureEvent } from "./orgStructureLog";
 import { annualCarryAlerts, anniversaryYearWindow, leaveCoverRange, leaveTypeLabel, remainingLeaveDays, statutoryLeaveFloor, unpaidSuspensionPlan } from "./leaveTypes";
 import { EXAM_NOTICE_KIND, EXAM_SAT_KIND, LEAVE_ROSTER_BLOB, chargeableLeaveDays, checkAlterApprovedLeaveGate, checkApproveLeaveGate, checkAttachExamSatGate, checkRejectLeaveGate, checkSeeLeaveDecisionGate, checkSubmitLeaveGate, computeLeaveDays, leaveDecisionNoticeKey, leaveRosterFromEmployees, planAnnualPauseForSick, checkIddahBirthGate, checkMaternityBirthGate, checkLeaveBreachGate } from "./leaveDerivations";
 import { mergeEmployeeRequestBags, projectDirectoryEmployee, rosterEmployeeById } from "./employeeRequestBags";
+import { canCreateTasks } from "./permissions.js";
 import { LEAVE_TOPUP_TYPE, NIGHT_FITNESS_TYPE, STUDY_CONSENT_TYPE, appendRequestAudit, appendRequestRefuseAudit, buildRequestAudit, buildRequestRefuseAudit, checkAdminLeaveCreditGate, checkApproveOtherRequestGate, checkApproveStudyConsentGate, checkLeaveGrantGate, checkRefuseRequestReasonGate, checkRejectNightFitnessGate, checkRejectStudyConsentGate, checkRevokeStudyConsentGate, checkSubmitOtherRequestGate, composeStudyConsentReason, otherRequestTypeLabel, requestAuditFileLog, leaveGrantRecord, requestRefuseFileLog, stampLeaveTopupOnEmployee, stampNightFitnessOnEmployee } from "./otherRequestDerivations";
 import {
   attendanceOnDate,
@@ -1768,6 +1769,10 @@ export function reviewLateReturn(companyId, employeeId, dayKey, { decision, by, 
   if (!punched.length) return { ok: false, error: "NO_BREAK_PUNCH", reason: "لا راحة مثبتة ببصمة لهذا اليوم.", reasonEn: "No punched break on this day." };
   if (byId && String(byId) === String(employeeId)) {
     return { ok: false, error: "SELF_DECISION", reason: "لا يقرّر الموظف في راحته — القرار لمديره.", reasonEn: "A worker does not decide on their own break — their manager does." };
+  }
+  const roleRefusal = refuseUnlessManager(companyId, byId);
+  if (roleRefusal) {
+    return roleRefusal;
   }
   updateCompany(companyId, (draft) => {
     const live = (draft.personalAttendance || []).find((item) => String(item.employeeId ?? item.employee_id) === String(employeeId) && String(item.date || item.dateKey || "").slice(0, 10) === dayKey);
@@ -3789,7 +3794,9 @@ function stampPunchRequestOnDraft(draft, employee, request, reviewerName) {
   return { ok: true, row };
 }
 
-export function recordManualAttendance(companyId, { employeeId, kind, date, time, reason, by, stationId }) {
+export function recordManualAttendance(companyId, { employeeId, kind, date, time, reason, by, byId, stationId }) {
+  const roleRefusal = refuseUnlessManager(companyId, byId);
+  if (roleRefusal) return roleRefusal;
   const type = kind === "out" || kind === "checkout_fix" ? "checkout_fix" : "manual_punch";
   const day = date || toRiyadhDateKey();
   const data = getCompanyData(companyId);
@@ -3918,10 +3925,30 @@ export function recordWorkPosting(companyId, { posted = true, date, by } = {}) {
  * «اعتمد حضوراً» on a late / out-of-range row, recorded locally (the twin of the cloud excuseAttendance):
  * the record stays, the penalty goes, the decision carries the manager's name and time.
  */
+/**
+ * The server refuses these writes for a non-manager (403). The local fallbacks run on any service
+ * outage — not only in preview — so the same role check has to hold here, or an outage turns into
+ * an escalation of privilege: excusing lateness and inventing worked hours.
+ */
+function refuseUnlessManager(companyId, byId) {
+  if (!byId) return null;
+  const data = getCompanyData(companyId);
+  const actor = (data?.employees || []).find((row) => String(row.id) === String(byId));
+  if (canCreateTasks(actor, data)) return null;
+  return {
+    ok: false,
+    error: "MANAGER_ONLY",
+    reason: "هذا القرار لمديرك — لا يُسجَّل إلا باسم من يملك صلاحية الإدارة.",
+    reasonEn: "This decision belongs to a manager — it is only recorded in the name of someone with management permission.",
+  };
+}
+
 export function excuseAttendanceLocal(companyId, employeeId, dayKey, { excused = true, by, byId, note } = {}) {
   if (byId && String(byId) === String(employeeId)) {
     return { ok: false, error: "SELF_DECISION", reason: "لا يعتمد الموظف حضوره بنفسه — القرار لمديره.", reasonEn: "A worker does not approve their own attendance." };
   }
+  const roleRefusal = refuseUnlessManager(companyId, byId);
+  if (roleRefusal) return roleRefusal;
   const data = getCompanyData(companyId);
   const row = attendanceOnDate(data?.personalAttendance, employeeId, dayKey);
   if (!row) return { ok: false, error: "NO_ATTENDANCE", reason: "لا سجل حضور لهذا اليوم.", reasonEn: "No attendance record for this day." };
@@ -4295,7 +4322,8 @@ export function settleWrittenConsentFromSigning(companyId, { requestId, token, a
       accept,
       ack: !!accept,
       note: note || "",
-      readAt: found.request.readAt || new Date().toISOString(),
+      // Never manufacture the read timestamp: an invented readAt made the read gate always pass.
+      readAt: found.request.readAt || "",
       seal: savedConsentSeals(found.employee.profile)[0] || { url: "signed" },
       viaSigning: true,
     });
@@ -4623,7 +4651,7 @@ export function setOtherRequestStatus(companyId, employeeId, requestId, status, 
     }
     if (req.type === "shift_change" && req.date) {
       const stationId = req.stationId || employee.stationId;
-      if (stationId) applyEmployeeDayShift(getOrCreateSchedule(d, stationId), req.date, employee.id, req.shiftTypeId || null);
+      if (stationId) applyApprovedDayShift(getOrCreateSchedule(d, stationId), req.date, employee.id, req.shiftTypeId || null);
     }
     if (status === "approved") applyDutyRequestOnDraft(d, employee, req);
     if (status === "withdrawn" && req.type === ART81_EXIT_TYPE && employee.profile?.contractExit?.art81RequestId === req.id) {
@@ -5236,13 +5264,20 @@ export function proveNightObligation(companyId, { stationId, key, proof = {}, by
  * The worker's own rest plan for one day on a flex shift (he chooses where his break sits).
  * parts: [{ start: "HH:MM", minutes }] already checked by checkRestPlanGate; null clears it.
  */
-export function setRestPlan(companyId, employeeId, dayKey, parts) {
+export function setRestPlan(companyId, employeeId, dayKey, parts, { shift, continuous103 } = {}) {
+  // Art. 101 (no five consecutive hours without a break): the gate was only wired to the Save
+  // button's disabled state, so any direct call could store a plan the article refuses.
+  if (parts && parts.length && shift) {
+    const gate = checkRestPlanGate({ shift, onDate: String(dayKey || "").slice(0, 10), parts, continuous103 });
+    if (!gate.ok) return gate;
+  }
   const key = `${employeeId}:${String(dayKey || "").slice(0, 10)}`;
   updateCompany(companyId, (d) => {
     d.restPlans = { ...(d.restPlans || {}) };
     if (!parts || !parts.length) delete d.restPlans[key];
     else d.restPlans[key] = { parts: parts.map((row) => ({ start: row.start, minutes: Number(row.minutes) || 0 })), at: new Date().toISOString() };
   });
+  return { ok: true };
 }
 
 /** 18632 night-fitness report on the employee file — url/name/at + from/to/permanent. */
@@ -5381,6 +5416,25 @@ function applyEmployeeDayShift(entry, dateKey, employeeId, shiftTypeId) {
   entry.assignments = entry.assignments || {};
   entry.assignments[dateKey] = day;
   markWeekDirty(entry, dateKey);
+}
+
+/**
+ * طلب اعتُمد ليس تعديلاً مسودة.
+ * applyEmployeeDayShift يُعلِّم الأسبوع «متغيّراً»، فيصير publishedViewSchedule يقدّم للموظف اللقطة
+ * المنشورة القديمة: فمن طلب تغيير ورديته وأُبلغ «الجدول محدَّث» كان يظل يرى ورديته القديمة،
+ * والمدير يرى لافتة «تعديل غير منشور» لم يصنعها.
+ * فاليوم المعتمد يدخل اللقطة أيضاً، ولا يُعلَّم الأسبوع متغيّراً بسببه وحده.
+ */
+function applyApprovedDayShift(entry, dateKey, employeeId, shiftTypeId) {
+  const weekKey = weekKeyFromDate(dateKey);
+  const wasDirty = !!(entry.weekDirty && entry.weekDirty[weekKey]);
+  applyEmployeeDayShift(entry, dateKey, employeeId, shiftTypeId);
+  const snap = entry.publishedWeeks && entry.publishedWeeks[weekKey];
+  if (snap && snap.assignments) {
+    // تعديلات المدير الأخرى غير المنشورة تبقى مخفية — يوم الطلب وحده ينتقل.
+    snap.assignments[dateKey] = cloneDayMap(dayAssignmentMap(entry.assignments, dateKey) || {});
+  }
+  if (!wasDirty && entry.weekDirty) delete entry.weekDirty[weekKey];
 }
 
 export function setEmployeeDayShift(companyId, stationId, dateKey, employeeId, shiftTypeId, {
@@ -5729,6 +5783,7 @@ export function setOtDecision(companyId, employeeId, dateKey, {
   decision,
   overtimeMinutes,
   by,
+  note,
   workerConsent,
   enjoyDate,
   windowAgreed,
@@ -5740,6 +5795,7 @@ export function setOtDecision(companyId, employeeId, dateKey, {
     decision,
     overtimeMinutes,
     by,
+    note,
     workerConsent,
     enjoyDate,
     windowAgreed,

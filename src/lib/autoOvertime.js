@@ -13,7 +13,7 @@
  * 720 h cap and its consent (Regs Art. 22) — the decision is the manager's, never the platform's.
  */
 import { citeRule, ruleValue } from "./laborRules.js";
-import { isEmployeeOffDay, ordinaryWeekCap } from "./laborHoursPolicy.js";
+import { isEmployeeOffDay, weekHoursCap } from "./laborHoursPolicy.js";
 import { deriveActualDuty } from "./actualDuty.js";
 import { employeeOnCompressedTwelveWeek, employeeShiftOnDay, weekDateKeys, weekKeyFromDate, parseDateKey } from "./shiftWeek.js";
 import { laborCalendarOf } from "./ummAlQuraCalendar.js";
@@ -100,7 +100,9 @@ function readDay(d, employee, dayKey, row, priorOrdinary, calendar, rosterGiven)
     breaks: row.breaks,
   });
   if (!actual.ok) return { actual, auto: null };
-  const capHours = ordinaryWeekCap(employee, d, dayKey, calendar);
+  // The same one cap the week board and deriveNamedOvertime read, so the three surfaces cannot
+  // disagree and the week's excess cannot land on an arbitrary day.
+  const capHours = weekHoursCap(employee, d, weekDateKeys(dayKey), calendar).hours;
   // Art. 154: the nursing credit is actual work but never overtime — the core reads the punches alone
   // and the week's running count excludes it; dayOvertimeFor adds it back to the ordinary minutes.
   const auto = deriveAutoOvertimeCore({

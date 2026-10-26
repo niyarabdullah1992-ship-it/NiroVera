@@ -123,7 +123,15 @@ export function checkHazardCloseGate(input: {
       residual,
     };
   }
-  if (!input.beforePhoto || !input.afterPhoto) {
+  // Twin of hseDerivations.js `hasPhoto`: a bare truthiness test accepted `{}`, `{name:"x"}` and
+  // "  " as photo proof, so a hazard could close server-side with no picture at all.
+  const hasPhoto = (p: unknown) => {
+    if (!p) return false;
+    if (typeof p === "string") return p.trim().length > 0;
+    const row = p as { url?: string; file_url?: string };
+    return Boolean(row.url || row.file_url);
+  };
+  if (!hasPhoto(input.beforePhoto) || !hasPhoto(input.afterPhoto)) {
     return {
       ok: false as const,
       error: "PHOTOS_REQUIRED",

@@ -286,10 +286,15 @@ function canManageSafety(user, data) {
 /** الالتزام — open hazards only (a real HSE queue). */
 export function pendingSafetyBadgeCount(safety = [], user, data) {
   if (!canManageSafety(user, data)) return 0;
-  return (safety || []).reduce(
-    (n, rec) => n + (rec.hazards || []).filter((hazard) => !hazard?.closedAt).length,
-    0,
-  );
+  // The section this badge opens lists `incidentLog` cards; counting only `hazards` left the badge
+  // blind to every safety report the inspection round and the report form actually write.
+  return (safety || []).reduce((n, rec) => {
+    const reports = (rec.incidentLog || []).filter((row) => (
+      !row?.closedAt && !row?.resolvedAt && String(row?.status || "") !== "closed"
+    )).length;
+    const hazards = (rec.hazards || []).filter((hazard) => !hazard?.closedAt).length;
+    return n + reports + hazards;
+  }, 0);
 }
 
 function dutyEmployees(user, data, employees) {

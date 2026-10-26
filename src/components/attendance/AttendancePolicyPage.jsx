@@ -1,5 +1,4 @@
 import React from "react";
-import { useAuth } from "@/lib/PowerCareAuth";
 import { DutyBoard } from "@/components/schedules/DutyTiles";
 import AttendanceSettingsBoard from "@/components/attendance/AttendanceSettingsBoard";
 import AttendanceLocationsPanel from "@/components/attendance/AttendanceLocationsPanel";

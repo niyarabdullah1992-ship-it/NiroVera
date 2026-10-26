@@ -3,6 +3,7 @@ import { calendarDateKey, summarizeAttendanceDay } from "@/lib/attendanceCalenda
 import { isStatutoryOffDay } from "@/lib/leaveTypes";
 import { ACCENT, BORDER, CARD, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
 import { formatUiNumber } from "@/lib/dateFormat";
+import { toRiyadhDateKey } from "@/lib/riyadhDate";
 
 const STATUS = {
   present: { ar: "حاضر", en: "Present", bg: "var(--nv-accent-soft)", fg: "var(--nv-ok-ink)", bd: "var(--nv-ok-line)", dot: "var(--nv-ok-fill)" },
@@ -41,7 +42,9 @@ export default function AttendanceMonthCalendarGrid({
   const weekdays = ar
     ? ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
     : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const todayKey = calendarDateKey(new Date());
+  // Riyadh's today, not the device's: east of Riyadh the grid called a still-running day «past»
+  // and marked every employee who had not punched yet as absent.
+  const todayKey = toRiyadhDateKey();
   const self = employees.find((employee) => String(employee.id) === String(currentUser?.id)) || currentUser;
 
   return (

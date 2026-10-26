@@ -1432,7 +1432,9 @@ export function deriveOpsCounts(tasks, today = new Date()) {
   const kept = raw.filter((t) => !isOpsTaskDeleted(t));
   const list = kept.filter((t) => !isDone(t));
   const done = kept.filter(isDone).length;
-  const overdue = list.filter((t) => isOverdue(t, today)).length;
+  // A task that hit its target is awaiting approval, not overdue — counting it in both buckets
+  // made the badge read 2 for one task while the list it opens showed 1.
+  const overdue = list.filter((t) => isOverdue(t, today) && !isAwaitingApproval(t)).length;
   const dueToday = list.filter((t) => isDueToday(t, today)).length;
   const awaiting = list.filter(isAwaitingApproval).length;
   const escalated = list.filter(isEscalated).length;

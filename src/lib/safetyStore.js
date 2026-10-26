@@ -3,6 +3,7 @@ import { checkSafetyDecisionGate, safetyReporterNotice } from "@/lib/safetyBranc
 import { checkHazardCloseGate } from "@/lib/hseDerivations";
 import { buildSafetyReportCard } from "@/lib/safetyReportCard";
 import { readSafety } from "@/lib/facts";
+import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import {
   checkDrillGate,
   checkInspectionGate,
@@ -54,8 +55,9 @@ export function updateSafetyRecord(companyId, stationId, updates, actorName = ""
       rec.approvedBy = null;
       rec.approvedAt = null;
     }
-    const inspectionEnd = rec.lastInspection ? new Date(rec.lastInspection).setHours(23, 59, 59, 999) : 0;
-    const incidentUnreviewed = rec.lastIncidentAt && inspectionEnd < new Date(rec.lastIncidentAt).getTime();
+    // يوم مقابل يوم بتقويم الرياض — لا لحظة نهاية يوم بتوقيت جهاز من يفتح الشاشة.
+    const incidentUnreviewed = !!rec.lastIncidentAt
+      && (!rec.lastInspection || toRiyadhDateKey(rec.lastIncidentAt) > toRiyadhDateKey(rec.lastInspection));
     if (rec.level === "green" && ((rec.hazards || []).length || incidentUnreviewed)) rec.level = "amber";
   });
 }

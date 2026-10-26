@@ -252,6 +252,7 @@ export function planOtDecision(live, employeeId, dateKey, {
   decision,
   overtimeMinutes,
   by,
+  note,
   workerConsent,
   enjoyDate,
   windowAgreed,
@@ -297,6 +298,7 @@ export function planOtDecision(live, employeeId, dateKey, {
     enjoyDate,
     windowAgreed,
     workedProven,
+    note,
     onDate: day,
     overtimeHoursYtd: Math.round((usage.hours + (Number(extraHoursYtd) || 0)) * 10) / 10,
     creditDaysYtd: Math.round((usage.creditDays + (Number(extraCreditDaysYtd) || 0)) * 1000) / 1000,
@@ -340,7 +342,9 @@ export function planOtDecision(live, employeeId, dateKey, {
       annualCapConsent: workerCapConsent ? true : undefined,
       enjoyDate: enjoyDate || undefined,
       windowAgreed: windowAgreed === true ? true : undefined,
-      notWorked: plannedOnly && gate.decision === "reject" ? true : undefined,
+      notWorked: gate.decision === "reject" ? true : undefined,
+      // The ruling's own words — required when punches proved presence (checkOtDecisionGate).
+      rejectReason: gate.decision === "reject" ? (String(note || "").trim() || undefined) : undefined,
     },
     result: { ok: true, decision: gate.decision },
   };
@@ -364,7 +368,7 @@ export function otDayStatus(entry, dateKey, today) {
   const day = OT_KEY_DAY(dateKey);
   const asOf = String(today || toRiyadhDateKey()).slice(0, 10);
   if (entry && !isOtDecisionOpen(entry)) return { planned: false, payable: false, closable: false, decided: true };
-  if (entry?.workedProven === true) return { planned: false, payable: true, closable: false, decided: false };
+  if (entry?.workedProven === true) return { planned: false, payable: true, closable: true, decided: false };
   if (entry?.holiday === true) return { planned: true, payable: day < asOf, closable: true, decided: false };
   if (entry) return { planned: false, payable: true, closable: false, decided: false };
   return { planned: true, payable: false, closable: false, decided: false };

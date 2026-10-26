@@ -9,6 +9,7 @@ import { taskQualityFor, taskQualityLine } from "@/lib/taskQuality";
 import { modelLaw } from "@/lib/modelArticleTexts";
 import RightHint from "@/components/shared/RightHint";
 import { countPersonalHseDuty } from "@/lib/perfDerivations";
+import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import {
   PERF_DRIVERS,
   isoDay,
@@ -200,8 +201,8 @@ function inspectionCount(employee, data) {
     const actorId = String(rec.inspectorId || rec.lastActionById || "");
     const mine = (actor && actor === name) || (actorId && actorId === String(employee?.id || ""));
     if (!mine) continue;
-    const inspectionEnd = new Date(rec.lastInspection).setHours(23, 59, 59, 999);
-    const needsAnother = rec.lastIncidentAt && inspectionEnd < new Date(rec.lastIncidentAt).getTime();
+    // يوم مقابل يوم بتقويم الرياض — المقارنة بتوقيت الجهاز كانت تُسقط تفتيشاً مُنجزاً من العدّ.
+    const needsAnother = rec.lastIncidentAt && toRiyadhDateKey(rec.lastIncidentAt) > toRiyadhDateKey(rec.lastInspection);
     if (!needsAnother) met += 1;
   }
   return met;

@@ -1,4 +1,5 @@
 import { checklistCompliance } from "@/lib/safetyStandards";
+import { toRiyadhDateKey } from "@/lib/riyadhDate";
 
 const L = (ar, a, e) => (ar ? a : e);
 
@@ -11,14 +12,17 @@ export function safetyLevelMeta(level, ar = false) {
 
 function incidentNeedsInspection(rec) {
   if (!rec?.lastIncidentAt) return false;
-  const inspectionEnd = rec?.lastInspection ? new Date(rec.lastInspection).setHours(23, 59, 59, 999) : 0;
-  return inspectionEnd < new Date(rec.lastIncidentAt).getTime();
+  if (!rec?.lastInspection) return true;
+  // السؤال تقويمي: هل وقع الحادث في يوم بعد يوم التفتيش؟
+  // كان الحساب setHours(23:59) على توقيت الجهاز، فينحرف يوماً كاملاً عن الرياض ويطالب
+  // بتفتيش لا يلزم — أو يسكت عن تفتيش يلزم.
+  return toRiyadhDateKey(rec.lastIncidentAt) > toRiyadhDateKey(rec.lastInspection);
 }
 
 export function whySafeIsBlocked(rec, ar = false) {
   const reasons = [];
   if (!rec?.lastInspection) reasons.push(L(ar, "أدخل تاريخ آخر تفتيش", "Enter the last inspection date"));
-  else if (new Date(rec.lastInspection) > new Date()) reasons.push(L(ar, "تاريخ التفتيش مستقبلي", "Inspection date is in the future"));
+  else if (toRiyadhDateKey(rec.lastInspection) > toRiyadhDateKey()) reasons.push(L(ar, "تاريخ التفتيش مستقبلي", "Inspection date is in the future"));
   const open = (rec?.hazards || []).length;
   if (open) reasons.push(L(ar, `أغلق ${open} مخاطر مفتوحة`, `Close ${open} open hazards`));
   if (incidentNeedsInspection(rec)) reasons.push(L(ar, "يلزم تفتيش جديد بعد آخر حادث", "A new inspection is required after the latest incident"));
@@ -29,7 +33,7 @@ export function safetyApprovalIssues(rec, ar = false) {
   const issues = [];
   if (!rec?.level) issues.push(L(ar, "لم يتم تحديد مستوى السلامة", "Safety level is not selected"));
   if (!rec?.lastInspection) issues.push(L(ar, "لم يُدخل تاريخ آخر تفتيش", "Last inspection date is missing"));
-  if (rec?.lastInspection && new Date(rec.lastInspection) > new Date()) issues.push(L(ar, "تاريخ التفتيش مستقبلي", "Inspection date is in the future"));
+  if (rec?.lastInspection && toRiyadhDateKey(rec.lastInspection) > toRiyadhDateKey()) issues.push(L(ar, "تاريخ التفتيش مستقبلي", "Inspection date is in the future"));
   if ((rec?.hazards || []).length) issues.push(L(ar, `${rec.hazards.length} مخاطر مفتوحة`, `${rec.hazards.length} open hazards`));
   const incompleteRisks = (rec?.riskItems || []).filter((item) => !item.correctiveAction?.trim() || !Number(item.probability) || !Number(item.severity)).length;
   if (incompleteRisks) issues.push(L(ar, `${incompleteRisks} عنصر مخاطر بدون تقييم أو إجراء تصحيحي`, `${incompleteRisks} risk items lack an assessment or corrective action`));

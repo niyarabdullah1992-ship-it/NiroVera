@@ -12,7 +12,7 @@ import { checkExamStudyConsentGate, EXAM_LEAVE_TRACK_ANNUAL_OR_UNPAID, EXAM_LEAV
 export const LEAVE_THRESHOLD_DAYS = ruleValue("leave.attachment.thresholdDays");
 
 export const CHAPTER_LEAVE_TYPES = [
-  "annual", "grant", "sick", "maternity", "maternity_extend", "maternity_companion", "iddah", "paternity", "marriage", "bereavement", "bereavement_sibling", "hajj", "eid", "exam", "emergency", "comp", "job_search", "dialysis", "therapy", "unpaid",
+  "annual", "grant", "sick", "maternity", "maternity_extend", "maternity_companion", "iddah", "paternity", "marriage", "bereavement", "bereavement_sibling", "hajj", "eid", "exam", "work_injury", "emergency", "comp", "job_search", "dialysis", "therapy", "unpaid",
 ] as const;
 
 export const LEAVE_TYPES = [
@@ -30,6 +30,11 @@ export const LEAVE_TYPES = [
   { key: "hajj", total: ruleValue("leave.hajj.days"), article: citeLeaveType("hajj")?.article ?? null, ar: "حج", en: "Hajj" },
   { key: "eid", total: null, article: citeLeaveType("eid")?.article ?? null, ar: "اليوم الوطني · يوم التأسيس · العيد", en: "National Day · Founding Day · Eid" },
   { key: "exam", total: null, article: citeLeaveType("exam")?.article ?? null, ar: "امتحان", en: "Exam", requiresFile: true },
+  // كان هذا الصف غائبًا عن الخادم وحده، والدالتان القارئتان له متطابقتان على الجهتين:
+  // leaveNeedsAttachment كانت تسقط إلى عتبة الأيام (5)، فإصابة عمل من يوم إلى خمسة أيام
+  // تُحفظ بلا تقرير طبي رغم أن العميل يطلبه دائمًا؛ و leaveNeedsArticle118Ack كانت تعيد
+  // false فلا يُطلب إقرار المادة 118. الصف منقول حرفيًا عن src/lib/leaveDerivations.js.
+  { key: "work_injury", total: null, article: null, ar: "إصابة عمل", en: "Work injury", requiresFile: true },
   { key: "emergency", total: ruleValue("leave.emergency.days"), article: citeLeaveType("emergency")?.article ?? null, ar: "اضطرارية", en: "Emergency" },
   { key: "comp", total: null, article: "107", ar: "تعويضية (بدل إضافي)", en: "Compensatory (for overtime)" },
   { key: "job_search", total: null, article: "78", ar: "يوم بحث عن عمل", en: "Job-search day" },

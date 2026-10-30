@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { FLAG_DEFAULT_TEXT, KPI_ACTION_FILL, KPI_ACTION_INK, KPI_INK, READINESS_FLOOR, chipRepeatsLabel, flagKind, flagStyle, flagText, kpiActionStyle, kpiActionText, kpiFlagText, meterStyles, scoreFlag } from "../src/lib/statusFlag.js";
 import { docFrame } from "../src/lib/designSystem.js";
 import { statusBanner } from "../src/lib/platformStyles.js";
@@ -35,7 +36,9 @@ assert.equal(docFrame("blocked").borderTop, undefined);
 for (const k of ["ok", "warn", "bad"]) assert.equal(statusBanner[k].borderTop, undefined, k);
 
 // 5. Source sweep: no 3px top strip on any card under src (calendar/print/landing rules are not cards).
-const root = new URL("../src/", import.meta.url).pathname;
+// .pathname يعيد مسارًا مُرمَّزًا بالنسبة المئوية، فلا يُقرأ مجلد فيه حروف غير لاتينية
+// (اسم مجلد المشروع عربي): كان الاختبار يسقط بـENOENT ولا يفحص شيئًا.
+const root = fileURLToPath(new URL("../src/", import.meta.url));
 const files = [];
 (function walk(dir) {
   for (const name of readdirSync(dir)) {

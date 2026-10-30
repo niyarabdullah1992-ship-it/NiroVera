@@ -214,12 +214,22 @@ function attendanceRowsOf(data) {
   ];
 }
 
-function punchesInRange(data, from, to) {
-  return attendanceRowsOf(data).some((row) => {
+/**
+ * هل لهذا الشخص أثر حضور في المدة؟ بصمة، أو حضور/تأخّر مسجَّل، أو إجازة معتمدة.
+ * كان السؤال يُطرح على بصمات الجميع (punchesInRange)، فيتوقف رقم شخص على زملائه.
+ * ويُطرح لأن غياب الأثر كله يعني «لا بيانات»، لا «لم يحضر»: والتغطية صفرٌ في الحالة
+ * الثانية فقط. من ينقصه الأثر لا يُحاسب على نقص سجلٍّ ليس من فعله.
+ */
+function hasAttendanceEvidence(employee, from, to, data) {
+  const id = String(employee?.id ?? "");
+  const own = attendanceRowsOf(data).some((row) => {
+    if (String(row?.employeeId ?? row?.employee_id ?? "") !== id) return false;
     const day = punchDay(row);
     if (!day || day < from || day > to) return false;
     return Boolean(row.check_in_at || row.checkInAt || row.status === "present" || row.status === "late");
   });
+  if (own) return true;
+  return (employee?.leaveRequests || []).some((req) => String(req?.status || "") === "approved");
 }
 
 export function coverPctFor(employee, from, to, data) {
@@ -234,11 +244,12 @@ export function coverPctFor(employee, from, to, data) {
       if (punchedOn(employee, day, data) || onLeaveOn(employee, day)) covered += 1;
     }
   }
-  // No scheduled day in the range means there is nothing to cover — that is a full score, not a
-  // guess. `coverPoints` is read in four places and written in none, so the old fallback handed
-  // everyone a flat 100%, and `punchesInRange` made one person's figure depend on other people's
-  // punches. Both are gone: coverage is now the person's own scheduled days against their own.
+  // لا يوم مجدول في المدة = لا شيء يُغطّى: درجة كاملة، لا تخمين.
+  // و`coverPoints` كان يُقرأ في أربعة مواضع ولا يُكتب في موضع، فكان البديل القديم يمنح
+  // الجميع 100% ثابتة. أُزيل. ويبقى الفرق بين «لا بيانات» و«لم يحضر»: بلا أثر حضور لهذا
+  // الشخص لا نحكم بصفر، فالصفر عقوبة على سجلٍّ ناقص لا على غياب.
   if (scheduled <= 0) return 100;
+  if (!hasAttendanceEvidence(employee, from, to, data)) return 100;
   return Math.round((covered / scheduled) * 100);
 }
 

@@ -287,6 +287,10 @@ export function checkRaiseConsentGate({ employeeId, body, deadline, file, paper 
 export function checkAcceptConsentGate({ ack, paper, readAt, file, pageCount, seen }) {
   // «لا إقرار قبل قراءة الملف» — checkDocumentReadGate كانت معرَّفة وغير مستدعاة، وهذه البوابة
   // كانت تستقبل readAt وترميه، فتصل الموافقة موقَّعة وما فُتح المستند.
+  // والترتيب: الإقرار والورقة أولاً ثم القراءة. البوابتان تحجبان كلتاهما؛ الترتيب يحدّد
+  // ما يُقال للمستخدم أولاً، والناقص الملموس (النسخة الموقّعة) أوضح من ختم قراءة.
+  const paperGate = checkConfirmConsentPaperGate({ paper, ack });
+  if (!paperGate.ok) return paperGate;
   const doc = file || null;
   const read = checkDocumentReadGate({
     required: !!doc,
@@ -295,22 +299,16 @@ export function checkAcceptConsentGate({ ack, paper, readAt, file, pageCount, se
     readAt,
   });
   if (!read.ok) return read;
-  return checkConfirmConsentPaperGate({ paper, ack });
+  return paperGate;
 }
 
 export function checkRefuseConsentGate({ note } = {}) {
-  // Every blocking action names its reason — a refusal is the worker's or the manager's ruling,
-  // and it was being written with an empty `reply` because this gate read nothing.
-  const written = String(note || "").trim();
-  if (written.length < 3) {
-    return {
-      ok: false,
-      error: "REFUSE_REASON_REQUIRED",
-      reason: "اكتب سبب الرفض — يُحفظ مع الطلب في سجل التدقيق باسم من رفض.",
-      reasonEn: "Write the reason for refusing — it is kept with the request in the audit trail, in the name of whoever refused.",
-    };
-  }
-  return { ok: true, note: written };
+  // الرفض لا يُشترط له سبب. هذا الملف نفسه يقول «ارفض بزر واحد» و«الرفض لا يُتخذ سبباً
+  // لجزاء»، واختبار المشروع يسمّيها «ministry refuse is direct». جُرِّب هنا اشتراط سبب
+  // مكتوب استنادًا إلى أن كل حجب يسمّي سببه — وذاك يصحّ على قرار سلطة، لا على موظف
+  // يمارس حقًّا: فكان الاشتراط واجبًا لم يفرضه أحد، وحدُّ الأحرف يرفض «لا» وهي رفض تامّ.
+  // والسبب يُمرَّر حين يُكتب، فلا يُحفظ الردّ فارغًا.
+  return { ok: true, note: String(note || "").trim() };
 }
 
 export async function hashConsentFile(file) {

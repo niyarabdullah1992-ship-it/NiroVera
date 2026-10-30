@@ -53,10 +53,14 @@ export function weeklyRestDayCountOf(company, employee) {
   const fromFile = countOneOrTwo(employee?.profile?.weeklyRestDayCount ?? employee?.weeklyRestDayCount);
   if (fromFile) return fromFile;
   const fromCompany = countOneOrTwo(postingOf(company).weeklyRestDayCount ?? postingOf(company).companyRestDays);
-  // Art. 104 gives ONE weekly rest day. When the file and the posting record nothing we fall back to
-  // that statutory floor — never to a second day, because the extra day would mint rest-day overtime
-  // (every minute at 1.5×, Art. 107(3)) out of a figure nobody recorded.
-  return fromCompany || 1;
+  // يومان، كما في التوأمين على الخادم: laborHoursPolicy.ts (مسار الساعات) و
+  // leaveDerivations.ts (مسار الإجازة، وفيه `countRaw === 1 ? 1 : 2` صراحةً).
+  // جُرِّب هنا يومٌ واحد استنادًا إلى أن المادة 104 تمنح يوماً واحداً، فكسر ذلك احتساب
+  // المادة 109: صار السبت يُخصم من رصيد الـ21 يوماً (22 يوماً بدل 18 لنفس المدة)، وخالف
+  // الخادم في المسارين. والافتراض الأسلم للموظف هو يومان ما لم تسجّل الشركة يوماً واحداً.
+  // يبقى سؤال الأجر الإضافي على يوم راحة مفترض لم يسجّله أحد قائماً — وهو قرار يمسّ
+  // الأجور، فلا يُحسم من جهة واحدة ولا في العميل وحده.
+  return fromCompany || 2;
 }
 
 /** Weekdays that must not be charged against Article 109 for this employee. */

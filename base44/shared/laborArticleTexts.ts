@@ -323,8 +323,8 @@ export const LABOR_ARTICLE_TEXTS: ArticleRow[] = [
 
   v(
     "93",
-    "لا يجوز- في جميع الأحوال- أن تزيد نسبة المبالغ المحسومة على نصف أجر العامل المستحق، ما لم يثبت لدى هيئة تسوية الخلافات العمالية إمكان الزيادة في الحسم على تلك النسبة، أو يثبت لديها حاجة العامل إلى أكثر من نصف أجره، وفي هذه الحالة الأخيرة لا يعطى العامل أكثر من ثلاثة أرباع أجره، مهما كان الأمر.",
-    "In all cases, deductions made may not exceed half the worker's due wage, unless the Commission for the Settlement of Labor Disputes determines that further deductions can be made or that the worker is in need of more than half his wage. In the latter case, the worker may not be given more than three quarters of his wage, whatever the case.",
+    "لا يجوز- في جميع الأحوال- أن تزيد نسبة المبالغ المحسومة على نصف أجر العامل المستحق، ما لم يثبت لدى المحكمة العمالية إمكان الزيادة في الحسم على تلك النسبة، أو يثبت لديها حاجة العامل إلى أكثر من نصف أجره، وفي هذه الحالة الأخيرة لا يعطى العامل أكثر من ثلاثة أرباع أجره، مهما كان الأمر.",
+    "In all cases, deductions made may not exceed half the worker's due wage, unless the Labour Court determines that further deductions can be made or that the worker is in need of more than half his wage. In the latter case, the worker may not be given more than three quarters of his wage, whatever the case.",
   ),
 
   v(
@@ -522,8 +522,8 @@ v(
 
   v(
     "158",
-    "على صاحب العمل في جميع الأماكن التي يعمل فيها نساء وفي جميع المهن أن يوفر لهن مقاعد، تأميناً لاستراحتهن.",
-    "In every place where women work, and in every occupation, the employer shall provide seats for them, to secure their rest.",
+    "على صاحب العمل في جميع الأماكن التي يعمل فيها نساء وفي جميع المهن أن يوفر لهن مقاعد، تأمينًا لاستراحتهن.",
+    "In all places where women work and in all occupations, the employer shall provide them with seats for their rest.",
   ),
 
   v(
@@ -554,6 +554,86 @@ v(
     "164",
     "لا يجوز تشغيل الأحداث تشغيلاً فعلياً أكثر من ست ساعات في اليوم الواحد لسائر شهور السنة، عدا شهر رمضان فيجب ألا تزيد ساعات العمل الفعلية فيه على أربع ساعات. وتنظم ساعات العمل بحيث لا يعمل الحدث أكثر من أربع ساعات متصلة، دون فترة أو أكثر للراحة والطعام والصلاة، لا تقل في المرة الواحدة عن نصف ساعة، وبحيث لا يبقى في مكان العمل أكثر من سبع ساعات. ولا يجوز تشغيل الأحداث في أيام الراحة الأسبوعية أو في أيام الأعياد والعطلات الرسمية والإجازة السنوية. ولا تسري عليهم الاستثناءات التي نصت عليها المادة السادسة بعد المائة من هذا النظام.",
     "Juveniles may not actually work more than six hours a day in all months of the year, except Ramadan when actual hours may not exceed four. Hours shall be organised so that a juvenile does not work more than four consecutive hours without one or more periods for rest, food and prayer of at least half an hour each, and so that he does not remain at the workplace more than seven hours. Juveniles may not work on weekly rest days, Eids, official holidays or annual leave. The exceptions in Article 106 do not apply to them.",
+  ),
+
+  // نُقلت حرفيًا عن التوأم src/lib/laborArticleTexts.js: كانت هذه المواد
+  // يستشهد بها جدول قواعد الخادم ونصّها غائب، فيعود articleText فارغًا.
+  v(
+    "17",
+    "على صاحب العمل أن يحتفظ في مكان العمل بالسجلات والكشوف والملفات التي تحدد ماهيتها، والبيانات التي يجب أن تتضمنها اللائحة. وعليه أن يضع في مكان ظاهر بموقع العمل جدولاً بمواعيد العمل، وفترات الراحة، ويوم الراحة الأسبوعي، ومواعيد بدء كل نوبة وانتهائها في حالة العمل بأسلوب المناوبة.",
+    "The employer shall keep at the workplace the records, statements and files whose nature, and the data they must contain, the Regulations specify. He shall also place in a conspicuous spot at the work site a table of working hours, rest periods, the weekly rest day, and the start and end times of each shift where work is organised in shifts.",
+  ),
+
+  v(
+    "59",
+    "لا يجوز نقل العامل ذي الأجر الشهري إلى فئة عمال اليومية أو العمال المعينين بالأجر الأسبوعي أو بالقطعة أو بالساعة إلا إذا وافق العامل على ذلك كتابة، مع عدم الإخلال بالحقوق التي اكتسبها في المدة التي قضاها بالأجر الشهري.",
+    "A monthly-wage worker may not be moved to the class of daily-wage workers or of workers engaged on a weekly, piece-rate or hourly wage except with the worker's written consent, without prejudice to the rights acquired during the period spent on a monthly wage.",
+  ),
+
+  v(
+    "60",
+    "مع عدم الإخلال بما تضمنته المادة (الثامنة والثلاثون) من هذا النظام، لا يجوز تكليف العامل بعمل يختلف اختلافاً جوهرياً عن العمل المتفق عليه بغير موافقته الكتابية، إلا في حالات الضرورة التي قد تقتضيها ظروف عارضة ولمدة لا تتجاوز ثلاثين يوماً في السنة.",
+    "Without prejudice to Article (38) of this Law, a worker may not be assigned work that differs substantially from the agreed work without his written consent, except in cases of necessity arising from incidental circumstances and for a period not exceeding thirty days in the year.",
+  ),
+
+  v(
+    "64",
+    "يلتزم صاحب العمل عند انتهاء عقد العمل بما يأتي:\n1 - أن يعطي العامل - بناء على طلبه - شهادة خدمة دون مقابل، يوضح فيها تاريخ التحاقه بالعمل وتاريخ انتهائه ومهنته ومقدار أجره الأخير. ولا يجوز أن تتضمن الشهادة ما قد يسيء إلى سمعة العامل أو يقلل فرص العمل أمامه.\n2 - أن يعيد إلى العامل جميع ما أودعه لديه من شهادات أو وثائق.",
+    "Upon the end of the work contract the employer shall:\n1 - Give the worker, at his request and free of charge, a service certificate stating the date of joining, the date of leaving, his occupation and his last wage. The certificate may not contain anything that would harm the worker's reputation or reduce his chances of work.\n2 - Return to the worker all certificates or documents he deposited with the employer.",
+  ),
+
+  v(
+    "82",
+    "لا يجوز لصاحب العمل إنهاء خدمة العامل بسبب المرض، قبل استنفاذه المدد المحددة للإجازة المنصوص عليها في هذا النظام، وللعامل الحق في أن يطلب وصل إجازته السنوية بالمرضية.",
+    "The employer may not terminate the worker's service because of illness before the worker has exhausted the leave periods prescribed in this Law. The worker is entitled to request that his annual leave be joined to the sick leave.",
+  ),
+
+  v(
+    "86",
+    "إذا اتفق الطرفان على خلاف ما ورد في المادة (الرابعة والثمانين) من هذا النظام بحيث تدخل في الأجر الذي تسوى على أساسه المكافأة جميع مبالغ العمولات أو النسب المئوية من المبيعات وما أشبه ذلك مما يدفع إلى العامل وتكون قابلة بطبيعتها للزيادة والنقص، وجب العمل بهذا الاتفاق.",
+    "If the parties agree, contrary to Article (84) of this Law, that the wage on which the award is settled shall include all commissions or percentages of sales and the like paid to the worker that are by nature liable to increase and decrease, that agreement shall be applied.",
+  ),
+
+  v(
+    "91",
+    "إذا تسبب العامل في فقد أو إتلاف أو تدمير آلات أو منتجات يملكها أو هي في عهدته وكان ذلك ناشئاً عن خطئه أو مخالفته تعليمات صاحب العمل ولم يكن نتيجة خطأ الغير أو قوة قاهرة، فلصاحب العمل أن يقتطع من أجر العامل القيمة اللازمة للإصلاح أو لإعادة الوضع إلى ما كان عليه على ألا يزيد ما يقتطع لهذا الغرض على أجر خمسة أيام في كل شهر. ولصاحب العمل حق التظلم إن كان له مقتض، وذلك بطلب ما هو أكثر من ذلك إذا كان للعامل مال آخر يمكن الاستيفاء منه. وللعامل أن يتظلم مما نُسب إليه أو من تقدير صاحب العمل للتعويض أمام المحكمة العمالية. فإذا حكمت بعدم أحقية صاحب العمل في الرجوع على العامل بما اقتطعه منه أو ببعضه وجب على صاحب العمل أن يرد إلى العامل ما اقتطع منه دون وجه حق خلال سبعة أيام من تاريخ صدور الحكم.",
+    "If the worker causes the loss, damage or destruction of machinery or products owned by the employer or in the worker's custody, arising from his fault or from breach of the employer's instructions and not from the fault of another or force majeure, the employer may deduct from the worker's wage the amount needed for repair or restoration, provided the deduction for that purpose does not exceed five days' wage in any month. The employer may complain where warranted and claim more if the worker has other property from which recovery can be made. The worker may challenge what is attributed to him or the employer's assessment of compensation before the labour court. If the court holds that the employer was not entitled to recover all or part of what was deducted, the employer shall return the amount wrongly deducted within seven days of the judgment.",
+  ),
+
+  v(
+    "99",
+    "يجوز زيادة ساعات العمل المنصوص عليها في المادة (الثامنة والتسعين) من هذا النظام إلى تسع ساعات في اليوم لبعض فئات العمال، أو في الصناعات والأعمال التي لا يشتغل فيها العامل بصفة مستمرة. كما يجوز تخفيضها إلى سبع ساعات في اليوم لبعض فئات العمال أو في الصناعات والأعمال الخطرة أو الضارة. وتحدد فئات العمال أو الصناعات أو الأعمال المشار إليها بقرار من الوزير.",
+    "The working hours provided for in Article (98) of this Law may be increased to nine hours a day for certain categories of workers, or in industries and work in which the worker is not employed continuously. They may also be reduced to seven hours a day for certain categories of workers or in hazardous or harmful industries and work. The categories of workers or the industries or work referred to shall be specified by a decision of the Minister.",
+  ),
+
+  v(
+    "100",
+    "يجوز لصاحب العمل - بموافقة الوزارة - في المنشآت التي تقتضي طبيعة العمل فيها أداء العمل بالتناوب زيادة ساعات العمل على ثماني ساعات عمل في اليوم أو ثمان وأربعين ساعة في الأسبوع، بشرط ألا يزيد متوسط ساعات العمل عند احتسابه لمدة ثلاثة أسابيع أو أقل على ثماني ساعات يومياً أو ثمان وأربعين ساعة أسبوعياً.",
+    "The employer may — with the Ministry's approval — in establishments where the nature of the work requires it to be performed in shifts, increase working hours beyond eight hours a day or forty-eight hours a week, provided that the average working hours, calculated over a period of three weeks or less, do not exceed eight hours a day or forty-eight hours a week.",
+  ),
+
+  v(
+    "105",
+    "استثناء من حكم المادة الرابعة بعد المائة من هذا النظام يجوز في الأماكن البعيدة عن العمران وفي الأعمال التي تتطلب طبيعة العمل وظروف التشغيل فيها استمرار العمل تجميع الراحات الأسبوعية المستحقة للعامل عن مدة لا تتجاوز ثمانية أسابيع إذا اتفق صاحب العمل والعمال ووافقت على ذلك الوزارة، ويراعى في حساب مدة الراحة الأسبوعية المُجمّعة أن تبدأ من ساعة وصول العمال إلى أقرب مدينة يتوفر بها وسائل نقل، وتنتهي ساعة العودة إليها.",
+    "By way of exception from Article (104) of this Law, in places far from urban areas and in work whose nature and operating conditions require continuous work, the weekly rests due to the worker may be accumulated for a period not exceeding eight weeks if the employer and the workers so agree and the Ministry approves. In computing the accumulated weekly rest it shall begin from the hour the workers reach the nearest town with means of transport and end at the hour they return to it.",
+  ),
+
+  v(
+    "63",
+    "على صاحب العمل أو وكيله أو أي شخص له سلطة على العمال، منع دخول أي مادة محرمة شرعًا إلى أماكن العمل، ويطبق بحق من وجدت لديه أو من تعاطاها العقوبات المقررة في هذا النظام، مع عدم الإخلال بالعقوبات الشرعية.",
+    "The employer, his agent or any person with authority over the workers shall prevent any substance forbidden by Sharia from entering the workplace; the penalties in this Law apply to whoever holds or uses it, without prejudice to Sharia penalties.",
+  ),
+
+  v(
+    "125",
+    "على صاحب العمل أن يتخذ الاحتياطات اللازمة للوقاية من الحريق، وتهيئة الوسائل الفنية لمكافحته، بما في ذلك تأمين منافذ للنجاة، وجعلها صالحة للاستعمال في أي وقت، وأن يعلق في مكان ظاهر من أماكن العمل تعليمات مفصلة بشأن وسائل منع الحريق.",
+    "The employer shall take the precautions needed to prevent fire and provide the technical means to fight it, including escape exits kept usable at all times, and shall post detailed fire-prevention instructions in a visible place at the workplace.",
+  ),
+
+  v(
+    "144",
+    "على صاحب العمل أن يوفر لعماله العناية الصحية الوقائية والعلاجية طبقًا للمستويات التي يقررها الوزير، مع مراعاة ما يوفره نظام الضمان الصحي التعاوني.",
+    "The employer shall provide his workers with preventive and curative health care at the levels set by the Minister, taking into account what the Cooperative Health Insurance Law provides.",
   ),
 ];
 

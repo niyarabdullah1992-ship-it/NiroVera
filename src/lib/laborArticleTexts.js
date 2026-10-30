@@ -580,11 +580,6 @@ export const LABOR_ARTICLE_TEXTS = [
     "The employer shall provide medical care for the female worker during pregnancy and childbirth.",
   ),
 
-  v(
-    "158",
-    "على صاحب العمل في جميع الأماكن التي يعمل فيها نساء وفي جميع المهن أن يوفر لهن مقاعد، تأميناً لاستراحتهن.",
-    "In every place where women work, and in every occupation, the employer shall provide seats for them, to secure their rest.",
-  ),
 
   v(
     "159",

@@ -51,7 +51,7 @@ const UI_PREFS = new Set(["src/lib/i18n.jsx", "src/lib/platformTheme.js", "src/l
 // متبنّاة بـ11 ملف واجهة فقط مقابل 84 تتجاوزها إلى store.js. فالتطبيق هو رفع
 // التبنّي لا بناء طبقة جديدة — وCLAUDE.md يقول صراحةً: لا وحدات موازية.
 const BASELINE = {
-  "UI→Database (base44.entities)": 6,
+  "UI→Database (base44.entities)": 0,
   "UI→Database (localStorage)": 14,
   "UI→API خام (functions.invoke)": 45,
   "UI→Data (يتجاوز facts)": 101,

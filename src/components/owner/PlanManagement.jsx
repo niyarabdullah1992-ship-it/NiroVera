@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { createSubscriptionPlan, deleteSubscriptionPlan, listSubscriptionPlans, updateSubscriptionPlan } from "@/api/platformEntities";
 import PlanForm from "@/components/owner/PlanForm";
 import PlanCard from "@/components/owner/PlanCard";
 import { normalizePlanConfig } from "@/lib/subscriptionPlans";
@@ -28,7 +28,7 @@ export default function PlanManagement({ ar }) {
   // فالصمت هنا أسوأ من الخطأ. البوابة بشكل {ok:false, reason, reasonEn} كما في بقية اللوحة.
   const [gate, setGate] = useState(null);
   const fail = (reason, reasonEn) => setGate({ ok: false, error: "PLAN_WRITE", reason, reasonEn });
-  const load = () => base44.entities.SubscriptionPlan.list("sortOrder", 50)
+  const load = () => listSubscriptionPlans()
     .then((items) => setPlans(items.map(normalizePlanConfig)))
     .catch(() => fail("تعذر تحميل الباقات.", "The plans could not be loaded."));
   useEffect(() => { load(); }, []);
@@ -37,8 +37,8 @@ export default function PlanManagement({ ar }) {
     setGate(null);
     const { id, created_date, updated_date, created_by_id, created_by, ...payload } = editing;
     try {
-      if (id) await base44.entities.SubscriptionPlan.update(id, payload);
-      else await base44.entities.SubscriptionPlan.create(payload);
+      if (id) await updateSubscriptionPlan(id, payload);
+      else await createSubscriptionPlan(payload);
     } catch {
       // النموذج يبقى مفتوحاً بما كتبه المالك: لا يُفقد ما كتب على فشل لم يُكتب.
       fail("تعذر حفظ الباقة — لم يُكتب شيء.", "The plan could not be saved — nothing was written.");
@@ -51,7 +51,7 @@ export default function PlanManagement({ ar }) {
     if (!window.confirm(ar ? `حذف باقة ${plan.nameAr}؟` : `Delete ${plan.nameEn}?`)) return;
     setGate(null);
     try {
-      await base44.entities.SubscriptionPlan.delete(plan.id);
+      await deleteSubscriptionPlan(plan.id);
     } catch {
       fail("تعذر حذف الباقة — ما زالت قائمة.", "The plan could not be deleted — it is still there.");
       return;
@@ -61,7 +61,7 @@ export default function PlanManagement({ ar }) {
   const toggle = async (plan) => {
     setGate(null);
     try {
-      await base44.entities.SubscriptionPlan.update(plan.id, { active: !plan.active });
+      await updateSubscriptionPlan(plan.id, { active: !plan.active });
     } catch {
       fail("تعذر تغيير حالة الباقة — بقيت على ما كانت.", "The plan's state could not be changed — it stayed as it was.");
       return;

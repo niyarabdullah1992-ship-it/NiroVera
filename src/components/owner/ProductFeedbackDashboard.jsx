@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
 import { Loader2, MessageSquare, Star } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { listCompanyAccounts, listProductFeedback } from "@/api/platformEntities";
 import OwnerExportButtons from "@/components/owner/OwnerExportButtons";
 import NvIcon from "@/components/shared/NvIcon";
 
@@ -11,7 +11,7 @@ export default function ProductFeedbackDashboard({ ar, companies = [] }) {
   const [accounts, setAccounts] = useState([]);
   const [error, setError] = useState(false);
   // بلا catch كان فشل أيٍّ من النداءين يترك rows على null فيدور المؤشّر بلا نهاية ولا خبر.
-  useEffect(() => { Promise.all([base44.entities.ProductFeedback.list("-created_date", 500), base44.entities.CompanyAccount.list("-created_date", 500)]).then(([feedback, companyAccounts]) => { setRows(feedback); setAccounts(companyAccounts); }).catch(() => setError(true)); }, []);
+  useEffect(() => { Promise.all([listProductFeedback(), listCompanyAccounts()]).then(([feedback, companyAccounts]) => { setRows(feedback); setAccounts(companyAccounts); }).catch(() => setError(true)); }, []);
   const names = useMemo(() => Object.fromEntries([...companies.map((company) => [company.id, company.name]), ...accounts.map((account) => [account.companyId, account.name])]), [companies, accounts]);
   if (error) return <p className="py-16 text-center text-sm text-muted-foreground">{ar ? "تعذر تحميل البيانات." : "Failed to load data."}</p>;
   if (!rows) return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-[#1E9E63]" /></div>;

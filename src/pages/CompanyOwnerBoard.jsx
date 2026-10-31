@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LogIn, Plus, ShieldAlert, Trash2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { listCompanyAccounts } from "@/api/platformEntities";
 import { useI18n } from "@/lib/i18n";
 import {
   createCompany,
@@ -78,7 +79,7 @@ export default function CompanyOwnerBoard() {
     if (showLoading) setRefreshing(true);
     const localCompanies = listCompanies();
     try {
-      const accounts = await base44.entities.CompanyAccount.list("-created_date", 500);
+      const accounts = await listCompanyAccounts();
       const merged = new Map(localCompanies.map((company) => [company.id, company]));
       accounts.forEach((account) => merged.set(account.companyId, {
         ...merged.get(account.companyId),

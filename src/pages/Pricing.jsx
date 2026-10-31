@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+import { listSubscriptionPlans } from "@/api/platformEntities";
 import { activateCompanySession, createCompany, deleteCompany, syncCompanyAccount, getCompanyToken, updateCompanyPlan } from "@/lib/store";
 import { useAuth as usePowerCareAuth } from "@/lib/PowerCareAuth";
 import { useI18n } from "@/lib/i18n";
@@ -24,7 +25,7 @@ export default function Pricing() {
   const [plans, setPlans] = useState(DEFAULT_SUBSCRIPTION_PLANS);
 
   useEffect(() => {
-    base44.entities.SubscriptionPlan.list("sortOrder", 50).then((items) => {
+    listSubscriptionPlans().then((items) => {
       const active = items.filter((plan) => plan.active);
       if (active.length) setPlans(active);
     }).catch(() => {});

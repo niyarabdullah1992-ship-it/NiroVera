@@ -1589,7 +1589,12 @@ assert.match(src("src/components/requests/ManagerEmployeeRegister.jsx"), /row\.n
 assert.match(src("src/components/requests/ManagerEmployeeRegister.jsx"), /data-branch-alert/, "branch heading is the alert");
 assert.match(src("src/components/requests/ManagerEmployeeRegister.jsx"), /بانتظار القرار/);
 assert.doesNotMatch(src("src/lib/requestWorkspace.js"), /السجل كل من تديرهم/);
-assert.match(workspaceSrc, /requestRegardingLine/, "decision cards name بشأن");
+// بطاقة قرار الإدارة تُسمّي الفرع المعنيّ («بشأن») — عبر صفَّي «مقدّم الطلب» و«الفرع»
+// المنظَّمين (أوضح من سطر مسترسل، وبلا تكرار). كان هذا التأكيد يفحص استدعاء الدالة
+// requestRegardingLine، وهي تخصّ نصّ الإشعار في المكتبة لا عرضَ المكوّن؛ المقصد —
+// أن تُسمّي البطاقة الفرع — يفحصه الآن على النتيجة المرئية لا على اسم دالة.
+assert.match(workspaceSrc, /"الفرع"[\s\S]{0,40}employeeStationName\(row\.employee/, "decision cards name the branch");
+assert.match(workspaceSrc, /"مقدّم الطلب"[\s\S]{0,40}row\.employee\?\.name/, "decision cards name the requester");
 assert.match(storeSrc, /بشأن:/, "in-app notice title includes the branch");
 assert.match(storeSrc, /notifyRequestManagers/, "existing addNotification path carries the branch");
 assert.match(storeSrc, /requestNoticeAudience/, "notices go to managers who cover the workplace");

@@ -42,6 +42,26 @@ const DATA_FILES = new Set([
 // تفضيلات الواجهة: localStorage فيها تفضيل مستخدم لا بيانات شركة.
 const UI_PREFS = new Set(["src/lib/i18n.jsx", "src/lib/platformTheme.js", "src/lib/suiteApps.js"]);
 
+// تفضيل عرضٍ لمستخدم واحد ليس بيانات شركة ولا يترك هذا المتصفح، فهو من شأن
+// الطبقة ١ — وتمريره عبر طبقة البيانات خطأ: يُدخل زرّ المظهر في بيانات الشركة.
+// المسموح محصىٌّ بالاسم ومعه سببه، وما خرج عنه اختراق. (الإحصاء بالملف لا
+// بالمفتاح، فقاعدة الجلسة والرموز أدناه هي التي تمسك ما يُضاف لاحقاً.)
+const UI_LOCAL_PREFS = new Map([
+  ["src/components/Layout.jsx", "إخفاء تنبيه الوزارة و«شوهد» لهذا المستخدم"],
+  ["src/components/ThemeToggle.jsx", "المظهر"],
+  ["src/components/navigation/SuiteRail.jsx", "الشريط مفتوح أو مطويّ"],
+  ["src/components/notifications/BranchNoticePanel.jsx", "«تمّ» لهذا المستخدم"],
+  ["src/components/onboarding/EmployeeTour.jsx", "الجولة شوهدت"],
+  ["src/components/schedules/ShiftWeekBoard.jsx", "تلميح الاستعادة شوهد"],
+  ["src/components/shared/RecordSmartArchive.jsx", "كثافة العرض"],
+  ["src/hooks/useDraggablePosition.js", "موضع النافذة"],
+  ["src/hooks/useTimeFormat.js", "12 أو 24 ساعة"],
+  ["src/pages/Assistant.jsx", "جنس الصوت ومحادثة محلية"],
+  ["src/pages/FileSigning.jsx", "تلميح شوهد"],
+  ["src/pages/Operations.jsx", "كثافة العرض"],
+  ["src/pages/Pricing.jsx", "ترحيب شوهد"],
+]);
+
 /* ------------------------------- القواعد ------------------------------- */
 
 // سقف كل قاعدة اليوم — قياس لا تخمين. ينزل ولا يصعد. الهدف صفر في كل سطر.
@@ -52,7 +72,8 @@ const UI_PREFS = new Set(["src/lib/i18n.jsx", "src/lib/platformTheme.js", "src/l
 // التبنّي لا بناء طبقة جديدة — وCLAUDE.md يقول صراحةً: لا وحدات موازية.
 const BASELINE = {
   "UI→Database (base44.entities)": 0,
-  "UI→Database (localStorage)": 14,
+  "UI→Database (localStorage)": 0,
+  "UI→Database (جلسة أو رمز)": 0,
   "UI→API خام (functions.invoke)": 45,
   "UI→Data (يتجاوز facts)": 101,
   "Data→Business (قلب الاتجاه)": 19,
@@ -74,6 +95,10 @@ function walk(dir, out = []) {
   return out;
 }
 
+// التعليقات تُنزع قبل الفحص: ملف يشرح مفتاحاً في تعليق لا يلمسه، وبلا هذا
+// النزع يمسك الفحص شرح الكود نفسه ويسمّيه اختراقاً.
+const code = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
 const uiFiles = UI.flatMap((dir) => walk(dir));
 const libFiles = walk("src/lib");
 
@@ -87,9 +112,13 @@ for (const rule of Object.keys(BASELINE)) found[rule] = 0;
 
 /* القاعدة ١ — الواجهة لا تلمس قاعدة البيانات. تتخطى ثلاث طبقات دفعة واحدة. */
 for (const file of uiFiles) {
-  const src = readFileSync(join(root, file), "utf8");
+  const src = code(readFileSync(join(root, file), "utf8"));
   if (/base44\.entities\./.test(src)) add("UI→Database (base44.entities)", file);
-  if (/localStorage\./.test(src)) add("UI→Database (localStorage)", file);
+  if (/localStorage\./.test(src) && !UI_LOCAL_PREFS.has(file)) add("UI→Database (localStorage)", file);
+  /* الجلسة والرموز لا تُلمس من الواجهة أبداً: clearSession يُبطل الجلسة في الخادم
+     ويحذف رمز الشركة من الجهاز، و removeItem بيد الواجهة يفعل الثالث وحده —
+     فتبقى الجلسة حيّة والرمز يُلحق تلقائياً بكل نداء محمي بعد «الخروج». */
+  if (/powercare_session|powercare_tokens/.test(src)) add("UI→Database (جلسة أو رمز)", file);
   /* القاعدة ٣ — نداء الوسيط يمرّ عبر وحدة مسمّاة في src/api، لا خاماً من الواجهة:
      هناك يسكن شكل الطلب والخطأ، فلا يفشل نداء بلا خبر لأن لا أحد يملك الخطأ. */
   if (/base44\.functions\.invoke/.test(src)) add("UI→API خام (functions.invoke)", file);

@@ -4,11 +4,13 @@ import { base44 } from "@/api/base44Client";
 import { LockKeyhole, LogOut } from "lucide-react";
 import { ALL_PLANS_CURRENTLY_FREE } from "@/lib/pricingPolicy";
 import { isLocalPreviewActive, LOCAL_PREVIEW_COMPANY_ID } from "@/lib/localPreview";
+import { useAuth } from "@/lib/PowerCareAuth";
 import IdentityCard from "@/components/shared/IdentityCard";
 import PlatformBoot from "@/components/shared/PlatformBoot";
 import { SURFACE, ui } from "@/lib/platformStyles";
 
 export default function TrialExpiryGate({ company, children }) {
+  const { logout } = useAuth();
   const [access, setAccess] = useState(null);
   const [checkedCompanyId, setCheckedCompanyId] = useState(null);
   useEffect(() => {
@@ -42,7 +44,13 @@ export default function TrialExpiryGate({ company, children }) {
           >
             <button
               type="button"
-              onClick={() => { localStorage.removeItem("powercare_session"); window.location.href = "/"; }}
+              // كان هذا الزرّ يحذف مفتاح الجلسة من المخزن المحلي بيده. والخروج
+              // الصحيح — logout في PowerCareAuth، وهو الباب الذي تستعمله كل صفحة —
+              // يمرّ على clearSession فيُبطل الجلسة في الخادم (revokeSession) ويحذف
+              // رمز الشركة من مخزن الرموز وينظّف نطاق الفرع. فكان الخروج يُبقي
+              // الجلسة حيّة في الخادم والرمز على الجهاز، و base44Client يُلحق ذلك
+              // الرمز تلقائياً بكل نداء محمي بعد «الخروج».
+              onClick={() => { logout(); window.location.href = "/"; }}
               style={{ ...ui.btnPrimary, display: "inline-flex", alignItems: "center", gap: 8, height: 40 }}
             >
               <LogOut style={{ width: 14, height: 14 }} />

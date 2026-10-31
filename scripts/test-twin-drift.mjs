@@ -9,6 +9,21 @@
 //
 // لا أحد كان يرى الفرق حتى يسقط. هذا الفحص يراه: يقارن سطح التصدير والثوابت
 // المشتركة في كل زوج، ويمنع زيادة الدرفت. السقف ينزل ولا يصعد.
+//
+// تصنيف البوابات التسع الباقية (فحص الاسم تقريب؛ صُنِّف كلٌّ بقراءة مساره):
+//   ثقبا فرضٍ حقيقيان — نقلٌ متعدّد الملفات (22 رمزًا مستورَدًا غائبًا عن الخادم):
+//     checkSubmitOtherRequestGate · checkApproveOtherRequestGate
+//     (النوع · السبب · الاستقالة · م81 · اعتراض الحسم م91 · ترحيل الإجازة · تصحيح الملف)
+//   كتابة لا تمرّ بالخادم (صنف «UI→Data» في test-layers، لا ثقب توأم — تُكتب عبر
+//   updateCompany مباشرة فلا خادم يفرضها):
+//     checkDisposeDisciplineFinesGate · checkRestPlanGate · checkAdminLeaveCreditGate
+//   إرشادية لا مانعة (تعيد confirm أو تمنع على حالة عميل فقط):
+//     checkSelfCheckoutGate
+//   ليست في مسار النشر على الجهتين (حسابات عرض في shiftWeek.js لا تمنع نشر الجدول):
+//     checkWorkPostingGate · checkThreeWeekAverageGate · checkArt105BankGate
+// فُرِض في الخادم مضمَّنًا (ليس ثقبًا) ومُقفل في test-leave-gates-server.mjs:
+//   checkLeaveReligionGate · checkLeaveDatesGate · checkLeaveTopupDaysGate (VERIFIED_INLINE)
+// أُغلق ونُقل إلى الخادم هذا الأسبوع: بوابتا الشكوى · إبلاغ الجزاء · بوابتا اللياقة الليلية.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

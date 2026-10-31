@@ -10,10 +10,8 @@
 // لا أحد كان يرى الفرق حتى يسقط. هذا الفحص يراه: يقارن سطح التصدير والثوابت
 // المشتركة في كل زوج، ويمنع زيادة الدرفت. السقف ينزل ولا يصعد.
 //
-// تصنيف البوابات التسع الباقية (فحص الاسم تقريب؛ صُنِّف كلٌّ بقراءة مساره):
-//   ثقبا فرضٍ حقيقيان — نقلٌ متعدّد الملفات (22 رمزًا مستورَدًا غائبًا عن الخادم):
-//     checkSubmitOtherRequestGate · checkApproveOtherRequestGate
-//     (النوع · السبب · الاستقالة · م81 · اعتراض الحسم م91 · ترحيل الإجازة · تصحيح الملف)
+// لا ثقب فرضٍ خادمي متبقٍّ. السبعة الباقية بالاسم صُنِّفت كلٌّ بقراءة مساره، وليست
+// ثقوب خادم:
 //   كتابة لا تمرّ بالخادم (صنف «UI→Data» في test-layers، لا ثقب توأم — تُكتب عبر
 //   updateCompany مباشرة فلا خادم يفرضها):
 //     checkDisposeDisciplineFinesGate · checkRestPlanGate · checkAdminLeaveCreditGate
@@ -21,8 +19,10 @@
 //     checkSelfCheckoutGate
 //   ليست في مسار النشر على الجهتين (حسابات عرض في shiftWeek.js لا تمنع نشر الجدول):
 //     checkWorkPostingGate · checkThreeWeekAverageGate · checkArt105BankGate
-// فُرِض في الخادم مضمَّنًا (ليس ثقبًا) ومُقفل في test-leave-gates-server.mjs:
-//   checkLeaveReligionGate · checkLeaveDatesGate · checkLeaveTopupDaysGate (VERIFIED_INLINE)
+// فُرِض في الخادم مضمَّنًا أو موزَّعاً (VERIFIED_INLINE) ومُقفل باختبار مرافق:
+//   checkLeaveReligionGate · checkLeaveDatesGate · checkLeaveTopupDaysGate — test-leave-gates-server
+//   checkSubmitOtherRequestGate · checkApproveOtherRequestGate (موزَّع عبر checkRightsSubmit
+//     وفروع submitOther؛ فجواته ضيقة منخفضة الأثر) — test-other-request-server
 // أُغلق ونُقل إلى الخادم هذا الأسبوع: بوابتا الشكوى · إبلاغ الجزاء · بوابتا اللياقة الليلية.
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -39,18 +39,24 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 // وليست في الخادم تعني أن الخادم يقبل ما تمنعه الواجهة، والعكس يعني أن الواجهة
 // تسمح بما يرفضه الخادم فيظهر الرفض للمستخدم بلا سبب مفهوم.
 const BASELINE = {
-  "بوابة في العميل وحده": 9,
+  "بوابة في العميل وحده": 7,
   "بوابة في الخادم وحده": 0,
   "ثوابت مختلفة القيمة": 0,
 };
 
-// بوابات اسمها في العميل وحده لكن قاعدتها مفروضة في الخادم مضمَّنةً لا بالاسم:
-// فحص الاسم يرصدها، والفرض الفعلي مُثبت سلوكيًّا في scripts/test-leave-gates-server.mjs.
-// ليست ثقوباً، فتُطرح من العدّ — وإسقاط الفرض الخادمي يسقط ذلك الاختبار لا هذا.
+// بوابات اسمها في العميل وحده لكن قاعدتها مفروضة في الخادم مضمَّنةً أو موزَّعةً لا
+// بالاسم: فحص الاسم يرصدها، والفرض الفعلي مُثبت سلوكيًّا في اختبار مرافق. ليست
+// ثقوباً، فتُطرح من العدّ — وإسقاط الفرض الخادمي يسقط ذلك الاختبار لا هذا.
 const VERIFIED_INLINE = new Set([
-  "leaveDerivations :: checkLeaveReligionGate",       // checkApproveLeaveGate يفرض م114/م160
-  "leaveDerivations :: checkLeaveDatesGate",          // checkApproveLeaveGate يفرض ترتيب التواريخ
-  "otherRequestDerivations :: checkLeaveTopupDaysGate", // checkLeaveGrantGate يفرض الأيام > 0
+  "leaveDerivations :: checkLeaveReligionGate",       // checkApproveLeaveGate يفرض م114/م160 — test-leave-gates-server
+  "leaveDerivations :: checkLeaveDatesGate",          // checkApproveLeaveGate يفرض ترتيب التواريخ — test-leave-gates-server
+  "otherRequestDerivations :: checkLeaveTopupDaysGate", // checkLeaveGrantGate يفرض الأيام > 0 — test-leave-gates-server
+  // المركَّبان مفروضان موزَّعاً: workforce · checkRightsSubmit (الحسم · الترحيل · م81 ·
+  // إرجاع الوثائق · تجنّب الليل · التظلّم) + فروع submitOther (الملفات · الرصيد ·
+  // الاستقالة بالاشتقاق لا الثقة · الإضافي · البحث · اللياقة). فجواته ضيقة منخفضة
+  // الأثر (سبب الأنواع العامة · حقول تصحيح الملف · ack) — موثّقة في test-other-request-server.
+  "otherRequestDerivations :: checkSubmitOtherRequestGate",
+  "otherRequestDerivations :: checkApproveOtherRequestGate",
 ]);
 
 // التعليقات والنصوص تُنزع: اسم دالة في شرح الكود ليس تصديراً.

@@ -28,12 +28,15 @@ import {
   appendRequestRefuseAudit,
   buildRequestAudit,
   buildRequestRefuseAudit,
+  checkApproveNightFitnessGate,
   checkRefuseRequestReasonGate,
   checkRejectNightFitnessGate,
   checkRejectStudyConsentGate,
+  checkSubmitNightFitnessGate,
   checkLeaveGrantGate,
   checkRequestFilesGate,
   LEAVE_TOPUP_TYPE,
+  NIGHT_FITNESS_TYPE,
   leaveGrantRecord,
   requestAuditFileLog,
   requestRefuseFileLog,
@@ -365,6 +368,25 @@ Deno.serve(async (req) => {
       const attached = checkRequestFilesGate(request.files);
       if (!attached.ok) return Response.json({ ...attached }, { status: 422 });
       request.files = attached.files;
+      // اللياقة الليلية (القرار 18632): كان الخادم يكتب الطلب بلا فرض البوابة — فيُرفع
+      // التقرير من الإدارة لا من الموظف، أو بلا تقرير طبي، أو بفترة مقلوبة، أو مع طلب
+      // معلّق قائم. actorId = من يرفع فعلًا، ليعمل منع رفع الإدارة (الموظف وحده يقدّمه).
+      if (request.type === NIGHT_FITNESS_TYPE) {
+        const nf = checkSubmitNightFitnessGate({
+          ...request,
+          employee: emp,
+          otherRequests: emp.otherRequests,
+          companyId: auth.companyId,
+          actorId: auth.userId,
+          lane: isManager ? "manage" : "",
+        });
+        if (!nf.ok) return Response.json({ ...nf }, { status: 422 });
+        request.from = nf.from;
+        request.to = nf.to;
+        request.examDate = nf.examDate;
+        request.until = nf.until;
+        request.permanent = nf.permanent;
+      }
       // An added balance goes to a grantable type, any number of whole days — never to annual (Art. 109).
       if (request.type === LEAVE_TOPUP_TYPE) {
         const grant = checkLeaveGrantGate({ pool: request.leaveType || "grant", days: request.days, onDate: riyadhToday() });
@@ -621,6 +643,9 @@ Deno.serve(async (req) => {
         }, { status: 422 });
       }
       if (action === "approveOther") {
+        // اللياقة الليلية: لا يُعتمد الطلب بلا تقرير طبي مرفق في الملف (القرار 18632).
+        const nfApprove = checkApproveNightFitnessGate(pending);
+        if (!nfApprove.ok) return Response.json({ ...nfApprove }, { status: 422 });
         pending.status = "approved";
         pending.reviewedBy = auth.name;
         pending.reviewedAt = new Date().toISOString();

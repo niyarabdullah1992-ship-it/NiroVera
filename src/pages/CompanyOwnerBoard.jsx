@@ -96,7 +96,10 @@ export default function CompanyOwnerBoard() {
       setCompanies(localCompanies);
     }
     setRefreshKey((value) => value + 1);
-    setStamp((value) => value + 1);
+    // stamp لا يُبصم هنا. هذا التحديث يعمل تلقائياً كل 30 ثانية وعند كل عودة إلى النافذة،
+    // و OwnerCompanyRulings يعيد بذر نموذجي الإجازات ورمضان على كل تغيّر في stamp — فكان
+    // ما يكتبه المالك يُمسح كل نصف دقيقة قبل أن يحفظه. تبقى البصمة لما بعد الحفظ (onStamp)
+    // وهو موضعها الصحيح؛ ونموذج الاشتراك يعيد بذر نفسه من companies بلا حاجة إليها.
     if (showLoading) setRefreshing(false);
   };
 
@@ -173,6 +176,7 @@ export default function CompanyOwnerBoard() {
         onTab={setTab}
         companies={companies}
         refreshing={refreshing}
+        refreshKey={refreshKey}
         onRefresh={() => refresh(true)}
         onLogout={() => base44.auth.logout("/")}
         onOpenApp={() => navigate("/app")}

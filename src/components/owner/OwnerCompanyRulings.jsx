@@ -8,6 +8,8 @@ import {
 } from "@/lib/ownerBoard";
 import { getCompanyData, saveOwnerHolidays, saveOwnerRamadan, saveOwnerSubscriptions } from "@/lib/store";
 import { laborCalendarOf, ramadanAnnouncementOf } from "@/lib/ummAlQuraCalendar";
+import { RAMADAN_WINDOWS } from "@/lib/laborRules";
+import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import IdentityCard from "@/components/shared/IdentityCard";
 import { labelMuted, MUTED } from "@/lib/platformStyles";
 import {
@@ -19,7 +21,18 @@ import {
   ownerStatusChip,
 } from "@/components/owner/ownerUi";
 
-const YEARS = [2025, 2026, 2027, 2028];
+// سنوات رمضان المرمَّزة في أم القرى، لا قائمة ثانية مكتوبة بجانبها: persistRamadanRuling
+// يرفض كل سنة بلا نافذة مرمَّزة («لا يُخمَّن رمضان خارج أم القرى»). فلو افترقت القائمتان
+// عرضت الواجهة سنةً يرفضها الحفظ، أو حجبت سنةً مرمَّزة — وهذا يقع عند أول إضافة للتقويم.
+const YEARS = RAMADAN_WINDOWS.map((window) => Number(String(window.from).slice(0, 4))).filter(Number.isFinite);
+
+// سنة الرياض لا سنة الجهاز. وكانت 2026 مكتوبة هنا بالاسم بديلاً، فبعد 2028 كان التبويب
+// يفتح على سنة ماضية ولا يعرض سنته. البديل الآن أول سنة مرمَّزة لم تمضِ، فإن مضت كلها فآخرها.
+function defaultRamadanYear() {
+  const thisYear = Number(toRiyadhDateKey().slice(0, 4));
+  if (YEARS.includes(thisYear)) return thisYear;
+  return YEARS.find((year) => year >= thisYear) ?? YEARS[YEARS.length - 1] ?? thisYear;
+}
 
 /** Platform rulings: one company's subscription price, plus holidays and Ramadan for every tenant. */
 export default function OwnerCompanyRulings({
@@ -33,7 +46,7 @@ export default function OwnerCompanyRulings({
   const [selectedId, setSelectedId] = useState("");
   const [planForm, setPlanForm] = useState(null);
   const [holidays, setHolidays] = useState([]);
-  const [ramadan, setRamadan] = useState({ year: 2026, from: "", to: "" });
+  const [ramadan, setRamadan] = useState(() => ({ year: defaultRamadanYear(), from: "", to: "" }));
   const [planGate, setPlanGate] = useState(null);
   const [holidayGate, setHolidayGate] = useState(null);
   const [ramadanGate, setRamadanGate] = useState(null);
@@ -61,7 +74,7 @@ export default function OwnerCompanyRulings({
       ? laborCalendarOf({})
       : laborCalendarOf(selectedData || {});
     setHolidays(holidayDraft(next));
-    const year = YEARS.includes(new Date().getFullYear()) ? new Date().getFullYear() : 2026;
+    const year = defaultRamadanYear();
     const status = ramadanAnnouncementOf(year, next);
     setRamadan({
       year,

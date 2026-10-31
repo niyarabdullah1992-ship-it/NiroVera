@@ -9,8 +9,11 @@ export default function ProductFeedbackDashboard({ ar, companies = [] }) {
   const [companyId, setCompanyId] = useState("all");
   const [rating, setRating] = useState("all");
   const [accounts, setAccounts] = useState([]);
-  useEffect(() => { Promise.all([base44.entities.ProductFeedback.list("-created_date", 500), base44.entities.CompanyAccount.list("-created_date", 500)]).then(([feedback, companyAccounts]) => { setRows(feedback); setAccounts(companyAccounts); }); }, []);
+  const [error, setError] = useState(false);
+  // بلا catch كان فشل أيٍّ من النداءين يترك rows على null فيدور المؤشّر بلا نهاية ولا خبر.
+  useEffect(() => { Promise.all([base44.entities.ProductFeedback.list("-created_date", 500), base44.entities.CompanyAccount.list("-created_date", 500)]).then(([feedback, companyAccounts]) => { setRows(feedback); setAccounts(companyAccounts); }).catch(() => setError(true)); }, []);
   const names = useMemo(() => Object.fromEntries([...companies.map((company) => [company.id, company.name]), ...accounts.map((account) => [account.companyId, account.name])]), [companies, accounts]);
+  if (error) return <p className="py-16 text-center text-sm text-muted-foreground">{ar ? "تعذر تحميل البيانات." : "Failed to load data."}</p>;
   if (!rows) return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-[#1E9E63]" /></div>;
   const filtered = rows.filter((row) => (companyId === "all" || row.companyId === companyId) && (rating === "all" || Number(row.rating) === Number(rating)));
   const average = rows.length ? (rows.reduce((sum, row) => sum + row.rating, 0) / rows.length).toFixed(1) : "—";

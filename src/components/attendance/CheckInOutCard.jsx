@@ -18,6 +18,7 @@ import { toWesternDigits } from "@/lib/dateFormat";
 import { isLocalPreviewActive } from "@/lib/localPreview";
 import { isServiceOutage } from "@/lib/serviceErrors";
 import {
+  checkLocalPunchPlaceGate,
   getLocalTodayAttendance,
   localAttendanceSettings,
   localBreakPunch,
@@ -103,7 +104,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const [reqError, setReqError] = useState("");
   const assignedStationIds = [scheduledStationId, punchStationId, ...(currentUser?.managedStations || [])].filter(Boolean);
   const hasAssignedStation = assignedStationIds.some((id) => data?.stations?.some((station) => station.id === id));
-  const [settings, setSettings] = useState(local ? localAttendanceSettings() : null);
+  const [settings, setSettings] = useState(local ? localAttendanceSettings(company?.id) : null);
   const [attendance, setAttendance] = useState(null);
   // The cloud answers with the duty-day row; after midnight that may be yesterday's open overnight one,
   // or — right after its checkout — that closed night (overnightClosedLinger, the local reading).
@@ -154,7 +155,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const load = async () => {
     if (local || !company?.id) {
       const att = company?.id ? getLocalTodayAttendance(company.id, currentUser.id) : null;
-      setSettings(localAttendanceSettings());
+      setSettings(localAttendanceSettings(company?.id));
       setAttendance(att);
       setLocalMode(true);
       onStatusChange?.(att);
@@ -174,7 +175,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       onStatusChange?.(att);
     } catch {
       const att = getLocalTodayAttendance(company.id, currentUser.id);
-      setSettings(localAttendanceSettings());
+      setSettings(localAttendanceSettings(company?.id));
       setAttendance(att);
       setLocalMode(true);
       onStatusChange?.(att);
@@ -248,11 +249,38 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     setLoading(true);
     try {
       if (localMode || isLocalPreviewActive()) {
+        const localStationId = punchStationId || scheduledStationId || defaultStationId;
+        // Place gate, local too: when the company requires the station geofence, the punch is
+        // accepted from inside it only — and a refusal names the distance, not a vague error.
+        let place = null;
+        if (action === "in" && isLocationRequired(localAttendanceSettings(company.id))) {
+          const coords = await getAccuratePosition();
+          if (!coords) {
+            setError(t("locationDenied"));
+            return;
+          }
+          const gate = checkLocalPunchPlaceGate(company.id, { stationId: localStationId, lat: coords.lat, lng: coords.lng });
+          if (!gate.ok) {
+            const stationName = data?.stations?.find((s) => s.id === localStationId)?.name || "";
+            const km = gate.distanceMeters >= 1000 ? `${(gate.distanceMeters / 1000).toFixed(1)} كم` : `${gate.distanceMeters} م`;
+            const kmEn = gate.distanceMeters >= 1000 ? `${(gate.distanceMeters / 1000).toFixed(1)} km` : `${gate.distanceMeters} m`;
+            setError(
+              gate.error === "OUTSIDE_GEOFENCE"
+                ? (ar
+                  ? `خارج نطاق ${stationName || "الفرع"} — أنت على بعد ${km}، والنطاق ${gate.radiusMeters} م. البصمة تُقبل من داخل موقع العمل فقط.`
+                  : `Outside the ${stationName || "station"} geofence — you are ${kmEn} away; the range is ${gate.radiusMeters} m. The punch is accepted from inside the workplace only.`)
+                : (ar ? gate.reason : gate.reasonEn),
+            );
+            return;
+          }
+          place = { verdict: gate.verdict, distanceMeters: gate.distanceMeters, lat: coords.lat, lng: coords.lng, accuracy: coords.accuracy };
+        }
         const att = action === "in"
           ? localCheckIn(company.id, {
               employeeId: currentUser.id,
               employeeName: currentUser.name,
-              stationId: punchStationId || scheduledStationId || defaultStationId,
+              stationId: localStationId,
+              place,
             })
           : localCheckOut(company.id, { employeeId: currentUser.id });
         setAttendance(att);
@@ -319,7 +347,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                 stationId: punchStationId || scheduledStationId || defaultStationId,
               })
             : localCheckOut(company.id, { employeeId: currentUser.id });
-          setSettings(localAttendanceSettings());
+          setSettings(localAttendanceSettings(company?.id));
           setLocalMode(true);
           setAttendance(att);
           onStatusChange?.(att);
@@ -364,7 +392,9 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       ? "awaiting_out"
       : "done";
 
-  const locationFailed = /OUTSIDE_STATION|GPS_REQUIRED|STATION_LOCATION|location|موقع|النطاق/i.test(error || "");
+  // Two different failures, two different chips: the device gave no usable fix, or it did and the fix is outside the range.
+  const outsideRange = /OUTSIDE_STATION|OUTSIDE_GEOFENCE|خارج نطاق|خارج النطاق|Outside the/i.test(error || "");
+  const locationFailed = !outsideRange && /GPS_REQUIRED|STATION_LOCATION|location|موقع|النطاق/i.test(error || "");
   const forgotten = isForgottenCheckout(shift, attendance, tick);
   const inTime = attendance?.check_in_at ? toWesternDigits(riyadhTime(attendance.check_in_at, format, "en-GB")) : "—";
   const outTime = attendance?.check_out_at ? toWesternDigits(riyadhTime(attendance.check_out_at, format, "en-GB")) : "—";
@@ -678,7 +708,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const loc = attendance?.location_status || attendance?.locationStatus || "";
   const dist = attendance?.distance_meters ?? attendance?.distanceMeters;
   const inside = loc === "inside";
-  const outside = loc === "outside" || locationFailed;
+  const outside = loc === "outside" || outsideRange || locationFailed;
   const shade = shift?.outdoor === true
     ? (ar ? "موقع مكشوف" : "Exposed site")
     : shift?.outdoor === false
@@ -817,7 +847,9 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     isLocationRequired(settings)
       ? (locationFailed
         ? { ok: false, t: ar ? "تعذّر موقع الجهاز" : "Device location failed" }
-        : { ok: inside || outside, wait: !inside && !outside, t: ar ? "موقع الجهاز" : "Device location" })
+        : outsideRange
+          ? { ok: true, t: ar ? "موقع الجهاز مقروء" : "Device location read" }
+          : { ok: inside || outside, wait: !inside && !outside, t: ar ? "موقع الجهاز" : "Device location" })
       : null,
   ].filter(Boolean);
 

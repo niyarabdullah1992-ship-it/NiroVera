@@ -619,6 +619,10 @@ export function leaveKindsFor(profile, ar = true, requests, employee) {
       ? statutoryArticleLabel(meta.article, ar)
       : row.key === "work_injury"
         ? (ar ? "نظام التأمينات" : "Social insurance")
+      : row.key === "dialysis"
+        ? (ar ? "النموذج الموحد م42" : "Model regulation Art. 42")
+      : row.key === "therapy"
+        ? (ar ? "اللائحة · الملحق 2" : "Regulations · Annex 2")
         : (ar ? "قرار تشغيلي" : "Operational");
     const cap = row.key === "annual"
       ? (ar ? "21 يوماً — 30 بعد 5 سنوات" : "21 days — 30 after 5 years")
@@ -642,6 +646,10 @@ export function leaveKindsFor(profile, ar = true, requests, employee) {
         ? (ar ? "30 كامل · 60 بثلاثة أرباع · 30 بلا أجر" : "30 full · 60 at three-quarters · 30 unpaid")
       : row.key === "work_injury"
         ? (ar ? "بتقرير طبي · التأمينات — الأخطار المهنية" : "With a medical report · GOSI occupational hazards")
+      : row.key === "dialysis"
+        ? (ar ? "يوم الجلسة بأجر كامل · بتقرير الجهة المعالجة · لا يُخصم من السنوية" : "Session day on full pay · provider's report · not from annual leave")
+      : row.key === "therapy"
+        ? (ar ? "أيام العلاج الطبيعي أو الكيميائي أو الإشعاعي بأجر · بتقرير طبي" : "Physio, chemo or radiotherapy days on pay · medical report")
       : row.key === "comp"
         ? (comp && comp.left > 0
           ? (ar ? `رصيدك ${hoursAr(comp.left)} — حتى ${formatArDate(comp.nextTakeBy, "ar")}` : `${comp.left} h left — by ${comp.nextTakeBy}`)

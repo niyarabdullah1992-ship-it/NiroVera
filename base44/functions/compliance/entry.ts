@@ -23,6 +23,7 @@ import {
 
 import {
   checkAdvanceDisciplineGate,
+  checkDisciplineDeliveryGate,
   checkRaiseDisciplineGate,
   checkSignDisciplineGate,
 } from "../../shared/disciplineDerivations.ts";
@@ -427,6 +428,20 @@ Deno.serve(async (req) => {
         gate = checkAdvanceDisciplineGate(existing as any, stage, { today, appealNote: next.appealNote, hearingMinutes: next.hearingMinutes });
       } else if (stage === "ruling") {
         gate = checkAdvanceDisciplineGate(existing as any, "ruling", { today });
+      } else if (stage === "delivery") {
+        // إبلاغ القرار (المادة 72 · النموذج الموحد م68): كان يصل الخادم بلا حالة في
+        // المفتاح فيُكتب بـ{ok:true}. يُجلب ملف العامل لأن البريد المسجّل والإلكتروني
+        // يشترطان عنواناً/بريداً ثابتاً فيه — وبلا ذلك يُرفض الإبلاغ، وهو الاتجاه الأسلم.
+        const emps = await base44.asServiceRole.entities.Employee.filter({ companyId: auth.companyId });
+        const emp = (emps || []).find((e: any) => String(e.employeeId || e.id) === String(next.employeeId)) || null;
+        gate = checkDisciplineDeliveryGate({
+          method: next.notifyMethod,
+          at: next.notifyDeliveredAt,
+          ref: next.notifyRef,
+          employee: emp,
+          signedAt: next.signedAt || next.decidedAt,
+          today,
+        });
       }
       if (!gate.ok) {
         return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn, cite: gate.cite || null }, { status: 400 });

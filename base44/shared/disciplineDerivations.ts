@@ -643,3 +643,42 @@ export function checkSignDisciplineGate(caseRow: any, { files = [], today, cases
   if (!month.ok) return month;
   return checkDisciplineRepeatGate(caseRow, { cases, today });
 }
+
+// توأم src/lib/disciplineDerivations.js. كانت DISCIPLINE_DELIVERY_METHODS و
+// checkDisciplineDeliveryGate في العميل وحده، ومرحلة "delivery" تصل الخادم عبر
+// compliance · disciplineSave لكن مفتاح البوابات لا يملك حالة لها فتُكتب بـ{ok:true}:
+// فيُسجَّل إبلاغ القرار بطريقةٍ غير معتمدة، أو بتاريخ يسبق التوقيع أو يلي اليوم،
+// أو ببريد مسجَّل بلا رقم إرسال، أو بلا عنوان/بريد ثابت في الملف — والمادة 72
+// والنموذج الموحد م68 تشترطها كلها. منقولتان حرفيًا عن العميل.
+export const DISCIPLINE_DELIVERY_METHODS = [
+  { id: "hand", ar: "سُلِّم للعامل يداً بيد ووقّع بالعلم", en: "Handed to the worker, who signed" },
+  { id: "registered_mail", ar: "بالبريد المسجّل على عنوانه المختار الثابت في ملفه (امتنع أو غاب)", en: "Registered mail to the address on file (refused or absent)" },
+  { id: "email", ar: "بالبريد الإلكتروني الشخصي الثابت في العقد أو المعتمد لدى المنشأة (امتنع أو غاب)", en: "Personal e-mail in the contract or on record (refused or absent)" },
+];
+
+export function checkDisciplineDeliveryGate(
+  { method, at, ref = "", employee = null, signedAt = "", today }:
+  { method?: string; at?: string; ref?: string; employee?: any; signedAt?: string; today?: string } = {},
+) {
+  const day = dateOnly(today) || todayRiyadh();
+  const cite = citeRule("discipline.appeal.internalDays", day);
+  const row = DISCIPLINE_DELIVERY_METHODS.find((m) => m.id === method);
+  if (!row) {
+    return { ok: false, error: "DISCIPLINE_DELIVERY_METHOD", reason: "اختر طريقة إبلاغ القرار: يداً بيد، أو بريد مسجّل، أو بريد إلكتروني ثابت في الملف (المادة 72 · النموذج الموحد م68).", reasonEn: "Pick how the decision was delivered: in hand, registered mail, or e-mail on file (Art. 72 · model Art. 68).", cite };
+  }
+  const when = dateOnly(at);
+  if (!when || when > day || (dateOnly(signedAt) && when < dateOnly(signedAt))) {
+    return { ok: false, error: "DISCIPLINE_DELIVERY_DATE", reason: "تاريخ الإبلاغ يقع بين تاريخ توقيع القرار واليوم.", reasonEn: "The delivery date falls between the signing date and today.", cite };
+  }
+  const profile = employee?.profile || {};
+  if (method === "registered_mail" && !String(ref || "").trim()) {
+    return { ok: false, error: "DISCIPLINE_DELIVERY_REF", reason: "اكتب رقم الإرسال المسجّل.", reasonEn: "Enter the registered-mail tracking number.", cite };
+  }
+  if (method === "registered_mail" && !String(profile.address || profile.nationalAddress || employee?.address || "").trim()) {
+    return { ok: false, error: "DISCIPLINE_DELIVERY_ADDRESS", reason: "لا عنوان مختار ثابت في ملف العامل — سجّله في ملفه أولاً (النموذج الموحد م68).", reasonEn: "No chosen address on the worker's file (model Art. 68).", cite };
+  }
+  if (method === "email" && !String(profile.personalEmail || employee?.email || "").trim()) {
+    return { ok: false, error: "DISCIPLINE_DELIVERY_EMAIL", reason: "لا بريد إلكتروني شخصي ثابت في عقد العامل أو ملفه (النموذج الموحد م68).", reasonEn: "No personal e-mail on the worker's contract or file (model Art. 68).", cite };
+  }
+  return { ok: true, cite, method: row };
+}

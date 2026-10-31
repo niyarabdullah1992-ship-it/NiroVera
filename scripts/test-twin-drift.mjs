@@ -24,10 +24,19 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 // وليست في الخادم تعني أن الخادم يقبل ما تمنعه الواجهة، والعكس يعني أن الواجهة
 // تسمح بما يرفضه الخادم فيظهر الرفض للمستخدم بلا سبب مفهوم.
 const BASELINE = {
-  "بوابة في العميل وحده": 14,
+  "بوابة في العميل وحده": 11,
   "بوابة في الخادم وحده": 0,
   "ثوابت مختلفة القيمة": 0,
 };
+
+// بوابات اسمها في العميل وحده لكن قاعدتها مفروضة في الخادم مضمَّنةً لا بالاسم:
+// فحص الاسم يرصدها، والفرض الفعلي مُثبت سلوكيًّا في scripts/test-leave-gates-server.mjs.
+// ليست ثقوباً، فتُطرح من العدّ — وإسقاط الفرض الخادمي يسقط ذلك الاختبار لا هذا.
+const VERIFIED_INLINE = new Set([
+  "leaveDerivations :: checkLeaveReligionGate",       // checkApproveLeaveGate يفرض م114/م160
+  "leaveDerivations :: checkLeaveDatesGate",          // checkApproveLeaveGate يفرض ترتيب التواريخ
+  "otherRequestDerivations :: checkLeaveTopupDaysGate", // checkLeaveGrantGate يفرض الأيام > 0
+]);
 
 // التعليقات والنصوص تُنزع: اسم دالة في شرح الكود ليس تصديراً.
 const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
@@ -69,8 +78,10 @@ for (const name of readdirSync(join(root, "base44/shared")).sort()) {
   const sg = gatesOf(server);
   for (const gate of cg) {
     if (!sg.has(gate)) {
+      const key = `${name.replace(/\.ts$/, "")} :: ${gate}`;
+      if (VERIFIED_INLINE.has(key)) continue; // القاعدة مفروضة في الخادم مضمَّنةً — ليست ثقباً
       found["بوابة في العميل وحده"] += 1;
-      detail.push(`  ${name.replace(/\.ts$/, "")} :: ${gate} — الخادم يقبل ما تمنعه الواجهة`);
+      detail.push(`  ${key} — الخادم يقبل ما تمنعه الواجهة`);
     }
   }
   for (const gate of sg) {

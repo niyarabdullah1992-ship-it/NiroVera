@@ -610,6 +610,35 @@ export function checkCloseGate(
   return { ok: true as const };
 }
 
+// توأم src/lib/complaintDerivations.js. كان checkSelfReviewGate و checkAdoptNoteGate
+// في العميل وحده، وإجراء close في الخادم يكتب الاعتماد في سجل التدقيق (appendVoiceAudit
+// "adopt") بلا فرضهما: فيُغلق الصوت بقرارٍ فارغ، ويحكم على البلاغ من رفعه بنفسه إن كان
+// معالجًا — والعميل يمنع الاثنين على مسار «الاعتماد». منقولتان حرفيًا عن العميل.
+export function checkSelfReviewGate(item: ComplaintLike | null | undefined, userId: string | null | undefined) {
+  const me = String(userId || "");
+  if (me && (String(item?.authorId || "") === me || String((item as { rateActorId?: unknown })?.rateActorId || "") === me)) {
+    return {
+      ok: false as const,
+      error: "SELF_REVIEW",
+      reason: "لا تُراجع صوتاً رفعته أنت — صعّده للمستوى التالي.",
+      reasonEn: "You cannot rule on a voice you raised — escalate it to the next level.",
+    };
+  }
+  return { ok: true as const };
+}
+
+export function checkAdoptNoteGate(note: string | null | undefined) {
+  if (String(note || "").trim().length < 5) {
+    return {
+      ok: false as const,
+      error: "ADOPT_RULING_REQUIRED",
+      reason: "الاعتماد يُغلق الصوت — اكتب القرار وما سيُنفَّذ.",
+      reasonEn: "Adopting closes the voice — write the ruling and what will be done.",
+    };
+  }
+  return { ok: true as const };
+}
+
 const ACTOR_ROLE_LABELS: Record<string, { ar: string; en: string }> = {
   ...TIER_LABELS,
   director: { ar: "المدير", en: "Director" },

@@ -8,7 +8,7 @@ import { readGosiRegisteredAt } from "@/lib/facts";
 import { printSheet } from "@/lib/printSheet";
 import { otMonthBreakdown } from "@/lib/otOffer";
 import { parseOtHours } from "@/lib/overtimeAssignment";
-import { chip, mono, SectionHead, slab, sourceBadge } from "@/components/schedules/scheduleChrome";
+import { chip, SectionHead, slab, sourceBadge } from "@/components/schedules/scheduleChrome";
 import { FileRow } from "@/components/employees/EmployeeFileFieldCard";
 import RightHint from "@/components/shared/RightHint";
 import { payHintFor, slipRowHint } from "@/lib/rightHints.pay";

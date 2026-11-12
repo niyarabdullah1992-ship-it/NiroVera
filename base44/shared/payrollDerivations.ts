@@ -733,3 +733,67 @@ export function holidayPay(base, holidayHours, allowances = 0) {
 export function eidPay(base, eidHours, allowances = 0) {
   return overtimePay(base, eidHours, allowances);
 }
+
+/**
+ * حارس مزامنة مسير الرواتب — syncBlob في companyDirectory يناديه قبل تخزين payrollRuns.
+ *
+ * الرواتب مال، والكتالوج يقول owner: payroll/entry.ts: فحالة الاعتماد (approved) والإرسال
+ * (sent) تُبلغان حصريًّا عبر الدالة المبوَّبة (checkApprovePayrollGate · checkSendWpsGate)،
+ * لا عبر المزامنة العامة. وكانت payrollRuns — خلافًا للجزاءات — تُقبل خامًا في syncBlob،
+ * فأمكن دفعُ مسيرٍ مُعتمَد/مُرسَل أو تزويرُ طابعه متجاوزًا البوابتين. هذا الحارس يمنع ذلك:
+ *   - لا تُرفع حالةُ مسير إلى approved/sent عبر المزامنة (تخطّي البوابة).
+ *   - لا يُغيَّر طابع مسيرٍ مقفول (approvedAt/By · wpsSentAt/By · wpsFileRef).
+ *   - لا يُحذف ولا يُنزَّل مسيرٌ مقفول عبر المزامنة.
+ * المسوّدات تبقى حرّة (التحرير قبل الاعتماد لا يمسّه هذا).
+ */
+const PAYROLL_LOCKED = new Set(["approved", "sent"]);
+function payrollRunStamp(run) {
+  return [
+    run?.status || "draft",
+    run?.approvedAt || "",
+    run?.approvedBy || "",
+    run?.wpsSentAt || "",
+    run?.wpsSentBy || "",
+    run?.wpsFileRef || "",
+  ].join("|");
+}
+export function payrollSyncBoundary(storedRuns, incomingRuns) {
+  const stored = new Map(
+    (Array.isArray(storedRuns) ? storedRuns : []).map((r) => [String(r?.month || r?.id || ""), r]),
+  );
+  const incoming = new Map(
+    (Array.isArray(incomingRuns) ? incomingRuns : []).map((r) => [String(r?.month || r?.id || ""), r]),
+  );
+  const refuse = (reason, reasonEn) => ({ ok: false, error: "PAYROLL_VIA_ACTION", reason, reasonEn });
+
+  // لا يُرفع مسير إلى حالة مقفولة، ولا يُزوَّر طابعه، عبر المزامنة.
+  for (const [month, run] of incoming) {
+    if (!PAYROLL_LOCKED.has(String(run?.status || ""))) continue;
+    const prior = stored.get(month);
+    if (!prior || !PAYROLL_LOCKED.has(String(prior?.status || ""))) {
+      return refuse(
+        "اعتماد مسير الرواتب وإرسال WPS يتمّان عبر مسار الرواتب المبوَّب بعد فحص شروطه، لا عبر المزامنة العامة.",
+        "Approving a payroll run and sending WPS happen through the gated payroll action after its checks, not through the generic sync.",
+      );
+    }
+    if (payrollRunStamp(run) !== payrollRunStamp(prior)) {
+      return refuse(
+        "طابع اعتماد/إرسال مسير الرواتب يُحدَّد في مسار الرواتب المبوَّب، لا يُغيَّر عبر المزامنة.",
+        "A payroll run's approval/WPS stamp is set by the gated payroll action, not changed through the sync.",
+      );
+    }
+  }
+
+  // لا يُحذف ولا يُنزَّل مسيرٌ مقفول عبر المزامنة.
+  for (const [month, prior] of stored) {
+    if (!PAYROLL_LOCKED.has(String(prior?.status || ""))) continue;
+    const next = incoming.get(month);
+    if (!next || payrollRunStamp(next) !== payrollRunStamp(prior)) {
+      return refuse(
+        "مسير الرواتب المعتمَد لا يُحذف ولا تُغيَّر حالته عبر المزامنة — يبقى كما ختمه مسار الرواتب.",
+        "An approved payroll run cannot be deleted or have its state changed through the sync — it stays as the gated payroll action sealed it.",
+      );
+    }
+  }
+  return { ok: true };
+}

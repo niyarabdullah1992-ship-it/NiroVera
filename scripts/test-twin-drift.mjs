@@ -44,6 +44,11 @@ const BASELINE = {
   "ثوابت مختلفة القيمة": 0,
 };
 
+// توائم وُحِّدت إلى مصدر واحد: العميل يعيد تصدير توأم الخادم (base44/shared/X.ts)
+// بدل مطابقة منطقه، فلا يمكن أن يدرفا. هذا هو علاج الدرفت الجذري لا مجرّد كبحه.
+// يرتفع ولا ينزل: نقضُ توحيدٍ — إعادةُ نسخ منطق مشترك إلى العميل — يُسقط البناء.
+const UNIFIED_FLOOR = 1;
+
 // بوابات اسمها في العميل وحده لكن قاعدتها مفروضة في الخادم مضمَّنةً أو موزَّعةً لا
 // بالاسم: فحص الاسم يرصدها، والفرض الفعلي مُثبت سلوكيًّا في اختبار مرافق. ليست
 // ثقوباً، فتُطرح من العدّ — وإسقاط الفرض الخادمي يسقط ذلك الاختبار لا هذا.
@@ -81,6 +86,7 @@ function constsOf(src) {
 
 const found = { "بوابة في العميل وحده": 0, "بوابة في الخادم وحده": 0, "ثوابت مختلفة القيمة": 0 };
 const detail = [];
+const unified = [];
 
 let pairs = 0;
 for (const name of readdirSync(join(root, "base44/shared")).sort()) {
@@ -94,6 +100,15 @@ for (const name of readdirSync(join(root, "base44/shared")).sort()) {
   }
   pairs += 1;
   const server = readFileSync(join(root, `base44/shared/${name}`), "utf8");
+
+  // Unified (single source): the client re-exports the shared twin instead of
+  // mirroring its logic, so the two cannot drift. Record it and skip the parity
+  // checks — regressing it back to a copy trips the UNIFIED_FLOOR ratchet below.
+  const base = name.replace(/\.ts$/, "");
+  if (new RegExp(`from\\s*["'][^"']*base44/shared/${base}(?![A-Za-z0-9])`).test(strip(client))) {
+    unified.push(base);
+    continue;
+  }
 
   const cg = gatesOf(client);
   const sg = gatesOf(server);
@@ -132,8 +147,9 @@ for (const [rule, cap] of Object.entries(BASELINE)) {
   lines.push(`  ${now > cap ? "✗" : now < cap ? "↓" : "·"} ${rule.padEnd(26)} ${String(now).padStart(4)} / ${cap}`);
 }
 
-process.stdout.write(`درفت التوائم — الطبقة ٣ بنسختين (${pairs} زوجاً)\n\n${lines.join("\n")}\n\n`);
+process.stdout.write(`درفت التوائم — الطبقة ٣ بنسختين (${pairs} زوجاً · ${unified.length} موحّد بمصدر واحد)\n\n${lines.join("\n")}\n\n`);
 if (verbose && detail.length) process.stdout.write(`${detail.sort().join("\n")}\n\n`);
+if (verbose && unified.length) process.stdout.write(`موحّدة (مصدر واحد، لا تدرف): ${unified.sort().join("، ")}\n\n`);
 
 if (over) {
   process.stdout.write(`✗ درفت جديد بين العميل والخادم.\n   للتفصيل: node scripts/test-twin-drift.mjs --list\n`);
@@ -143,4 +159,8 @@ if (under) {
   process.stdout.write("↓ نزل الدرفت — أنزل السقف في BASELINE ليثبت.\n");
   process.exit(1);
 }
-process.stdout.write("· لا درفت فوق السقف.\n");
+if (unified.length < UNIFIED_FLOOR) {
+  process.stdout.write(`✗ نُقِض توحيد توأم: ${unified.length} موحّد < ${UNIFIED_FLOOR}. منطق مشترك عاد نسختين — أعِد التوحيد أو أنزِل UNIFIED_FLOOR بوعي.\n`);
+  process.exit(1);
+}
+process.stdout.write(`· لا درفت فوق السقف. ${unified.length} توأم موحّد بمصدر واحد.\n`);

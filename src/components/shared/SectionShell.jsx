@@ -100,7 +100,7 @@ export default function SectionShell({
                   {kicker}
                 </span>
               ) : null}
-              <h1 className="nv-h" style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: 0, color: "#FFFFFF" }}>{title}</h1>
+              <h1 className="nv-h" style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: 0, color: "#FFFFFF" }}>{title}</h1>
               {subtitle ? (
                 <p style={{ margin: "3px 0 0", fontSize: 12, lineHeight: 1.7, color: "#C5DBCD", maxWidth: 680 }}>{subtitle}</p>
               ) : null}

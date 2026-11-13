@@ -298,9 +298,10 @@ export default function Payroll() {
           ? "البصمة تغذّي المسير، والمسير يغذّي قسيمتك. العهدة تُطلب من طلباتي وتُسلَّم عند انتهاء الخدمة."
           : "The punch feeds the run, and the run feeds your payslip. Custody is requested in My Requests and returned at exit.")
         : (ar
-          ? "الحضور يغذّي المسير، والمسير يُقفل قبل ملف مدد. العهدة غير المسلّمة تُحسم في التصفية النهائية وحدها (المادة 91)."
-          : "Attendance feeds the run, and the run closes before the Mudad file. Unreturned custody is set off only in the final settlement (Art. 91).")}
-      viewNote={view === SELF ? "" : hints[tab]}
+          ? "الحضور يغذّي المسير، والمسير يُقفل قبل ملف مدد."
+          : "Attendance feeds the run, and the run closes before the Mudad file.")}
+      // The run tab's note repeats the legal footer and the stages above — show notes only where they teach something.
+      viewNote={view === SELF || tab === "run" ? "" : hints[tab]}
       legal={view === SELF && tab === "slip" ? "" : (ar
         ? "دورة نظامية: تجهيز البنود · المواد 90 و92 و93 و107 · الاعتماد · حماية الأجور خلال 30 يوماً من الاستحقاق."
         : "Statutory cycle: prepare lines · Art. 90, 92, 93 and 107 · approve · wage protection within 30 days of entitlement.")}
@@ -309,12 +310,12 @@ export default function Payroll() {
         { value: "att", label: ar ? "الحضور المقفل" : "Locked attendance", count: issueCount },
         { value: "lines", label: ar ? "البنود" : "Lines" },
         { value: "deduct", label: ar ? "بنود الخصم" : "Deductions" },
-        { value: "gosi", label: ar ? "التأمينات" : "GOSI" },
-        { value: "eos", label: ar ? "نهاية الخدمة" : "End of service" },
-        { value: "slip", label: ar ? "قسيمة الراتب" : "Payslip" },
         { value: "wps", label: ar ? "حماية الأجور" : "Wage protection" },
-        { value: "files", label: ar ? "القالب" : "Template" },
-        { value: "archive", label: ar ? "الأرشيف" : "Archive", count: (data?.payrollRuns || []).filter((entry) => entry.month < liveMonth).length },
+        { value: "gosi", label: ar ? "التأمينات" : "GOSI", more: true },
+        { value: "eos", label: ar ? "نهاية الخدمة" : "End of service", more: true },
+        { value: "slip", label: ar ? "قسيمة الراتب" : "Payslip", more: true },
+        { value: "files", label: ar ? "القالب" : "Template", more: true },
+        { value: "archive", label: ar ? "الأرشيف" : "Archive", more: true },
       ] : [
         { value: "slip", label: ar ? "قسيمتي" : "My payslip" },
         { value: "deduct", label: ar ? "خصوماتي" : "My deductions" },

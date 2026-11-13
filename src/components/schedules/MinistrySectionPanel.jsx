@@ -39,7 +39,9 @@ export function MinistryCounters({ totals, ar = true, size }) {
 
 export default function MinistrySectionPanel({ section: given, sectionKey, lane = "employee", inputs = {}, ar = true, today, id }) {
   const [source, setSource] = useState("all");
-  // Phone: the panel opens folded — head and totals only; the rules list is one tap away.
+  // Reference, not work: under a section's daily work the panel opens folded — head and totals
+  // (alerts stay visible); the rules list is one tap away. Where the rules ARE the page
+  // («الامتثال» in HR) it stays open on desktop and folds on the phone only.
   const phone = useIsMobile();
   const { hash } = useLocation();
   const [unfolded, setUnfolded] = useState(false);
@@ -61,7 +63,9 @@ export default function MinistrySectionPanel({ section: given, sectionKey, lane 
     .map((card) => ({ card, rows: rows.filter((row) => row.source === card.key) }));
   const citesRegs = cards.some((card) => card.key === "regs" || card.key === "model");
   const n = rows.length;
-  const folded = phone && !unfolded && hash !== `#${anchor}`;
+  const rulesArePage = section.key === "hr" || section.key === "records";
+  const foldable = phone || !rulesArePage;
+  const folded = foldable && !unfolded && hash !== `#${anchor}`;
 
   return (
     <section
@@ -77,7 +81,7 @@ export default function MinistrySectionPanel({ section: given, sectionKey, lane 
           : <>Read only · <Num>{n}</Num> rule{n === 1 ? "" : "s"}; each row says whether the platform meets it now.</>}
         trailing={<div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}><MinistryCounters totals={totals} ar={ar} /></div>}
       />
-      {phone ? (
+      {foldable ? (
         <button
           type="button"
           className="nv-fold-toggle"

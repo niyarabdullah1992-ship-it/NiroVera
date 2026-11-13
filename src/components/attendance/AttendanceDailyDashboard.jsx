@@ -128,6 +128,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
   const [punchAsk, setPunchAsk] = useState(null); // { id, mode: "approve" | "reject", time, note }
   const [rowError, setRowError] = useState({}); // employeeId → message, shown on the row that failed
   const [teamFace, setTeamFace] = useState("all");
+  const [teamAll, setTeamAll] = useState(false);
   const [queueFace, setQueueFace] = useState("all");
   const [checkoutError, setCheckoutError] = useState("");
   const [searchParams] = useSearchParams();
@@ -386,7 +387,15 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
     if (status === "absent" && !shiftWindowElapsed(getTodaysShift(data, employee))) return "pending";
     return TEAM_STATUS[status] || "unscheduled";
   };
-  const teamShown = teamFace === "all" ? employees : employees.filter((employee) => teamFaceOf(employee) === teamFace);
+  // What needs an eye first: your decision, absent, late, not in yet — then the rest.
+  const TEAM_ORDER = { decide: 0, absent: 1, late: 2, pending: 3, present: 4, leave: 5, unscheduled: 6 };
+  const teamMatched = (teamFace === "all" ? employees : employees.filter((employee) => teamFaceOf(employee) === teamFace))
+    .map((employee, index) => ({ employee, index, rank: TEAM_ORDER[teamFaceOf(employee)] ?? 9 }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((item) => item.employee);
+  const TEAM_PREVIEW = 12;
+  const teamShown = teamAll ? teamMatched : teamMatched.slice(0, TEAM_PREVIEW);
+  const teamHidden = teamMatched.length - teamShown.length;
   const teamCount = (id) => employees.filter((employee) => teamFaceOf(employee) === id).length;
   // «بصمات اليوم بلا حكم» by the link that broke: range, missing checkout, early out, manual ask.
   // A row with several faces is listed under each matching pill; shown as the pill picked, else its first face.
@@ -425,12 +434,12 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
 
   const queueSub = attentionCount
     ? (lang === "ar"
-      ? (attentionCount === 1 ? "صفٌّ واحد انكسرت فيه حلقة ولا يصحّ حكم النظام عليه — لا حاضراً بلا دليل، ولا غائباً وهو قد يكون في الموقع." : `${formatUiNumber(attentionCount)} صفوف انكسرت فيها حلقة واحدة ولا يصحّ حكم النظام عليها.`)
+      ? (attentionCount === 1 ? "بصمة واحدة ما يقدر النظام يحكم عليها وحده — قرّر: حاضر أو لا." : `${formatUiNumber(attentionCount)} بصمات ما يقدر النظام يحكم عليها وحده — قرّر في كل وحدة.`)
       : `${formatUiNumber(attentionCount)} row${attentionCount === 1 ? "" : "s"} broke a link — the system will not guess present or absent.`)
     : (lang === "ar" ? "ما ينكسر من حلقات اليوم يصل هنا، وكل قرار يُسجَّل باسمك." : "Today's broken links land here; every decision is recorded in your name.");
   const queueInsight = attentionCount
-    ? (lang === "ar" ? "الطابور مقياس عمل لا مقياس أداء — يجب أن يصل صفراً كل يوم." : "The queue measures work, not performance — it should reach zero every day.")
-    : (lang === "ar" ? "الطابور صفر — كل يوم أُغلق تلقائياً أو بقرار موقّع." : "Queue at zero — every day closed automatically or by a signed decision.");
+    ? (lang === "ar" ? "الهدف أن تفضى القائمة كل يوم." : "Aim to clear this list every day.")
+    : (lang === "ar" ? "ما فيه شي ينتظرك." : "Nothing waiting on you.");
 
   const tiles = (
     <FigureRow
@@ -502,12 +511,12 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
       <StatusFilterPills
         card
         dataKey="att-team"
-        title={ar ? "الفريق اليوم — بالاسم" : "The team today — by name"}
+        title={ar ? "الفريق اليوم" : "The team today"}
         note={ar
           ? `${formatUiNumber(todayAtt.scheduled)} مجدولون · نسبة التسجيل ${todayAtt.rate}%`
           : `${formatUiNumber(todayAtt.scheduled)} scheduled · ${todayAtt.rate}% logged`}
         value={teamFace}
-        onChange={setTeamFace}
+        onChange={(face) => { setTeamFace(face); setTeamAll(false); }}
         hideZero
         items={[
           { id: "all", label: ar ? "الكل" : "All", n: formatUiNumber(employees.length) },
@@ -538,9 +547,13 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
           const self = String(employee.id) === String(currentUser?.id);
           const href = self ? "/app/calendar" : fileDutyHref(employee.id);
           return (
-            <div key={employee.id} data-team-row={status} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 10, alignItems: "center", padding: "10px 18px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", borderInlineStart: "1px solid var(--nv-line2, #EEF1EF)", minWidth: 0 }}>
+            <div key={employee.id} data-team-row={status} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: "10px 18px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", borderInlineStart: "1px solid var(--nv-line2, #EEF1EF)", minWidth: 0 }}>
               <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--nv-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{employee.name}</span>
+                {href ? (
+                  <Link to={href} data-team-open={employee.id} className="nv-team-name" title={self ? (ar ? "التقويم التشغيلي" : "Operations calendar") : (ar ? "ملف الدوام" : "Duty file")} style={{ fontSize: 13, fontWeight: 600, color: "var(--nv-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: "none" }}>{employee.name}</Link>
+                ) : (
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--nv-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{employee.name}</span>
+                )}
                 <span style={{ fontSize: 11, color: MUTED, display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                   {shift ? (
                     <span>{shift.label || (ar ? "وردية" : "Shift")} <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{shift.start}–{shift.end}</span></span>
@@ -554,11 +567,6 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                 <BreakLine ar={ar} day={breakDayOf(employee)} />
               </span>
               <span style={{ ...chipStyle, height: 22, fontSize: 11 }}>{label}</span>
-              {href ? (
-                <Link to={href} data-team-open={employee.id} style={openLinkStyle()} title={self ? (ar ? "التقويم التشغيلي" : "Operations calendar") : (ar ? "ملف الدوام" : "Duty file")}>
-                  {ar ? "افتح ›" : "Open ›"}
-                </Link>
-              ) : <span />}
               {isManager && !self && status === "absent" && !notYetRow && !decide ? (
                 <div data-absent-actions="1" style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 6 }}>
                   {absentActions(employee)}
@@ -569,23 +577,38 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
           );
         })}
       </div>
+      {teamHidden > 0 || teamAll ? (
+        <button type="button" data-team-more="1" className="nv-team-more" onClick={() => setTeamAll((v) => !v)}>
+          {teamAll
+            ? (ar ? "اعرض أقل" : "Show less")
+            : (ar ? `اعرض الكل (${formatUiNumber(teamMatched.length)})` : `Show all (${formatUiNumber(teamMatched.length)})`)}
+        </button>
+      ) : null}
       </section>
     </div>
   ) : null;
 
-  const queuePanel = (
+  // Nothing to decide: one quiet line, not a titled card with an empty state.
+  const queueClear = !loading && employees.length > 0 && queue.length === 0;
+  const queuePanel = queueClear ? (
+    <div ref={queueRef} id="nv-team-queue" data-decision-queue data-queue-empty className="nv-all-clear" style={{ scrollMarginTop: 88 }}>
+      <span aria-hidden className="nv-all-clear__dot"><NvIcon name="check" size={14} strokeWidth={2.2} inline={false} /></span>
+      <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--nv-ok-ink)" }}>{ar ? "ما فيه بصمات تنتظر مراجعتك" : "No punches waiting for your review"}</span>
+      <span style={{ fontSize: 12.5, color: MUTED }}>{ar ? "كل بصمات اليوم انحسمت تلقائياً أو بقرار." : "Every punch today closed automatically or by a decision."}</span>
+    </div>
+  ) : (
     <div ref={queueRef} id="nv-team-queue" className="nv-list-stack" data-decision-queue style={{ scrollMarginTop: 88 }}>
       <StatusFilterPills
         card
         dataKey="att-queue"
-        title={lang === "ar" ? "بصمات اليوم بلا حكم" : "Today's punches without a verdict"}
+        title={lang === "ar" ? "بصمات تحتاج مراجعتك" : "Punches to review"}
         value={queueFace}
         onChange={setQueueFace}
         hideZero
         trailing={(
           <span style={pill(attentionCount ? "warn" : "ok")}>
             <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{formatUiNumber(attentionCount)}</span>
-            {lang === "ar" ? "في الطابور" : "in queue"}
+            {lang === "ar" ? "تنتظرك" : "waiting"}
           </span>
         )}
         items={queue.length === 0 ? [] : [
@@ -610,7 +633,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
         <div data-queue-empty style={{ padding: "22px 18px", display: "flex", alignItems: "center", gap: 12 }}>
           <span aria-hidden style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--nv-ok-soft)", border: "1px solid var(--nv-ok-line)", color: "var(--nv-ok-ink)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 700, flexShrink: 0 }}><NvIcon name="check" size={16} strokeWidth={2} inline={false} /></span>
           <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--nv-ok-ink)" }}>{lang === "ar" ? "الطابور صفر" : "Queue at zero"}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--nv-ok-ink)" }}>{lang === "ar" ? "ما فيه شي ينتظرك" : "Nothing waiting"}</span>
             <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>{lang === "ar" ? "كل يوم أُغلق تلقائياً أو بقرار موقّع." : "Every day closed automatically or by a signed decision."}</span>
           </span>
         </div>

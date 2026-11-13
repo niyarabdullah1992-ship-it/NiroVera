@@ -138,7 +138,12 @@ export default function PayrollCycleReview({
     onGo?.(stage.tab);
   };
 
-  const shownVariance = showAll ? variance.rows : variance.rows.filter((r) => r.flag);
+  // Ten at a time: with no last month every line is «new», and 97 rows bury the next step.
+  const VARIANCE_PREVIEW = 10;
+  const flaggedRows = variance.rows.filter((r) => r.flag);
+  const shownVariance = showAll ? variance.rows : flaggedRows.slice(0, VARIANCE_PREVIEW);
+  const current = stages.find((s) => s.id === currentId) || null;
+  const currentIndex = current ? stages.indexOf(current) : -1;
   const deltaTotal = variance.total - variance.prevTotal;
 
   return (
@@ -187,6 +192,22 @@ export default function PayrollCycleReview({
             );
           })}
         </ol>
+        {current ? (
+          <div data-cycle-next="1" className="nv-cycle-next">
+            <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+              <span style={{ fontSize: 11.5, color: DK.faint }}>
+                {ar ? `الخطوة ${currentIndex + 1} من ${stages.length} — المطلوب منك الآن` : `Step ${currentIndex + 1} of ${stages.length} — what's needed now`}
+              </span>
+              <strong style={{ fontSize: 15, color: "#fff" }}>
+                {ar ? current.ar : current.en}
+                <span style={{ fontWeight: 500, color: "#F3E3BC", fontSize: 13 }}>{" — "}{ar ? current.noteAr : current.noteEn}</span>
+              </strong>
+            </span>
+            <button type="button" onClick={() => go(current)} className="nv-cycle-next__go">
+              {ar ? "ابدأ ›" : "Start ›"}
+            </button>
+          </div>
+        ) : null}
       </section>
 
       {/* 1. Against last month. */}
@@ -234,9 +255,9 @@ export default function PayrollCycleReview({
             </tbody>
           </table>
         </div>
-        {variance.rows.length > variance.flagged ? (
+        {variance.rows.length > shownVariance.length || showAll ? (
           <button type="button" onClick={() => setShowAll((v) => !v)} style={{ fontFamily: "inherit", height: 36, border: "none", borderTop: "1px solid var(--nv-line2, #EEF1EF)", background: "var(--nv-card)", color: "#0B3D27", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-            {showAll ? (ar ? "اعرض ما يحتاج نظرة فقط" : "Only what needs a look") : (ar ? `اعرض الجميع · ${variance.rows.length}` : `Show everyone · ${variance.rows.length}`)}
+            {showAll ? (ar ? "اعرض أقل" : "Show less") : (ar ? `اعرض الجميع · ${variance.rows.length}` : `Show everyone · ${variance.rows.length}`)}
           </button>
         ) : null}
       </Fold>

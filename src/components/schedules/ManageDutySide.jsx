@@ -214,7 +214,7 @@ export default function ManageDutySide({
         {hideQueue ? null : <DecisionRow
           dataKey="queue"
           ar={ar}
-          label={ar ? "بصمات اليوم بلا حكم" : "Today's punches without a verdict"}
+          label={ar ? "بصمات تحتاج مراجعتك" : "Punches to review"}
           note={ar ? "خارج النطاق · بلا انصراف · طلب بصمة يدوية" : "Outside range · no checkout · manual-punch ask"}
           count={queueCount}
           to={TEAM_QUEUE_HREF}

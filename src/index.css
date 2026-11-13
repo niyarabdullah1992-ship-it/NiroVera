@@ -4771,3 +4771,44 @@ html.dark .nv-app-topbar { border-color: var(--nv-line) !important; }
   background: #C8A45A; color: #2A1E05; font: inherit; font-size: 14px; font-weight: 700;
 }
 .nv-cycle-next__go:hover { background: #D5B46C; }
+/* «الفريق اليوم» as a table: one person per row, aligned columns. */
+.nv-team-table { display: flex; flex-direction: column; }
+.nv-team-tr {
+  display: grid; align-items: center; column-gap: 16px;
+  grid-template-columns: minmax(180px, 1.6fr) minmax(150px, 1.2fr) minmax(70px, .6fr) minmax(110px, .8fr);
+  padding: 10px 20px; min-height: 52px; border-bottom: 1px solid var(--nv-line2, #EEF1EF);
+}
+.nv-team-tr:last-child { border-bottom: 0; }
+.nv-team-tr:not(.nv-team-th):hover { background: var(--nv-hover); }
+.nv-team-th {
+  min-height: 40px; padding-block: 0; background: var(--nv-soft, #F5F7F6);
+  font-size: 12px; font-weight: 700; color: var(--nv-muted);
+  border-bottom: 1px solid var(--nv-line);
+}
+.nv-team-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.nv-team-avatar {
+  width: 30px; height: 30px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--nv-accent-soft); color: var(--nv-ok-ink); font-size: 13px; font-weight: 700;
+}
+.nv-team-name {
+  font-size: 13.5px; font-weight: 600; color: var(--nv-ink) !important; text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.nv-team-shift { display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--nv-ink2); min-width: 0; }
+.nv-team-mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; font-size: 12.5px; white-space: nowrap; color: var(--nv-ink2); }
+.nv-team-in { color: var(--nv-ink); font-weight: 600; }
+.nv-team-dim { color: var(--nv-muted); font-size: 13px; }
+.nv-team-extra { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; padding-inline-start: 40px; }
+.nv-team-extra:empty { display: none; }
+@media (max-width: 720px) {
+  .nv-team-th { display: none; }
+  .nv-team-tr { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; padding: 10px 14px; }
+  .nv-team-shift { grid-column: 1; grid-row: 2; padding-inline-start: 40px; font-size: 12px; }
+  .nv-team-tr > [role="cell"]:nth-child(3) { display: none; }
+  .nv-team-tr > [role="cell"]:nth-child(4) { grid-column: 2; grid-row: 1; }
+}
+/* The filter head and the table read as one card. */
+main.platform-main-scroll [data-team-today].nv-list-stack { gap: 0 !important; }
+main.platform-main-scroll [data-team-today] > :first-child { border-end-start-radius: 0 !important; border-end-end-radius: 0 !important; border-bottom: 0 !important; box-shadow: none !important; }
+main.platform-main-scroll [data-team-today] > section { border-start-start-radius: 0 !important; border-start-end-radius: 0 !important; }

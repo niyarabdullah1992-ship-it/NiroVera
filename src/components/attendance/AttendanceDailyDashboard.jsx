@@ -530,7 +530,14 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
         ]}
       />
       <section className="nv-att-card" style={{ ...panel, borderRadius: 12, overflow: "hidden" }}>
-      <div className="nv-att-team-list">
+      {/* One person per row, aligned columns — a table, not a wall of tiles. */}
+      <div className="nv-team-table" role="table" aria-label={ar ? "الفريق اليوم" : "The team today"}>
+        <div className="nv-team-tr nv-team-th" role="row">
+          <span role="columnheader">{ar ? "الموظف" : "Employee"}</span>
+          <span role="columnheader">{ar ? "الوردية" : "Shift"}</span>
+          <span role="columnheader">{ar ? "الحضور" : "In"}</span>
+          <span role="columnheader">{ar ? "الحالة" : "Status"}</span>
+        </div>
         {teamShown.map((employee) => {
           const row = byEmployee[String(employee.id)];
           const status = statusFor(employee);
@@ -546,31 +553,42 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
           const chipStyle = decide ? dutyChip("alert") : notYetRow ? dutyChip("rest") : dutyChip(key);
           const self = String(employee.id) === String(currentUser?.id);
           const href = self ? "/app/calendar" : fileDutyHref(employee.id);
+          const showActions = isManager && !self && status === "absent" && !notYetRow && !decide;
           return (
-            <div key={employee.id} data-team-row={status} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: "10px 18px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", borderInlineStart: "1px solid var(--nv-line2, #EEF1EF)", minWidth: 0 }}>
-              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+            <div key={employee.id} data-team-row={status} className="nv-team-tr" role="row">
+              <span role="cell" className="nv-team-who">
+                <span aria-hidden className="nv-team-avatar">{String(employee.name || "").trim().slice(0, 1)}</span>
                 {href ? (
-                  <Link to={href} data-team-open={employee.id} className="nv-team-name" title={self ? (ar ? "التقويم التشغيلي" : "Operations calendar") : (ar ? "ملف الدوام" : "Duty file")} style={{ fontSize: 13, fontWeight: 600, color: "var(--nv-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: "none" }}>{employee.name}</Link>
+                  <Link to={href} data-team-open={employee.id} className="nv-team-name" title={self ? (ar ? "التقويم التشغيلي" : "Operations calendar") : (ar ? "ملف الدوام" : "Duty file")}>{employee.name}</Link>
                 ) : (
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--nv-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{employee.name}</span>
+                  <span className="nv-team-name">{employee.name}</span>
                 )}
-                <span style={{ fontSize: 11, color: MUTED, display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  {shift ? (
-                    <span>{shift.label || (ar ? "وردية" : "Shift")} <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{shift.start}–{shift.end}</span></span>
-                  ) : (
-                    <span>{ar ? "بلا وردية اليوم" : "No shift today"}</span>
-                  )}
-                  {row?.check_in_at ? (
-                    <span>· {ar ? "بصم" : "in"} <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{formatTime(row.check_in_at, format, "en-GB")}</span></span>
-                  ) : null}
-                </span>
-                <BreakLine ar={ar} day={breakDayOf(employee)} />
               </span>
-              <span style={{ ...chipStyle, height: 22, fontSize: 11 }}>{label}</span>
-              {isManager && !self && status === "absent" && !notYetRow && !decide ? (
-                <div data-absent-actions="1" style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 6 }}>
-                  {absentActions(employee)}
-                  {rowErrorFor(employee.id) ? <span role="alert" style={{ fontSize: 11.5, color: DANGER, lineHeight: 1.6 }}>{rowErrorFor(employee.id)}</span> : null}
+              <span role="cell" className="nv-team-shift">
+                {shift ? (
+                  <>
+                    <span>{shift.label || (ar ? "وردية" : "Shift")}</span>
+                    <span dir="ltr" className="nv-team-mono">{shift.start}–{shift.end}</span>
+                  </>
+                ) : (
+                  <span className="nv-team-dim">{ar ? "بلا وردية" : "No shift"}</span>
+                )}
+              </span>
+              <span role="cell">
+                {row?.check_in_at
+                  ? <span dir="ltr" className="nv-team-mono nv-team-in">{formatTime(row.check_in_at, format, "en-GB")}</span>
+                  : <span className="nv-team-dim">—</span>}
+              </span>
+              <span role="cell"><span style={{ ...chipStyle, height: 24, fontSize: 12 }}>{label}</span></span>
+              {breakDayOf(employee)?.flex || showActions ? (
+                <div className="nv-team-extra">
+                  <BreakLine ar={ar} day={breakDayOf(employee)} />
+                  {showActions ? (
+                    <div data-absent-actions="1" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {absentActions(employee)}
+                      {rowErrorFor(employee.id) ? <span role="alert" style={{ fontSize: 11.5, color: DANGER, lineHeight: 1.6 }}>{rowErrorFor(employee.id)}</span> : null}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>

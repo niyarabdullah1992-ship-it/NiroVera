@@ -96,7 +96,7 @@ export default function OtDecisionBoard({
 
   if (!visible.length) {
     return (
-      <section style={{ background: SW.card, border: `1px solid ${SW.line}`, padding: "14px 16px" }}>
+      <section style={{ background: SW.card, border: `1px solid ${SW.line}`, borderRadius: 12, padding: "14px 16px" }}>
         <LawGateAlertRow
           ar={ar}
           article="107"
@@ -159,7 +159,7 @@ export default function OtDecisionBoard({
   };
 
   return (
-    <section style={{ background: SW.card, border: `1px solid ${SW.line}`, display: "flex", flexDirection: "column" }}>
+    <section style={{ background: SW.card, border: `1px solid ${SW.line}`, borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "14px 16px", borderBottom: `1px solid ${SW.line}`, display: "flex", flexDirection: "column", gap: 8 }}>
         <LawGateAlertRow
           ar={ar}
@@ -280,7 +280,7 @@ export default function OtDecisionBoard({
                         type="date"
                         value={enjoyDate[key] || ""}
                         onChange={(e) => setEnjoyDate((prev) => ({ ...prev, [key]: e.target.value }))}
-                        style={{ fontFamily: "inherit", fontSize: 11, padding: "4px 6px", border: `1px solid ${SW.line}`, background: SW.card }}
+                        style={{ fontFamily: "inherit", borderRadius: 8, fontSize: 11, padding: "4px 6px", border: `1px solid ${SW.line}`, background: SW.card }}
                       />
                     </label>
                     <label style={{ fontSize: 11, display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -315,7 +315,7 @@ export default function OtDecisionBoard({
                         data-ot-not-worked="1"
                         disabled={busy === key || (item.status.needsReason && String(notWorkedWhy[key] || "").trim().length < 3)}
                         onClick={() => decide(row.employee.id, item.dateKey, "reject", item.overtimeMinutes, [item.kind])}
-                        style={{ fontFamily: "inherit", fontSize: 11, padding: "6px 10px", border: `1px solid ${SW.line}`, background: SW.card, color: SW.mid, cursor: "pointer" }}
+                        style={{ fontFamily: "inherit", borderRadius: 8, fontSize: 11, padding: "6px 10px", border: `1px solid ${SW.line}`, background: SW.card, color: SW.mid, cursor: "pointer" }}
                       >
                         {ar ? "لم يُعمل — إغلاق" : "Not worked — close"}
                       </button>
@@ -325,7 +325,7 @@ export default function OtDecisionBoard({
                       type="button"
                       disabled={busy === key}
                       onClick={() => decide(row.employee.id, item.dateKey, "comp_leave", item.overtimeMinutes, [item.kind])}
-                      style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "6px 10px", border: `1px solid ${SW.line}`, background: SW.card, color: SW.ink, cursor: "pointer" }}
+                      style={{ fontFamily: "inherit", borderRadius: 8, fontSize: 11, fontWeight: 600, padding: "6px 10px", border: `1px solid ${SW.line}`, background: SW.card, color: SW.ink, cursor: "pointer" }}
                     >
                       {ar ? "إجازة تعويضية" : "Compensatory leave"}
                     </button>

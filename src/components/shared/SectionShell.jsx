@@ -58,14 +58,14 @@ export default function SectionShell({
 
   if (bare) {
     return (
-      <div className={className} dir={ar ? "rtl" : "ltr"} style={{ width: "100%", maxWidth, margin: "0 auto" }}>
+      <div className={className} data-nv-shell="" dir={ar ? "rtl" : "ltr"} style={{ width: "100%", maxWidth, margin: "0 auto" }}>
         {body}
       </div>
     );
   }
 
   return (
-    <div className={className} dir={ar ? "rtl" : "ltr"} style={{ width: "100%", maxWidth, margin: "0 auto" }}>
+    <div className={className} data-nv-shell="" dir={ar ? "rtl" : "ltr"} style={{ width: "100%", maxWidth, margin: "0 auto" }}>
       <section
         data-nv="stamp"
         style={{

@@ -93,6 +93,9 @@
     --nv-paper: 0 1px 2px var(--nv-shadow2);
     --nv-radius: 12px;
     --nv-radius-control: 8px;
+    /* One content width for the /app page: the top bar and every section shell share it,
+       so their edges line up on any screen. */
+    --nv-content-max: 1360px;
     --nv-ok-ink: #2F6B43;
     --nv-ok-soft: #E6F2EA;
     --nv-ok-line: #C5CEC9;
@@ -4544,3 +4547,46 @@ html:not(.dark) .nv-mark-on-dark { display: none !important; }
   [data-sec-strip] > nav > button { flex: none; min-height: 38px; scroll-snap-align: start; }
   [data-sec-strip] > nav > span { display: none; }
 }
+
+/* ───────────────────────── Design system v8 — layout & type ─────────────────────────
+   One content width: every section shell fills the page width the top bar uses, so the
+   top bar, the section band and the cards share one pair of edges. */
+.powercare-interior-page [data-nv-shell] {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+/* Legibility floor. Pages set micro sizes inline (10–12px, eight variants); Arabic below
+   12px loses its dots and marks. Fold them into a short scale — 11.5 for badges and meta,
+   12.5 for secondary text — without touching a thousand style objects. */
+main.platform-main-scroll [style*="font-size: 10px"],
+main.platform-main-scroll [style*="font-size: 10.5px"] { font-size: 11.5px !important; }
+main.platform-main-scroll [style*="font-size: 11px"],
+main.platform-main-scroll [style*="font-size: 11.5px"],
+main.platform-main-scroll [style*="font-size: 12px"] { font-size: 12.5px !important; }
+
+/* A time, date, amount or ID never breaks across lines ("07:00–" / "16:00"). These are the
+   left-to-right monospace runs inside Arabic text. */
+main.platform-main-scroll [dir="ltr"][style*="Mono"],
+main.platform-main-scroll [dir="ltr"][style*="tabular-nums"] { white-space: nowrap; }
+
+/* Two corner radii: 8 for controls and chips, 12 for cards. The stray 5/6/7 and 10 made
+   neighbouring cards and buttons look slightly off from each other. */
+main.platform-main-scroll [style*="border-radius: 5px"],
+main.platform-main-scroll [style*="border-radius: 6px"],
+main.platform-main-scroll [style*="border-radius: 7px"] { border-radius: 8px !important; }
+main.platform-main-scroll [style*="border-radius: 10px"] { border-radius: 12px !important; }
+
+/* Figure rows («سطر لا بطاقة») were designed to sit on white, but they land directly on the
+   grey page under the section band (attendance, voice, payroll). Give them the same quiet
+   white strip as the section strip — hairline, no shadow — so figures read as one surface. */
+main.platform-main-scroll .nv-figrow {
+  background: var(--nv-card);
+  border: 1px solid var(--nv-line);
+  border-radius: 12px;
+  padding: 12px 18px;
+}
+/* …but never a box inside a box. */
+main.platform-main-scroll [data-sec-strip] .nv-figrow,
+main.platform-main-scroll [data-nv="stamp"] .nv-figrow,
+main.platform-main-scroll .nv-figrow .nv-figrow { background: transparent; border: 0; padding: 2px 0; border-radius: 0; }

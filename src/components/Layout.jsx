@@ -562,7 +562,7 @@ export default function Layout({ children }) {
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <main className="nv-bg platform-main-scroll min-h-0 flex-1 overflow-y-auto p-5 pb-28 md:px-[26px] md:pb-12 md:pt-5" style={{ background: "var(--nv-page)" }}>
-          <div className="powercare-interior-page mx-auto w-full max-w-[1600px]">
+          <div className="powercare-interior-page mx-auto w-full max-w-[var(--nv-content-max)]">
             <AppTopBar
               pageTitle={pageTitle}
               isSyncing={isSyncing}

@@ -28,7 +28,7 @@ export default function AttendanceSectionFrame({
   const manage = lane === "manage";
   const { pathname } = useLocation();
   return (
-    <div className="nv-att-frame" data-att-lane={manage ? "manage" : "mine"} style={{ width: `min(${maxWidth}px, 100%)`, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="nv-att-frame" data-nv-shell="" data-att-lane={manage ? "manage" : "mine"} style={{ width: `min(${maxWidth}px, 100%)`, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="nv-att-hero" style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
         <Nv7Band
           num={sectionNumber(pathname, ar)}

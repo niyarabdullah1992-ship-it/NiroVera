@@ -217,6 +217,16 @@ export function slipRows(item, employee, parts, ar, month) {
       source: ar ? "أجر وقت لم يُعمل — لا جزاء" : "Wage for time not worked — not a penalty",
     });
   }
+  // Early leave — the same reading: wage not due for the minutes left before the published end.
+  if ((Number(parts.earlyLeaveCut) || 0) > 0) {
+    rows.push({
+      id: "early",
+      label: ar ? `انصراف مبكر — ${Number(item?.earlyLeaveMinutes) || 0} دقيقة في ${Number(item?.earlyLeaveDays) || 0} يوم` : `Early leave — ${Number(item?.earlyLeaveMinutes) || 0} min over ${Number(item?.earlyLeaveDays) || 0} days`,
+      amount: Number(parts.earlyLeaveCut) || 0,
+      minus: true,
+      source: ar ? "أجر وقت لم يُعمل — لا جزاء" : "Wage for time not worked — not a penalty",
+    });
+  }
   // Art. 97 — detained in a work-related case: half the wage up to 180 days.
   if ((Number(parts.detentionCut) || 0) > 0) {
     rows.push({
@@ -571,7 +581,7 @@ export default function PayrollSlipBoard({
   const live = facedForGosi(item, employee, month);
   const parts = lineComponents(live);
   const gross = parts.base + parts.allowances + parts.bonus + (Number(parts.overtimePay) || 0) + (Number(parts.refunds) || 0);
-  const withheld = (Number(parts.deductions) || 0) + (Number(parts.gosiEmployee) || 0) + (Number(parts.injuryCut) || 0) + (Number(parts.sickCut) || 0) + (Number(parts.unpaidLeaveCut) || 0) + (Number(parts.detentionCut) || 0) + (Number(parts.lateCut) || 0);
+  const withheld = (Number(parts.deductions) || 0) + (Number(parts.gosiEmployee) || 0) + (Number(parts.injuryCut) || 0) + (Number(parts.sickCut) || 0) + (Number(parts.unpaidLeaveCut) || 0) + (Number(parts.detentionCut) || 0) + (Number(parts.lateCut) || 0) + (Number(parts.earlyLeaveCut) || 0);
   const rows = slipRows(live, employee, parts, ar, month);
   // «حقك» on قسيمتي, «التزامك» on the HR payslip board — one hint per row, from this line's figures.
   const hintCtx = {

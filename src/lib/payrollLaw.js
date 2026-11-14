@@ -400,13 +400,63 @@ export function lateMonth({ employeeId, month, attendance = [], monthlyWage = 0,
     if (String(row?.employeeId || row?.employee_id || "") !== id) continue;
     const day = String(row?.date || row?.attendanceDate || row?.day || "").slice(0, 10);
     if (!day.startsWith(prefix) || skip.has(day)) continue;
-    if (String(row?.status || "").toLowerCase() === "absent" || row?.excusedLate) continue;
+    // `excused` is what the manager's «اعتماد الحضور» writes (excuseAttendanceLocal) — it promised «لا يُحتسب
+    // عليك التأخير», yet only `excusedLate` was read, so an approved day was still cut.
+    if (String(row?.status || "").toLowerCase() === "absent" || row?.excusedLate || row?.excused) continue;
     const m = Math.max(0, Math.round(Number(row?.lateMinutes) || 0));
     if (!m) continue;
     minutes += m;
     days += 1;
   }
   const hours = Number(ruleValue("hours.shift.ordinaryHours")) || 8;
+  const perMinute = dailyWage(monthlyWage) / hours / 60;
+  return { minutes, days, cut: r2(minutes * perMinute), perMinute };
+}
+
+/** Minutes of an approved «استئذان» on a day (time → timeTo), the part of an early leave it covers. */
+function approvedPermissionMinutesOn(employee, day) {
+  const toM = (hm) => {
+    const m = String(hm || "").match(/^(\d{1,2}):(\d{2})/);
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+  let minutes = 0;
+  for (const row of employee?.otherRequests || []) {
+    if (String(row?.type || "") !== "permission" || !isApproved(row)) continue;
+    if (String(row?.date || "").slice(0, 10) !== day) continue;
+    const from = toM(row.time);
+    const to = toM(row.timeTo);
+    if (from != null && to != null && to > from) minutes += to - from;
+    else if (Number(row?.hours) > 0) minutes += Math.round(Number(row.hours) * 60);
+  }
+  return minutes;
+}
+
+/**
+ * Early leave: like lateness, the minutes the worker left before the published end are wage not due
+ * (the model regulation's «حسم أجر مدة ترك العمل» beside the penalty) — not an Art. 92 deduction and
+ * not a penalty. Read from the row's `earlyLeaveMinutes` (stamped at checkout, her Art. 154 nursing
+ * minutes at the end already excused), less an approved «استئذان» that day, skipped when the manager
+ * approved the day. Capped at one ordinary day: leaving before the shift began is the day, not more.
+ */
+export function earlyLeaveMonth({ employee = null, employeeId, month, attendance = [], monthlyWage = 0, skipDays = [] } = {}) {
+  const id = String(employeeId || employee?.id || "");
+  const prefix = `${month}-`;
+  const skip = new Set(skipDays || []);
+  const hours = Number(ruleValue("hours.shift.ordinaryHours")) || 8;
+  const dayCap = hours * 60;
+  let minutes = 0;
+  let days = 0;
+  for (const row of attendance || []) {
+    if (String(row?.employeeId || row?.employee_id || "") !== id) continue;
+    const day = String(row?.date || row?.attendanceDate || row?.day || "").slice(0, 10);
+    if (!day.startsWith(prefix) || skip.has(day)) continue;
+    if (String(row?.status || "").toLowerCase() === "absent" || row?.excused || row?.excusedEarly) continue;
+    const raw = Math.max(0, Math.round(Number(row?.earlyLeaveMinutes) || 0));
+    const m = Math.min(dayCap, Math.max(0, raw - approvedPermissionMinutesOn(employee, day)));
+    if (!m) continue;
+    minutes += m;
+    days += 1;
+  }
   const perMinute = dailyWage(monthlyWage) / hours / 60;
   return { minutes, days, cut: r2(minutes * perMinute), perMinute };
 }

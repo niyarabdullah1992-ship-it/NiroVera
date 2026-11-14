@@ -137,6 +137,8 @@ export function taskPaceInput(task, today) {
     paceDayPlan: task?.paceDayPlan,
     weekdays: task?.paceWeekdays,
     paceDates: task?.paceDates,
+    // what was logged today — today's share is read from the start of the day, so logging never shrinks it
+    completedToday: taskPaceLoggedOnDay(task, today || new Date()),
     today,
   };
 }
@@ -176,11 +178,16 @@ export function deriveDailyTaskPace({
   paceDayPlan,
   weekdays,
   paceDates,
+  completedToday = 0,
   today = new Date(),
 } = {}) {
   const target = Math.max(0, Math.round(Number(targetCount) || 0));
   const done = Math.max(0, Number(completedCount) || 0);
   const remaining = Math.max(0, target - done);
+  // Today's quota is fixed at the day's start (as the server twin fixes each day's share): logging 4 of a
+  // 4-unit day used to re-split the rest over the days left *including today* and drop «المطلوب اليوم» to 3.
+  const doneToday = Math.min(done, Math.max(0, Number(completedToday) || 0));
+  const remainingAtDayStart = Math.max(0, target - (done - doneToday));
   const todayKey = isoDayKey(today);
   // A task with no due date has no time quota — never fabricate today as its deadline.
   const due = dueAt != null && String(dueAt).trim() ? isoDayKey(dueAt) : "";
@@ -228,7 +235,7 @@ export function deriveDailyTaskPace({
     if (overdue) {
       todayExpected = remaining;
     } else if (!notYet) {
-      todayExpected = Math.min(remaining, Math.max(0, Number(plan[todayKey]) || 0));
+      todayExpected = Math.min(remainingAtDayStart, Math.max(0, Number(plan[todayKey]) || 0));
     }
     const plannedShare = Math.min(remaining, Math.max(0, Number(plan[firstDay]) || 0));
     return {
@@ -287,15 +294,17 @@ export function deriveDailyTaskPace({
       ? paceDays.filter((d) => d >= workFrom).length
       : Math.max(0, calendarDaysInclusive(workFrom, due)));
   const splitDays = Math.max(1, workDaysLeft);
-  const even = Math.floor(remaining / splitDays);
-  const extra = remaining % splitDays;
+  // split what was left this morning (today still counts among the days left), not what is left after today's log
+  const splitBase = beforeStart ? remaining : remainingAtDayStart;
+  const even = Math.floor(splitBase / splitDays);
+  const extra = splitBase % splitDays;
   let todayExpected = 0;
   if (overdue) {
-    todayExpected = remaining;
+    todayExpected = remainingAtDayStart;
   } else if (!beforeStart && onDay) {
-    todayExpected = Math.min(remaining, even + (extra > 0 ? 1 : 0));
+    todayExpected = Math.min(remainingAtDayStart, even + (extra > 0 ? 1 : 0));
   }
-  const plannedShare = Math.min(remaining, even + (extra > 0 ? 1 : 0));
+  const plannedShare = Math.min(splitBase, even + (extra > 0 ? 1 : 0));
   return {
     active: true,
     target,

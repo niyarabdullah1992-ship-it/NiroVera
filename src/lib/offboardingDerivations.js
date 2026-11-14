@@ -5,7 +5,7 @@
 import { checkResignationGate, checkTerminationGate } from "./contractLawDerivations.js";
 import { citeRule, ruleValue } from "./laborRules.js";
 import { accruedAnnualDaysAtExit, unusedAnnualDaysAtExit } from "./leaveTypes.js";
-import { checkExitCloseoutGate, eosWageBase } from "./laborProtectionGates.js";
+import { checkExitCloseoutGate, eosWageBase, exitAllowances } from "./laborProtectionGates.js";
 import { suspendedDaysFromUnpaidLeave } from "./contractSuspension.js";
 import { checkReturnTicketGate } from "./returnTicket.js";
 
@@ -189,7 +189,7 @@ export function deriveArt77Compensation(caseRow, nowMs = Date.now()) {
   const preStart = isPreStart(hireDate, endMs);
   const suspended = preStart ? 0 : suspendedDaysFromUnpaidLeave(caseRow.leaveRequests || caseRow.profile?.leaveRequests || [], hireDate, onDate);
   const years = preStart ? 0 : serviceYears(hireDate, endMs, suspended);
-  const wage = finalWage(Number(caseRow.base ?? caseRow.profile?.baseSalary ?? caseRow.profile?.base) || 0, Number(caseRow.allowances ?? caseRow.profile?.allowances) || 0);
+  const wage = finalWage(Number(caseRow.base ?? caseRow.profile?.baseSalary ?? caseRow.profile?.base) || 0, exitAllowances(caseRow, caseRow.profile || {}));
   const cite = citeRule("eos.unlawful.cite", onDate);
   const perYearDays = ruleValue("eos.unlawful.perYearDays", onDate);
   const minMonths = ruleValue("eos.unlawful.minMonths", onDate);

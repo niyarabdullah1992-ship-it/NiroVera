@@ -1045,8 +1045,8 @@ assert.ok(register.rows[0].pendingNamed.some((row) => row.id === NIGHT_FITNESS_T
 assert.ok(register.rows[0].pendingNamed.some((row) => row.id === "leave"));
 assert.match(register.rows[0].studyLabel, /موافقة دراسية مسجّلة/);
 assert.match(register.rows[0].nightLabel, /لياقة ليلية معلّقة/);
-assert.match(register.rows[0].balance, /متبق/);
-assert.match(register.rows[0].statusLine, /رصيد/);
+assert.match(register.rows[0].balance, /المستحق الآن .* · المكتسب هذه السنة/, "due now (completed years) and earned this year (Art. 109, model Art. 33)");
+assert.match(register.rows[0].statusLine, /مستحق .* · مكتسب/);
 assert.match(register.rows[0].statusLine, /دراسة مسجّلة/);
 assert.match(register.rows[0].statusLine, /لياقة معلّقة/);
 assert.equal(managerPersonEmptyReason("ar"), "لا طلب معلّق لهذا الملف.");

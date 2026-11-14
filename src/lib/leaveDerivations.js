@@ -1326,6 +1326,21 @@ export function checkApproveLeaveGate(request, typeRequiresFile = false, extras 
           days,
         };
       }
+      // Art. 109 + model regulation Art. 33: this year's leave is earned as the year runs. Days of the
+      // completed years (carried) and granted days are taken as usual; any day of the running year is an
+      // advance — pro-rata to the time worked and with the company's consent (checkAnnualAdvanceGate).
+      const dueNow = Math.round((split.carryLeft + leftoverGrants) * 100) / 100;
+      if (request.advanceLeave !== true && days > dueNow) {
+        return {
+          ok: false,
+          error: "ANNUAL_ADVANCE_REQUIRED",
+          reason: `موقوف — إجازة هذه السنة تُكتسب بمرور السنة: المستحق الآن ${dueNow} يوماً من سنوات مكتملة، وما زاد يُطلب مقدماً بنسبة ما قضيته وبموافقة المنشأة (المادة 109، النموذج الموحد م33).`,
+          reasonEn: `Blocked — this year's leave is earned as the year runs: ${dueNow} days are due now from completed years; the rest is an advance, pro-rata and with the company's consent (Art. 109, Model regulation Art. 33).`,
+          cite,
+          dueNow,
+          days,
+        };
+      }
     } else {
     const total = getLeaveTotal(profile, type, onDate);
     if (total != null) {

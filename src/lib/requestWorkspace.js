@@ -23,7 +23,7 @@ import { officialHolidayList } from "./ummAlQuraCalendar.js";
 import { approvedLeaveWithdrawWindow, computeLeaveDays, examSatState, HOLIDAY_REQUEST_NOT_NEEDED, hasExamSatProof, holidayNotNeededLabel, isRealSupportingFile, LEAVE_TYPES, voidLegacyHolidayRequest } from "./leaveDerivations.js";
 import { nightRotateStage } from "./nightRotateCycle.js";
 import { isPastArchiveDue } from "./archiveRule.js";
-import { leaveCoverRange } from "./leaveTypes.js";
+import { annualAdvanceCap, leaveCoverRange } from "./leaveTypes.js";
 import { LEAVE_TOPUP_TYPE, checkLeaveGrantGate, NIGHT_FITNESS_LABEL_AR, NIGHT_FITNESS_LABEL_EN, NIGHT_FITNESS_PERMANENT_AR, NIGHT_FITNESS_TYPE, buildRequestAudit, buildRequestRefuseAudit, checkAdminLeaveCreditGate, checkRefuseRequestReasonGate, checkSubmitStudyConsentGate, collectRequestAuditLogs, collectRequestRefuseLogs, hasRequestRefuseAudit, isManagerDecideOtherRequest, LEAVE_CREDIT_POOLS, nightFitnessState, otherRequestTypeLabel, reconstructRequestAudit, requestAuditEventType, requestAuditFileLog, resolveStudyConsentFields, STUDY_CONSENT_FILE_REQUIRED_AR, STUDY_CONSENT_FILE_REQUIRED_EN, STUDY_CONSENT_LABEL_AR, STUDY_CONSENT_LABEL_EN, STUDY_CONSENT_TYPE, studyConsentState } from "./otherRequestDerivations.js";
 import { nightMedicalReportOf } from "./decision18632.js";
 import {
@@ -919,12 +919,12 @@ export function yearsOfService(profile, onDate) {
 // without them a rest day inside an approved leave was counted again («رصيد 19» beside «21 متبقٍّ»).
 export function remainingAnnualLabel(profile, requests, lang = "ar", company, employee) {
   const ar = lang === "ar";
-  const { remaining, leftoverGrants, statutory } = annualRemainingWithGrants(profile, requests, undefined, company, employee);
+  const { due, earned, leftoverGrants } = annualDueAndEarned(profile, requests, company, employee);
   const base = ar
-    ? countAr(remaining, "يوم متبقٍ", "يومان متبقيان", "أيام متبقية", "يوماً متبقياً")
-    : `${remaining} days left`;
+    ? `المستحق الآن ${due} · المكتسب هذه السنة ${earned} (مقدماً بموافقة المنشأة)`
+    : `${due} due now · ${earned} earned this year (an advance, with consent)`;
   return leftoverGrants
-    ? (ar ? `${base} (نظامي ${statutory} + تقديري ${leftoverGrants})` : `${base} (statutory ${statutory} + discretionary ${leftoverGrants})`)
+    ? (ar ? `${base} · منها تقديري ${leftoverGrants}` : `${base} · ${leftoverGrants} discretionary`)
     : base;
 }
 
@@ -1146,9 +1146,18 @@ function compactNightLabel(employee, ar) {
   return ar ? "بلا لياقة" : "No fitness";
 }
 
+// Art. 109 + model regulation Art. 33: what is due now (completed years + granted) and what the running
+// year has earned so far (an advance, with consent) — the same two numbers the employee's card shows.
+function annualDueAndEarned(profile, requests, company, employee) {
+  const a = annualRemainingWithGrants(profile, requests, undefined, company, employee);
+  const due = Math.round(((a.carryLeft || 0) + (a.leftoverGrants || 0)) * 100) / 100;
+  const earned = annualAdvanceCap(profile, requests, undefined, company, employee).cap;
+  return { due, earned, statutory: a.statutory, leftoverGrants: a.leftoverGrants };
+}
+
 function compactBalanceLabel(profile, requests, ar, company, employee) {
-  const { remaining } = annualRemainingWithGrants(profile, requests, undefined, company, employee);
-  return ar ? `رصيد ${remaining}` : `Balance ${remaining}`;
+  const { due, earned } = annualDueAndEarned(profile, requests, company, employee);
+  return ar ? `مستحق ${due} · مكتسب ${earned}` : `Due ${due} · earned ${earned}`;
 }
 
 /** إدارة — empty decision pane for the selected file. */

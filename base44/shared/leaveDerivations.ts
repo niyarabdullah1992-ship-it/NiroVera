@@ -994,7 +994,12 @@ export function annualBalanceBuckets(profile: any, requests: any[] | undefined, 
       const a0 = start > win.start ? start : win.start;
       const a1 = end < win.end ? end : win.end;
       if (a0 > a1) return;
-      chunks.push({ start: a0, idx, days: chargeableAnnualDays(a0, a1, undefined, company, emp) });
+      // Twin of the client: the days frozen at approval decide, not today's roster.
+      const locked = r.lockedDays && typeof r.lockedDays === "object" && Object.keys(r.lockedDays).length ? (r.lockedDays as Record<string, string>) : null;
+      const days = locked
+        ? Object.entries(locked).filter(([day, kind]) => day >= a0 && day <= a1 && (kind === "charge" || kind === "dutyOnRest")).length
+        : chargeableAnnualDays(a0, a1, undefined, company, emp);
+      chunks.push({ start: a0, idx, days });
     });
   }
   chunks.sort((a, b) => a.start.localeCompare(b.start));
@@ -1688,6 +1693,19 @@ export function checkApproveLeaveGate(
           cite,
           remaining,
           total,
+          days,
+        };
+      }
+      // Twin of the client: days of the running year are an advance (Art. 109, model regulation Art. 33).
+      const dueNow = round2(split.carryLeft + grants);
+      if (request.advanceLeave !== true && days > dueNow) {
+        return {
+          ok: false as const,
+          error: "ANNUAL_ADVANCE_REQUIRED",
+          reason: `موقوف — إجازة هذه السنة تُكتسب بمرور السنة: المستحق الآن ${dueNow} يوماً من سنوات مكتملة، وما زاد يُطلب مقدماً بنسبة ما قضيته وبموافقة المنشأة (المادة 109، النموذج الموحد م33).`,
+          reasonEn: `Blocked — this year's leave is earned as the year runs: ${dueNow} days are due now from completed years; the rest is an advance, pro-rata and with the company's consent (Art. 109, Model regulation Art. 33).`,
+          cite,
+          dueNow,
           days,
         };
       }

@@ -743,6 +743,13 @@ export default function RequestsWorkspace({
     ? (dates.length ? chargeableLeaveDays(from, to, leave, laborCalendarOf(data), data || company, subject) : 0)
     : dates.length;
   const annual = annualRemainingWithGrants(subject?.profile, subject?.leaveRequests, undefined, data || company, subject);
+  // Art. 109 + model regulation Art. 33: completed years (carried) and granted days are due now; the running
+  // year is earned as it runs, and taking it early is an advance (pro-rata, with the company's consent).
+  const annualDueNow = Math.round(((annual.carryLeft || 0) + (annual.leftoverGrants || 0)) * 100) / 100;
+  const annualEarned = annualAdvanceCap(subject?.profile, subject?.leaveRequests, undefined, data || company, subject);
+  const annualNeedsAdvance = isLeave && leave === "annual" && counted > annualDueNow;
+  // Reaching into the running year makes it an advance — switch it on rather than refuse at «أرسل».
+  useEffect(() => { if (annualNeedsAdvance && !advanceLeave) setAdvanceLeave(true); }, [annualNeedsAdvance]);
   const isGrant = isLeave && leave === "grant";
   const overGrant = isGrant && counted > annual.leftoverGrants;
   const overBalance = (isLeave && leave === "annual" && counted > annual.remaining) || overGrant;
@@ -3436,7 +3443,9 @@ export default function RequestsWorkspace({
                   <>
                     <div data-balance="annual" style={row}>
                       {head(ar ? "السنوية" : "Annual", "109", annual.statutory ? (
-                        <span style={sub}><span style={num}>{annual.leftover}</span> {ar ? `متبقٍّ من ${annual.statutory} يوماً` : `left of ${annual.statutory} days`}{annual.carryLeft > 0 ? (ar ? <> · و<span style={num}>{annual.carryLeft}</span> مرحّلة</> : <> · <span style={num}>{annual.carryLeft}</span> carried</>) : null}</span>
+                        <span style={sub}>{ar
+                          ? <>المستحق الآن <span style={num}>{annualDueNow}</span> · المكتسب هذه السنة <span style={num}>{annualEarned.cap}</span> من {annual.statutory} (يُطلب مقدماً بموافقة المنشأة)</>
+                          : <><span style={num}>{annualDueNow}</span> due now · <span style={num}>{annualEarned.cap}</span> of {annual.statutory} earned this year (an advance, with consent)</>}</span>
                       ) : <span style={sub}>—</span>)}
                       <span className="nv-req-bar" style={{ background: "rgba(255,255,255,.18)" }}><span style={{ width: `${annualPct}%`, background: "#C8A45A" }} /></span>
                     </div>

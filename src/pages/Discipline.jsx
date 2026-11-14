@@ -388,14 +388,25 @@ export default function Discipline() {
     setPickedId(`case:${newId}`);
   };
 
-  const onAction = (item, actionId) => {
+  const onAction = (item, actionId, statement) => {
     const now = new Date().toISOString();
     const who = currentUser?.name || "";
     if (actionId === "hear") {
       const oral = isSimpleOralOffence(item);
-      const hearingMinutes = oral
-        ? (ar ? "استُجوب شفاهة وأُثبت دفاعه في المحضر (المادة 71)." : "Questioned orally; the defence is recorded in the minutes (Article 71).")
-        : (ar ? "حُقّق دفاعه كتابةً وأُثبت في المحضر (المادة 71)." : "The defence was heard in writing and recorded in the minutes (Article 71).");
+      // Art. 71: the minutes carry the worker's own words, or that he declined — never a stock line alone.
+      const said = String(statement?.text || "").trim();
+      const refused = statement?.refused === true;
+      if (!refused && said.length < 10) {
+        toast({ description: ar ? "اكتب أقوال العامل ودفاعه، أو أثبت امتناعه عن الإدلاء بها (المادة 71)." : "Write the worker's statement and defence, or record that he declined (Article 71).", variant: "destructive" });
+        return;
+      }
+      const how = oral
+        ? (ar ? "استُجوب شفاهة (المادة 71)." : "Questioned orally (Article 71).")
+        : (ar ? "حُقّق دفاعه كتابةً (المادة 71)." : "The defence was heard in writing (Article 71).");
+      const words = refused
+        ? (ar ? "امتنع العامل عن الإدلاء بأقواله بعد إبلاغه." : "The worker declined to give a statement after notice.")
+        : (ar ? `أقوال العامل: «${said}»` : `The worker's statement: “${said}”`);
+      const hearingMinutes = `${how} ${words} — ${ar ? "أثبته" : "recorded by"} ${who || (ar ? "المسؤول" : "the officer")}.`;
       const hearGate = checkAdvanceDisciplineGate(item, "hearing", { hearingMinutes, today: board.today });
       if (!hearGate.ok) {
         toast({ description: ar ? hearGate.reason : hearGate.reasonEn, variant: "destructive" });
@@ -408,6 +419,8 @@ export default function Discipline() {
         notifiedAt: item.notifiedAt || now,
         hearingMode: hearGate.oral ? "oral" : "written",
         hearingMinutes: hearingMinutes || item.hearingMinutes,
+        hearingStatement: refused ? "" : said,
+        hearingRefused: refused,
       }, "hearing");
       return;
     }

@@ -166,9 +166,40 @@ function DeliveryProof({ item, ar, today, onDelivery }) {
   );
 }
 
+/**
+ * Art. 71: «إثبات ذلك في محضر» — the minutes carry what the worker actually said, or that he declined to.
+ * The hearing step stays closed until one of them is on the page; a stock sentence is not a defence.
+ */
+function HearingStatement({ ar, value, onChange }) {
+  const { text, refused } = value;
+  return (
+    <div data-disc-hearing="" style={{ margin: "0 20px 12px", display: "flex", flexDirection: "column", gap: 8, border: "1px solid var(--nv-line)", borderInlineStart: `3px solid ${GOLD}`, borderRadius: 8, padding: "10px 14px" }}>
+      <span style={{ fontSize: 12.5, fontWeight: 700 }}>{ar ? "أقوال العامل ودفاعه — تُثبت في المحضر (المادة 71)" : "The worker's statement and defence — recorded in the minutes (Article 71)"}</span>
+      <textarea
+        value={text}
+        disabled={refused}
+        onChange={(e) => onChange({ text: e.target.value, refused })}
+        rows={3}
+        placeholder={ar ? "اكتب ما قاله العامل بنصّه أو بمعناه، وما قدّمه من عذر أو دليل" : "Write what the worker said, and any excuse or evidence offered"}
+        style={{ fontFamily: "inherit", fontSize: 13, padding: "8px 10px", border: "1px solid var(--nv-line)", borderRadius: 8, background: refused ? "var(--nv-soft)" : "var(--nv-page)", color: "var(--nv-ink)", resize: "vertical", minHeight: 64 }}
+      />
+      <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--nv-ink2)" }}>
+        <input type="checkbox" checked={refused} onChange={(e) => onChange({ text, refused: e.target.checked })} />
+        {ar ? "امتنع العامل عن الإدلاء بأقواله بعد إبلاغه" : "The worker declined to give a statement after notice"}
+      </label>
+    </div>
+  );
+}
+
+export const HEARING_MIN_CHARS = 10;
+export const hearingStatementReady = ({ text = "", refused = false } = {}) => refused || String(text).trim().length >= HEARING_MIN_CHARS;
+
 export default function DisciplineCaseCard({ card, ar, onAction, onUploadSigned, onDelivery, today = "", companyName = "", isHoliday }) {
   const primary = card.actions.find((action) => action.kind === "go") || card.actions[0] || null;
   const rest = card.actions.filter((action) => action !== primary);
+  const [statement, setStatement] = useState({ text: "", refused: false });
+  const hearing = primary?.id === "hear";
+  const hearingBlocked = hearing && !hearingStatementReady(statement);
 
   return (
     <article
@@ -186,13 +217,15 @@ export default function DisciplineCaseCard({ card, ar, onAction, onUploadSigned,
       <div style={{ padding: 14 }}>
         <DisciplineHero card={card} ar={ar} companyName={companyName} />
       </div>
+      {hearing ? <HearingStatement ar={ar} value={statement} onChange={setStatement} /> : null}
       <footer style={{ padding: "12px 20px 16px", borderTop: "1px solid var(--nv-line)", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", background: "var(--nv-page)" }}>
         {primary ? (
           <button
             type="button"
-            title={primary.tip}
-            onClick={() => onAction?.(card.item, primary.id)}
-            style={{ fontFamily: "inherit", fontSize: 13.5, fontWeight: 700, height: 42, padding: "0 22px", borderRadius: 10, whiteSpace: "nowrap", ...actionStyle(primary.kind) }}
+            title={hearingBlocked ? (ar ? "اكتب أقوال العامل أو أثبت امتناعه أولاً" : "Write the worker's statement, or record that he declined") : primary.tip}
+            disabled={hearingBlocked}
+            onClick={() => onAction?.(card.item, primary.id, hearing ? statement : undefined)}
+            style={{ fontFamily: "inherit", fontSize: 13.5, fontWeight: 700, height: 42, padding: "0 22px", borderRadius: 10, whiteSpace: "nowrap", ...actionStyle(primary.kind), ...(hearingBlocked ? { opacity: 0.5, cursor: "not-allowed" } : null) }}
           >
             {primary.label}
           </button>

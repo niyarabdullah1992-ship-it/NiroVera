@@ -81,7 +81,16 @@ const registerSettled = (companyId, requests) => {
   });
 };
 
+/** Demo envelopes and demo signers belong to the local preview workspace only. */
+function isPreviewCompany(companyId) {
+  return String(companyId || "") === LOCAL_PREVIEW_COMPANY_ID || isLocalPreviewActive();
+}
+
 export function ensureDummySignatureRequests(companyId, actor, employees) {
+  // A real company whose signing service did not answer keeps only its own envelopes. Seeding here wrote six
+  // demo people into data.employees (then payroll, attendance and the org saw them) and showed seven demo
+  // envelopes with made-up turnaround figures on a company that had never sent one.
+  if (!isPreviewCompany(companyId)) return expireRetractWindows(rows(companyId)).store;
   const extras = dummySigningEmployees();
   updateCompany(companyId, (data) => {
     const have = new Set((data.employees || []).map((row) => String(row.email || "").toLowerCase()));

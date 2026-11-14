@@ -11,6 +11,9 @@ import { payEquityReview, PAY_EQUITY_THRESHOLD } from "@/lib/employerDuties";
 import { payHintFor } from "@/lib/rightHints.pay";
 import RightHint from "@/components/shared/RightHint";
 
+// Arabic count of days: 1 يوم واحد · 2 يومان · 3–10 أيام · 11+ يوماً (a bare «3 يوماً» read wrong).
+const daysAr = (n) => { const v = Math.abs(Number(n) || 0); return v === 1 ? "يوم واحد" : v === 2 ? "يومان" : v >= 3 && v <= 10 ? `${v} أيام` : `${v} يوماً`; };
+
 /**
  * مسير الأجور as one cycle: the stages in order at the top (each ready, to do, waiting), then what
  * must be read before approving — the month against last month, what leave and injury do to the wage,
@@ -337,7 +340,7 @@ export default function PayrollCycleReview({
         trailing={(
           <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
             <span style={chip(wps.blocked ? "bad" : "ok")}>{wps.blocked ? (ar ? `${wps.blocked} صفاً مرفوضاً` : `${wps.blocked} refused`) : (ar ? "كل الصفوف مقبولة" : "Every row accepted")}</span>
-            {wps.daysLeft != null ? <span style={chip(wps.daysLeft < 0 ? "bad" : wps.daysLeft <= 7 ? "warn" : "mute")}>{wps.daysLeft < 0 ? (ar ? `متأخر ${-wps.daysLeft} يوماً` : `${-wps.daysLeft} days late`) : (ar ? `باقٍ ${wps.daysLeft} يوماً` : `${wps.daysLeft} days left`)}</span> : null}
+            {wps.daysLeft != null ? <span style={chip(wps.daysLeft < 0 ? "bad" : wps.daysLeft <= 7 ? "warn" : "mute")}>{wps.daysLeft < 0 ? (ar ? `متأخر ${daysAr(-wps.daysLeft)}` : `${-wps.daysLeft} days late`) : (ar ? `باقٍ ${daysAr(wps.daysLeft)}` : `${wps.daysLeft} days left`)}</span> : null}
             <span style={chip(wps.unpaid ? "warn" : "ok")}>{ar ? `${wps.unpaid} لم يُدفع` : `${wps.unpaid} unpaid`}</span>
           </span>
         )}

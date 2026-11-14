@@ -12,6 +12,9 @@
 import { ruleValue } from "./laborRules.js";
 import { chargeableSickDays, sickStatutoryYearWindow } from "./leaveTypes.js";
 
+// Arabic count of days: 1 يوم واحد · 2 يومان · 3–10 أيام · 11+ يوماً (a bare «3 يوماً» read wrong).
+const daysAr = (n) => { const v = Math.abs(Number(n) || 0); return v === 1 ? "يوم واحد" : v === 2 ? "يومان" : v >= 3 && v <= 10 ? `${v} أيام` : `${v} يوماً`; };
+
 const DAY = 86400000;
 
 function dateOnly(v) {
@@ -112,7 +115,7 @@ export function leaveEffects({ employee, month, line = {}, monthlyWage = 0, cale
   if (sick.days) {
     rows.push({
       id: "sick", cite: "117", days: sick.days,
-      title: ar ? `إجازة مرضية · ${sick.days} يوماً` : `Sick leave · ${sick.days} days`,
+      title: ar ? `إجازة مرضية · ${daysAr(sick.days)}` : `Sick leave · ${sick.days} days`,
       detail: ar
         ? [sick.fullDays ? `${sick.fullDays} بأجر كامل` : "", sick.quarterDays ? `${sick.quarterDays} بثلاثة أرباع` : "", sick.unpaidDays + sick.beyondDays ? `${sick.unpaidDays + sick.beyondDays} بلا أجر` : ""].filter(Boolean).join(" · ")
         : [sick.fullDays ? `${sick.fullDays} full pay` : "", sick.quarterDays ? `${sick.quarterDays} at three-quarters` : "", sick.unpaidDays + sick.beyondDays ? `${sick.unpaidDays + sick.beyondDays} unpaid` : ""].filter(Boolean).join(" · "),
@@ -125,7 +128,7 @@ export function leaveEffects({ employee, month, line = {}, monthlyWage = 0, cale
   if (annual.days) {
     rows.push({
       id: "annual", cite: "109", days: annual.days, startDate: annual.starts[0] || "",
-      title: ar ? `إجازة سنوية · ${annual.days} يوماً` : `Annual leave · ${annual.days} days`,
+      title: ar ? `إجازة سنوية · ${daysAr(annual.days)}` : `Annual leave · ${annual.days} days`,
       detail: annual.starts.length
         ? (ar ? `تبدأ ${annual.starts.join("، ")} — أجرها يُدفع مقدّماً قبل بدئها` : `Starts ${annual.starts.join(", ")} — its pay goes out before it starts`)
         : (ar ? "بأجر كامل — لا أثر على الصافي" : "Full pay — no effect on the net"),
@@ -138,7 +141,7 @@ export function leaveEffects({ employee, month, line = {}, monthlyWage = 0, cale
     const cut = Number(line.unpaidLeaveCut) || 0;
     rows.push({
       id: "unpaid", cite: "116", days: unpaid.days,
-      title: ar ? `إجازة بلا أجر · ${unpaid.days} يوماً` : `Unpaid leave · ${unpaid.days} days`,
+      title: ar ? `إجازة بلا أجر · ${daysAr(unpaid.days)}` : `Unpaid leave · ${unpaid.days} days`,
       detail: ar ? "أجر غير مستحق عن أيامها — ليس حسماً من المادة 92 ولا يدخل في سقف نصف الأجر (المادة 93)" : "Wage not due for its days — not an Art. 92 deduction and outside the Art. 93 half-wage cap",
       amount: -cut,
       tone: cut > 0 ? "warn" : "mute",

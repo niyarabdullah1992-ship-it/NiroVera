@@ -13,6 +13,9 @@ import { citeRule } from "@/lib/laborRules";
 import { MUTED, NAVY, field, ui, CARD, BORDER } from "@/lib/platformStyles";
 import NvIcon, { NvMark } from "@/components/shared/NvIcon";
 
+// Arabic count of days: 1 يوم واحد · 2 يومان · 3–10 أيام · 11+ يوماً (a bare «3 يوماً» read wrong).
+const daysAr = (n) => { const v = Math.abs(Number(n) || 0); return v === 1 ? "يوم واحد" : v === 2 ? "يومان" : v >= 3 && v <= 10 ? `${v} أيام` : `${v} يوماً`; };
+
 const TONE = {
   ok: { mark: "check", labelAr: "مستقر", labelEn: "Steady", color: "#2F6B43", background: "#E6F2EA" },
   warn: { mark: "warning", labelAr: "تنبيه", labelEn: "Alert", color: "#8A5A12", background: "#FBF3E1" },
@@ -198,7 +201,7 @@ export function slipRows(item, employee, parts, ar, month) {
   if ((Number(parts.unpaidLeaveCut) || 0) > 0) {
     rows.push({
       id: "unpaidLeave",
-      label: ar ? `إجازة بلا أجر — ${Number(item?.unpaidLeaveDays) || 0} يوماً` : `Unpaid leave — ${Number(item?.unpaidLeaveDays) || 0} days`,
+      label: ar ? `إجازة بلا أجر — ${daysAr(item?.unpaidLeaveDays)}` : `Unpaid leave — ${Number(item?.unpaidLeaveDays) || 0} days`,
       amount: Number(parts.unpaidLeaveCut) || 0,
       minus: true,
       source: ar ? "أجر غير مستحق لا حسماً" : "Wage not due, not a deduction",
@@ -218,7 +221,7 @@ export function slipRows(item, employee, parts, ar, month) {
   if ((Number(parts.detentionCut) || 0) > 0) {
     rows.push({
       id: "detention",
-      label: ar ? `توقيف في قضية تتصل بالعمل — ${Number(item?.detentionDays) || 0} يوماً` : `Work-related detention — ${Number(item?.detentionDays) || 0} days`,
+      label: ar ? `توقيف في قضية تتصل بالعمل — ${daysAr(item?.detentionDays)}` : `Work-related detention — ${Number(item?.detentionDays) || 0} days`,
       amount: Number(parts.detentionCut) || 0,
       minus: true,
       source: ar ? "نصف الأجر مدة التوقيف" : "Half the wage while detained",
@@ -259,7 +262,7 @@ export function slipRows(item, employee, parts, ar, month) {
     } else if ((Number(item?.injuryWageStop) || 0) > 0) {
       rows.push({
         id: "injuryGosiStop",
-        label: ar ? `إصابة عمل — الأجر موقوف ${injuryDays} يوماً` : `Work injury — wage stopped ${injuryDays} days`,
+        label: ar ? `إصابة عمل — الأجر موقوف ${daysAr(injuryDays)}` : `Work injury — wage stopped ${injuryDays} days`,
         amount: Number(item.injuryWageStop) || 0,
         minus: true,
         source: ar

@@ -1065,10 +1065,15 @@ export default function Discipline() {
                     clauseStep={clauseStep}
                     lateHint={lateHint}
                     onClause={(next) => {
+                      const autoNote = (c) => (c ? `${ar ? c.ar || c.en : c.en || c.ar} — ${ar ? "يوم" : "on"} ${regulationDate(discoveredAt, ar)}` : "");
+                      const prevAuto = autoNote(regulation.clauses.find((c) => c.id === clauseId));
                       setClauseId(next || "");
                       const clause = regulation.clauses.find((c) => c.id === next);
                       // The clause names the offence; the date makes it this incident (one penalty per act — Art. 70).
-                      if (clause && !String(note || "").trim()) setNote(`${ar ? clause.ar || clause.en : clause.en || clause.ar} — ${ar ? "يوم" : "on"} ${regulationDate(discoveredAt, ar)}`);
+                      // A note still holding the previous clause's own wording follows the new clause — otherwise the
+                      // written notice named clause 1 while the fine was clause 3's. A note the manager wrote stays.
+                      const current = String(note || "").trim();
+                      if (clause && (!current || current === prevAuto)) setNote(autoNote(clause));
                     }}
                   />
                 ) : null}

@@ -27,10 +27,11 @@ export default function ManagerEmployeeRegister({
   focusStationId = "",
   recording = false,
   companyId,
+  data,
   onFocusStation,
 }) {
   const ar = lang === "ar";
-  const board = managerEmployeeRegister(employees, lang, { stations, companyId, focusStationId });
+  const board = managerEmployeeRegister(employees, lang, { stations, companyId, focusStationId, data });
   const rail = board.rail;
   const standingId = String(rail.focusStationId || "");
 

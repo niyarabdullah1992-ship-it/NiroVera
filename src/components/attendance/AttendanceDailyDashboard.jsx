@@ -20,6 +20,7 @@ import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import EmployeeIdentityRow from "@/components/employees/EmployeeIdentityRow";
 import { AttendanceChainProgress, brokeAtLabel, buildAttendanceRings } from "@/components/attendance/AttendanceTrustChrome";
 import { formatUiNumber } from "@/lib/dateFormat";
+import { formatShiftHm } from "@/lib/shiftDerivations";
 import { DutyBoard } from "@/components/schedules/DutyTiles";
 import FigureRow from "@/components/shared/FigureRow";
 import RightHint from "@/components/shared/RightHint";
@@ -378,6 +379,8 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
   }).length;
 
   const ar = lang === "ar";
+  // punch clocks follow the header 12/24 choice in the page language («06:20 ص», not «06:20 am»)
+  const clockLocale = ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB";
   /** Team rows speak the employee lane's words and colours (dutyStatus). */
   const TEAM_STATUS = { present: "present", late: "late", absent: "absent", on_leave: "leave", not_scheduled: "unscheduled" };
   // «الفريق اليوم» filters as in طلباتي: الكل, what waits on you, then each duty state; empty states hide.
@@ -568,7 +571,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                 {shift ? (
                   <>
                     <span>{shift.label || (ar ? "وردية" : "Shift")}</span>
-                    <span dir="ltr" className="nv-team-mono">{shift.start}–{shift.end}</span>
+                    <span dir={ar ? "rtl" : "ltr"} className="nv-team-mono"><bdi>{formatShiftHm(shift.start, format, lang)}</bdi> – <bdi>{formatShiftHm(shift.end, format, lang)}</bdi></span>
                   </>
                 ) : (
                   <span className="nv-team-dim">{ar ? "بلا وردية" : "No shift"}</span>
@@ -576,7 +579,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
               </span>
               <span role="cell">
                 {row?.check_in_at
-                  ? <span dir="ltr" className="nv-team-mono nv-team-in">{formatTime(row.check_in_at, format, "en-GB")}</span>
+                  ? <span dir="ltr" className="nv-team-mono nv-team-in">{formatTime(row.check_in_at, format, clockLocale)}</span>
                   : <span className="nv-team-dim">—</span>}
               </span>
               <span role="cell"><span style={{ ...chipStyle, height: 24, fontSize: 12 }}>{label}</span></span>
@@ -682,7 +685,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                     ? status
                     : "present";
           const flag = FLAG[flagKey] || FLAG.present;
-          const punchTime = r?.check_in_at ? formatTime(r.check_in_at, format, "en-GB") : "—";
+          const punchTime = r?.check_in_at ? formatTime(r.check_in_at, format, clockLocale) : "—";
           const asked = pendingManualPunch(e);
           const reason = asked
             ? asked.reason
@@ -752,7 +755,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                       <>{ar ? "وردية " : "Shift "}<span dir="ltr" style={MONO_INK}>{shiftNow.start}–{shiftNow.end}</span></>
                     ) : (ar ? "بلا وردية اليوم" : "No shift today")}
                     {r?.check_in_at ? <>{dot}{ar ? "حضور " : "in "}<span dir="ltr" style={MONO_INK}>{punchTime}</span></> : null}
-                    {r?.check_out_at ? <>{dot}{ar ? "انصراف " : "out "}<span dir="ltr" style={MONO_INK}>{formatTime(r.check_out_at, format, "en-GB")}</span></> : null}
+                    {r?.check_out_at ? <>{dot}{ar ? "انصراف " : "out "}<span dir="ltr" style={MONO_INK}>{formatTime(r.check_out_at, format, clockLocale)}</span></> : null}
                   </span>
                 )}
                 {kind === "late_return" ? (
@@ -903,7 +906,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
   // «سجل التدقيق» — every decision today, in the name of whoever made it: manual check-in / checkout,
   // approvals of a late or out-of-range punch, late-return reviews, and decided manual-punch requests.
   const nameOf = (id) => employees.find((emp) => String(emp.id) === String(id))?.name || "";
-  const hm = (iso) => (iso ? formatTime(iso, format, "en-GB") : "—");
+  const hm = (iso) => (iso ? formatTime(iso, format, clockLocale) : "—");
   const today = toRiyadhDateKey();
   const audit = [];
   for (const row of rows) {

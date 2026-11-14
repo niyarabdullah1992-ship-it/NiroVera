@@ -367,6 +367,15 @@ export function ownPendingAwaitingNote(data, employee, lang = "ar") {
       : `Awaiting the company head${head?.name ? ` (${head.name})` : ""} — only the manager seated on the establishment apex.`;
   }
   if (!others.length) {
+    // No branch manager or HR seated yet: the company head still sees it in Manage (requestInboxMaySee) —
+    // say so instead of «لا يوجد من يقرر», which the head's own inbox contradicted.
+    const head = (data?.employees || []).find((row) => String(row?.id) !== String(employee?.id)
+      && isCompanyHeadPerson(row, data) && requestInboxMaySee(row, employee, data));
+    if (head) {
+      return ar
+        ? `ينتظر قرار رأس الشركة${head.name ? ` (${head.name})` : ""} — لا مدير فرع ولا موارد بشرية بعد.`
+        : `Awaiting the company head${head.name ? ` (${head.name})` : ""} — no branch manager or HR seated yet.`;
+    }
     return ar
       ? "لا يوجد من يقرر هذا الطلب."
       : "Nobody can decide this request.";

@@ -738,11 +738,11 @@ export default function RequestsWorkspace({
   const needs118 = isLeave && leaveNeedsArticle118Ack(leave);
   const dates = rangeDates(from, to);
   const holidayHit = dates.filter((day) => holidays.some((h) => h.from && day >= h.from && day <= h.to));
-  const restHit = isLeave && leave === "annual" && from && to ? weeklyOffDaysInRange(from, to, company, subject) : [];
+  const restHit = isLeave && leave === "annual" && from && to ? weeklyOffDaysInRange(from, to, data || company, subject) : [];
   const counted = isLeave && (leave === "annual" || leave === "sick")
-    ? (dates.length ? chargeableLeaveDays(from, to, leave, laborCalendarOf(data), company, subject) : 0)
+    ? (dates.length ? chargeableLeaveDays(from, to, leave, laborCalendarOf(data), data || company, subject) : 0)
     : dates.length;
-  const annual = annualRemainingWithGrants(subject?.profile, subject?.leaveRequests, undefined, company, subject);
+  const annual = annualRemainingWithGrants(subject?.profile, subject?.leaveRequests, undefined, data || company, subject);
   const isGrant = isLeave && leave === "grant";
   const overGrant = isGrant && counted > annual.leftoverGrants;
   const overBalance = (isLeave && leave === "annual" && counted > annual.remaining) || overGrant;
@@ -1269,7 +1269,7 @@ export default function RequestsWorkspace({
     />
   );
 
-  const grantRows = grantedLeaveBalances(subject?.profile, subject?.leaveRequests, undefined, company, subject);
+  const grantRows = grantedLeaveBalances(subject?.profile, subject?.leaveRequests, undefined, data || company, subject);
   // Leave types sit under the «إجازة» tile as a calm sub-picker. «رصيد ممنوح» shows only while granted days
   // remain; «رفع رصيد إجازة» asks the company for more. الإدارة records only the types a worker cannot file.
   const grantLeft = grantRows.find((g) => g.key === "grant");
@@ -1342,8 +1342,8 @@ export default function RequestsWorkspace({
   };
 
   const registerBoard = useMemo(
-    () => managerEmployeeRegister(employees, lang, { stations, companyId: company?.id }),
-    [employees, lang, stations, company?.id],
+    () => managerEmployeeRegister(employees, lang, { stations, companyId: company?.id, data }),
+    [employees, lang, stations, company?.id, data],
   );
   const selectedRegister = registerBoard.rows.find((row) => String(row.id) === String(registerId || employeeId));
   // The archive rule: a decided request stays under «معتمدة» / «مرفوضة» until it moves to «الأرشيف» — never both.
@@ -2226,6 +2226,7 @@ export default function RequestsWorkspace({
             lang={lang}
             selectedId={registerId || employeeId}
             companyId={company?.id}
+            data={data}
             recording={fileRecordOpen}
             focusStationId={focusStationId}
             onSelect={(id) => {
@@ -2409,17 +2410,17 @@ export default function RequestsWorkspace({
                 <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
                   {ar
                     ? isLeaveCredit
-                      ? `الفاعل هو المدير. الرصيد السنوي ${remainingAnnualLabel(subject?.profile, subject?.leaveRequests, lang)} · تقديري ${annual.leftoverGrants} أيام.`
+                      ? `الفاعل هو المدير. الرصيد السنوي ${remainingAnnualLabel(subject?.profile, subject?.leaveRequests, lang, data || company, subject)} · تقديري ${annual.leftoverGrants} أيام.`
                       : "الفاعل هو المدير. الرصيد يُراجع عند إضافة الرصيد أو عند القرار أو من ملف الموظف."
                     : isLeaveCredit
-                      ? `The actor is the manager. Annual ${remainingAnnualLabel(subject?.profile, subject?.leaveRequests, lang)} · discretionary ${annual.leftoverGrants} days.`
+                      ? `The actor is the manager. Annual ${remainingAnnualLabel(subject?.profile, subject?.leaveRequests, lang, data || company, subject)} · discretionary ${annual.leftoverGrants} days.`
                       : "The actor is the manager. Balance is reviewed on leave credit, at decision time, or on the employee file."}
                 </span>
               ) : (
                 <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
                   {ar
-                    ? `رصيده السنوي ${remainingAnnualLabel(subject?.profile, subject?.leaveRequests, lang)} · تقديري ${annual.leftoverGrants} أيام`
-                    : `Annual ${remainingAnnualLabel(subject?.profile, subject?.leaveRequests, lang)} · discretionary ${annual.leftoverGrants} days`}
+                    ? `رصيده السنوي ${remainingAnnualLabel(subject?.profile, subject?.leaveRequests, lang, data || company, subject)} · تقديري ${annual.leftoverGrants} أيام`
+                    : `Annual ${remainingAnnualLabel(subject?.profile, subject?.leaveRequests, lang, data || company, subject)} · discretionary ${annual.leftoverGrants} days`}
                 </span>
               )}
             </div>
@@ -2898,8 +2899,8 @@ export default function RequestsWorkspace({
                   {leave === "annual" ? (
                     <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
                       {ar
-                        ? `المتبقي ${remainingAnnualLabel(subject?.profile, subject?.leaveRequests, lang)} — يُحسب العدد بعد اختيار من وإلى.`
-                        : `${remainingAnnualLabel(subject?.profile, subject?.leaveRequests, lang)} — the count follows from and to.`}
+                        ? `المتبقي ${remainingAnnualLabel(subject?.profile, subject?.leaveRequests, lang, data || company, subject)} — يُحسب العدد بعد اختيار من وإلى.`
+                        : `${remainingAnnualLabel(subject?.profile, subject?.leaveRequests, lang, data || company, subject)} — the count follows from and to.`}
                     </span>
                   ) : null}
                 </>
@@ -2965,7 +2966,7 @@ export default function RequestsWorkspace({
               </div>
               )}
               {isLeave && leave === "annual" && from && to ? (
-                <AnnualLeaveBreakdown from={from} to={to} calendar={laborCalendarOf(data)} company={company} employee={subject} ar={ar} own={mode !== "manage"} />
+                <AnnualLeaveBreakdown from={from} to={to} calendar={laborCalendarOf(data)} company={data || company} employee={subject} ar={ar} own={mode !== "manage"} />
               ) : null}
               {isLeave && ["marriage", "bereavement", "bereavement_sibling", "paternity", "maternity", "iddah", "work_injury"].includes(leave) && (
                 <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -3002,9 +3003,9 @@ export default function RequestsWorkspace({
                 </button>
               )}
               {isLeave && leave === "annual" ? (() => {
-                const alerts = annualCarryAlerts(subject?.profile, subject?.leaveRequests, undefined, company, subject);
+                const alerts = annualCarryAlerts(subject?.profile, subject?.leaveRequests, undefined, data || company, subject);
                 const sickBefore = from ? sickLeaveEndingBefore(subject?.leaveRequests, from) : null;
-                const cap = annualAdvanceCap(subject?.profile, subject?.leaveRequests, from || undefined, company, subject);
+                const cap = annualAdvanceCap(subject?.profile, subject?.leaveRequests, from || undefined, data || company, subject);
                 return (
                   <div data-annual-law="1" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {alerts.map((a) => (

@@ -366,8 +366,10 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
 
   const locationFailed = /OUTSIDE_STATION|GPS_REQUIRED|STATION_LOCATION|location|موقع|النطاق/i.test(error || "");
   const forgotten = isForgottenCheckout(shift, attendance, tick);
-  const inTime = attendance?.check_in_at ? toWesternDigits(riyadhTime(attendance.check_in_at, format, "en-GB")) : "—";
-  const outTime = attendance?.check_out_at ? toWesternDigits(riyadhTime(attendance.check_out_at, format, "en-GB")) : "—";
+  // the day path draws its own «ص/م» beside each clock — drop the locale's «am/pm» so it is not said twice
+  const bareClock = (iso) => toWesternDigits(riyadhTime(iso, format, "en-GB")).replace(/\s*[ap]\.?m\.?$/i, "");
+  const inTime = attendance?.check_in_at ? bareClock(attendance.check_in_at) : "—";
+  const outTime = attendance?.check_out_at ? bareClock(attendance.check_out_at) : "—";
   // Art. 154: arriving inside her nursing minutes at the start is on time — read from the punch clock,
   // so a row stored before the excuse (late) and one stored after it (present) read the same.
   const nursingEmployee = (data?.employees || []).find((row) => String(row.id) === String(currentUser?.id)) || currentUser;

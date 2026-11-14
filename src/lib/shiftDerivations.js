@@ -340,7 +340,8 @@ export function resolveFlexDayBreaks({ shift, breaks, checkIn, checkOut, now, on
   let outM = lift(riyadhClockOf(checkOut));
   if (inM != null && outM != null && outM <= inM) outM += 1440;
   let nowM = outM != null ? outM : lift(riyadhClockOf(now));
-  if (inM != null && nowM != null && nowM < inM) nowM += 1440;
+  // a clock a tick behind the punch is the punch minute; only a real midnight crossing (> half a day) wraps
+  if (inM != null && nowM != null && nowM < inM) nowM = inM - nowM < 720 ? inM : nowM + 1440;
   out.windowState = nowM == null || flex.fromMin == null ? "" : nowM < flex.fromMin ? "before" : nowM < flex.toMin ? "open" : "closed";
   out.forDuty = [];
   out.forConsec = [];
@@ -1233,7 +1234,20 @@ export function shiftHoursLine(shift, lang = "ar", format = "24") {
 export function nextDistinctShift(shiftTypes = [], ar = true) {
   const used = new Set((shiftTypes || []).map((s) => shiftWindowKey(s.start, s.end)));
   const unused = STANDARD_SHIFT_WINDOWS.find((slot) => !used.has(shiftWindowKey(slot.start, slot.end)));
-  if (!unused) return null;
+  if (!unused) {
+    // the four standard windows are taken — still add one (8 h at the first free hour) instead of a silent no-op;
+    // the manager renames it and sets its time on the card
+    const pad = (h) => `${String(h % 24).padStart(2, "0")}:00`;
+    for (let offset = 1; offset < 24; offset += 1) {
+      const h = (8 + offset - 1) % 24;
+      const start = pad(h);
+      const end = pad(h + 8);
+      if (used.has(shiftWindowKey(start, end))) continue;
+      const n = (shiftTypes || []).length + 1;
+      return { label: ar ? `وردية ${n}` : `Shift ${n}`, start, end, restMinutes: 30 };
+    }
+    return null;
+  }
   return {
     label: ar ? unused.ar : unused.en,
     start: unused.start,

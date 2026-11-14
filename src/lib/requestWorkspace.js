@@ -915,9 +915,11 @@ export function yearsOfService(profile, onDate) {
   return serviceYearsFromHire(profile?.hireDate, onDate);
 }
 
-export function remainingAnnualLabel(profile, requests, lang = "ar") {
+// `company` (the company data) and `employee` let the balance read the published roster, as approval does —
+// without them a rest day inside an approved leave was counted again («رصيد 19» beside «21 متبقٍّ»).
+export function remainingAnnualLabel(profile, requests, lang = "ar", company, employee) {
   const ar = lang === "ar";
-  const { remaining, leftoverGrants, statutory } = annualRemainingWithGrants(profile, requests);
+  const { remaining, leftoverGrants, statutory } = annualRemainingWithGrants(profile, requests, undefined, company, employee);
   const base = ar
     ? countAr(remaining, "يوم متبقٍ", "يومان متبقيان", "أيام متبقية", "يوماً متبقياً")
     : `${remaining} days left`;
@@ -1144,8 +1146,8 @@ function compactNightLabel(employee, ar) {
   return ar ? "بلا لياقة" : "No fitness";
 }
 
-function compactBalanceLabel(profile, requests, ar) {
-  const { remaining } = annualRemainingWithGrants(profile, requests);
+function compactBalanceLabel(profile, requests, ar, company, employee) {
+  const { remaining } = annualRemainingWithGrants(profile, requests, undefined, company, employee);
   return ar ? `رصيد ${remaining}` : `Balance ${remaining}`;
 }
 
@@ -1172,8 +1174,8 @@ export function managerEmployeeRegister(employees = [], lang = "ar", extras = {}
       regardingLine: requestRegardingLine({ name: employee.name, stationName, lang }),
       pendingCount: pending.count,
       pendingNamed: pending.named,
-      balance: remainingAnnualLabel(employee.profile, employee.leaveRequests, lang),
-      statusLine: [compactBalanceLabel(employee.profile, employee.leaveRequests, ar), compactStudyLabel(study, ar), compactNightLabel(employee, ar)].join(" · "),
+      balance: remainingAnnualLabel(employee.profile, employee.leaveRequests, lang, extras.data, employee),
+      statusLine: [compactBalanceLabel(employee.profile, employee.leaveRequests, ar, extras.data, employee), compactStudyLabel(study, ar), compactNightLabel(employee, ar)].join(" · "),
       studyConsent: study.status,
       studyLabel: studyConsentRegisterLabel(study, ar),
       nightFitness: nightFitnessState(employee).status,

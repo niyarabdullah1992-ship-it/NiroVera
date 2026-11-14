@@ -221,6 +221,16 @@ export function assignNationality(employee, value) {
   return employee;
 }
 
+/**
+ * Monthly allowances on a file: the named housing + transport + other the wage card writes, else the
+ * legacy lump `allowances`. Reading the lump alone gave a split-wage worker his base wage only.
+ */
+export function wageAllowanceTotal(profile = {}) {
+  const n = (v) => Math.max(0, Number(v) || 0);
+  const named = n(profile?.housingAllowance) + n(profile?.transportAllowance) + n(profile?.otherAllowances);
+  return named > 0 ? named : n(profile?.allowances);
+}
+
 export function readWageFields(employee) {
   const profile = employee?.profile || {};
   return {

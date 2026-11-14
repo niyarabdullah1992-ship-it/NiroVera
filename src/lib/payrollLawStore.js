@@ -9,6 +9,7 @@ import { PAYROLL_DENY, canManagePayroll, payrollActor } from "@/lib/payrollRight
 import { ensurePayrollRun } from "@/lib/payroll";
 import { contractWage, lineTransferDue } from "@/lib/payrollDerivations";
 import { annualLeaveAdvanceAmount, payPeriodOf, weeklyInstalments } from "@/lib/payrollLaw";
+import { wageAllowanceTotal } from "@/lib/facts/people";
 
 const actorName = (companyId) => payrollActor(companyId).user?.name || "unknown";
 const todayIso = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
@@ -96,7 +97,7 @@ export function payAnnualLeaveInAdvance(companyId, employeeId, leaveId) {
   const run = (getCompanyData(companyId)?.payrollRuns || []).find((row) => row.month === month);
   const line = (run?.items || []).find((row) => row.employeeId === employeeId);
   const profile = employee.profile || {};
-  const wage = line ? contractWage(line) : (Number(profile.baseSalary) || 0) + (Number(profile.allowances) || 0);
+  const wage = line ? contractWage(line) : (Number(profile.baseSalary) || 0) + wageAllowanceTotal(profile);
   const start = String(leave.startDate).slice(0, 10);
   const end = String(leave.endDate || leave.startDate).slice(0, 10);
   const days = Number(leave.days) > 0 ? Number(leave.days) : Math.round((new Date(`${end}T00:00:00`) - new Date(`${start}T00:00:00`)) / 86400000) + 1;

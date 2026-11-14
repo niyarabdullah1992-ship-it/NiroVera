@@ -21,6 +21,7 @@
  */
 
 import { ruleValue } from "./laborRules.js";
+import { wageAllowanceTotal } from "./facts/people.js";
 
 const DAY = 86400000;
 
@@ -318,7 +319,7 @@ export const PAY_EQUITY_DIMENSIONS = [
  * Law Art. 61(4): within the same job title and grade, compare the median wage of each group of a dimension.
  * A gap above the threshold is a review item — never a block (a legitimate reason may explain it).
  */
-export function payEquityReview({ employees = [], wageOf = (e) => (Number(e.profile?.baseSalary) || 0) + (Number(e.profile?.allowances) || 0), threshold = PAY_EQUITY_THRESHOLD, today = today0() } = {}) {
+export function payEquityReview({ employees = [], wageOf = (e) => (Number(e.profile?.baseSalary) || 0) + wageAllowanceTotal(e.profile || {}), threshold = PAY_EQUITY_THRESHOLD, today = today0() } = {}) {
   const staff = activeEmployees(employees).filter((e) => wageOf(e) > 0);
   const cohorts = new Map();
   for (const e of staff) {

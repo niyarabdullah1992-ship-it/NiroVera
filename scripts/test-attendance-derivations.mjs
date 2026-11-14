@@ -42,10 +42,10 @@ const onTime = deriveDayStatus({ checkIn: "07:08", checkOut: "15:10" }, { shiftS
 assert.equal(onTime.status, ATT_STATUS.present);
 assert.equal(onTime.lateMinutes, 0);
 
-// Late after grace
+// Late past the grace — the full minutes from the start (the grace forgives, it does not discount)
 const late = deriveDayStatus({ checkIn: "07:25", checkOut: "15:30" }, { shiftStart: "07:00" });
 assert.equal(late.status, ATT_STATUS.late);
-assert.equal(late.lateMinutes, 15);
+assert.equal(late.lateMinutes, 25);
 
 // OT beyond 8h
 const ot = deriveDayStatus({ checkIn: "07:00", checkOut: "16:30" }, { shiftStart: "07:00" });
@@ -166,9 +166,9 @@ assert.equal(noShiftLate.error, "NOT_SCHEDULED");
 assert.equal(noShiftLate.lateMinutes, 0);
 assert.equal(noShiftLate.status, null);
 
-// Lateness is past the start beyond the grace — the reading deriveActualDuty and the reports use.
+// Past the grace, lateness is every minute from the start — the reading deriveActualDuty and the reports use.
 const fromRota = lateMinutesFromScheduledStart(7 * 60 + 20, "07:00", 15);
-assert.equal(fromRota.lateMinutes, 5);
+assert.equal(fromRota.lateMinutes, 20);
 assert.equal(fromRota.status, "late");
 assert.deepEqual(lateMinutesFromScheduledStart(7 * 60 + 10, "07:00", 15), { lateMinutes: 0, status: "present" }, "inside the grace is on time");
 

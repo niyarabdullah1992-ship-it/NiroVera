@@ -2,7 +2,7 @@
  *  Keep in sync — grace, shift, geofence decision, settlement, stats.
  */
 
-import { addLaborDays, laborDayKey, ruleValue } from "./laborRules.js";
+import { addLaborDays, laborDayKey, lateBeyondGrace, ruleValue } from "./laborRules.js";
 import { extraCoverageStationIds } from "./stationTree.js";
 import { toRiyadhDateKey } from "./riyadhDate.js";
 import { nursingCreditOf, nursingHourOn } from "./dutyRequests.js";
@@ -34,7 +34,7 @@ export function lateMinutesFromScheduledStart(nowMinutes, scheduledStart, graceM
   if (startMinutes == null) return { error: "NOT_SCHEDULED", lateMinutes: 0, status: null };
   const grace = Math.max(0, Number(graceMinutes) || 0);
   const excused = Math.max(0, Number(excusedMinutes) || 0);
-  const lateMinutes = Math.max(0, Number(nowMinutes) - startMinutes - grace - excused);
+  const lateMinutes = lateBeyondGrace(Number(nowMinutes) - startMinutes - excused, grace);
   return { lateMinutes, status: lateMinutes > 0 ? "late" : "present" };
 }
 
@@ -331,7 +331,7 @@ export function deriveDayStatus(punch, opts = {}) {
   // Art. 154: inside her nursing minutes at the start she is not late; the minutes she was away
   // inside them (start / end) are work — ordinary, never overtime (overtime reads the punches alone).
   const nursing = opts.nursing !== undefined ? opts.nursing : (opts.employee ? nursingHourOn(opts.employee, String(punch.date || "").slice(0, 10)) : null);
-  const lateMinutes = Math.max(0, inM - shiftStart - grace - (nursing?.startMinutes || 0));
+  const lateMinutes = lateBeyondGrace(inM - shiftStart - (nursing?.startMinutes || 0), grace);
   const late = lateMinutes > 0;
   const openCheckout = outM == null;
   let ordinaryMinutes = 0;

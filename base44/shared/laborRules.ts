@@ -594,6 +594,13 @@ export function ruleAt(id: string, onDate?: string | Date | null, catalog: Labor
   return [...inForce].sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0] || null;
 }
 
+/** Twin of src/lib/laborRules.js lateBeyondGrace: inside the grace → 0; past it → the full minutes from the start. */
+export function lateBeyondGrace(rawLate: unknown, graceMinutes: unknown = 0): number {
+  const late = Math.max(0, Number(rawLate) || 0);
+  const grace = Math.max(0, Number(graceMinutes) || 0);
+  return late <= grace ? 0 : late;
+}
+
 export function ruleValue(id: string, onDate?: string | Date | null, catalog?: LaborRule[]) {
   const row = ruleAt(id, onDate, catalog);
   if (!row || typeof row.value !== "number") {

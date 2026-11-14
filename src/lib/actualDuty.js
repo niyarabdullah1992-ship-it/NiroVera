@@ -2,7 +2,7 @@
  *  Pure: no store access. The store feeds the result into otDecisions for the manager's pay decision.
  */
 
-import { citeRule, ruleValue } from "./laborRules.js";
+import { citeRule, lateBeyondGrace, ruleValue } from "./laborRules.js";
 import { art108Limits, hoursBasisOf, hoursPolicyOf, isEmployeeOffDay, ordinaryDayCap } from "./laborHoursPolicy.js";
 import { isOfficialHoliday } from "./ummAlQuraCalendar.js";
 import { actualShiftHours, isTwelveStayDuty, rosterBreakWindows } from "./shiftWeek.js";
@@ -220,7 +220,7 @@ export function deriveActualDuty({
   const nursing = shift && !holiday && !offDay ? nursingHourOn(employee, onDate) : null;
   const credit = nursingCreditOf(nursing, { inMinutes: effIn, outMinutes: outM, shiftStart, shiftEnd, workedMinutes: worked, rosteredMinutes });
   const ordinary = Math.max(0, worked - overtime) + credit.minutes;
-  const lateMinutes = shiftStart == null ? 0 : Math.max(0, inM - shiftStart - grace - (nursing?.startMinutes || 0));
+  const lateMinutes = shiftStart == null ? 0 : lateBeyondGrace(inM - shiftStart - (nursing?.startMinutes || 0), grace);
 
   const limits = art108Limits(employee, onDate, laborCalendar);
   const policy = hoursPolicyOf(company, employee);

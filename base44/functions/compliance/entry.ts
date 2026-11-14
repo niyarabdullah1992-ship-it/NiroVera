@@ -2,6 +2,7 @@ import { createClientFromRequest } from "npm:@base44/sdk@0.8.38";
 import { authPowerCareSession } from "../../shared/powerCareSession.ts";
 import {
   buildWpsFileRows,
+  splitWpsLines,
   checkComplianceDocGate,
   checkContractTermGate,
   checkGosiFileGate,
@@ -230,9 +231,11 @@ Deno.serve(async (req) => {
           ...line,
           nationalId: line.nationalId || f?.nationalId || f?.docs?.find((d) => d.kind === "national_id")?.number,
           iban: line.iban || f?.iban,
+          gosiNumber: (line as { gosiNumber?: string }).gosiNumber || (f as { gosiNumber?: string } | undefined)?.gosiNumber,
         };
       });
-      const rows = buildWpsFileRows(lines);
+      // An owner with no wage and no GOSI number is not a Mudad row — he never blocks the others.
+      const rows = buildWpsFileRows(splitWpsLines(lines).inFile);
       const gate = checkWpsFileGate(rows);
       if (!gate.ok && body.send) {
         return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn }, { status: 400 });

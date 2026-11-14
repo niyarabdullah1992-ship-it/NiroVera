@@ -183,7 +183,7 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
     }
     await runAction(
       { action: "approve" },
-      ar ? "اعتُمد المسير — انتقل إلى حماية الأجور لإنشاء ملف مدى." : "Run approved — open wage protection to build the Mudad file.",
+      ar ? "اعتُمد المسير — انتقل إلى حماية الأجور لإنشاء ملف مدد." : "Run approved — open wage protection to build the Mudad file.",
     );
   };
 

@@ -23,7 +23,7 @@ function monthName(month, ar) {
 
 function statusOf(run, line, ar) {
   if (line.paid) return ar ? "مدفوع" : "Paid";
-  if (run.status === "sent") return ar ? "أُرسل مدى" : "Mudad sent";
+  if (run.status === "sent") return ar ? "أُرسل إلى مدد" : "Mudad sent";
   if (run.status === "approved") return ar ? "معتمد" : "Approved";
   return ar ? "قيد التجهيز" : "In preparation";
 }

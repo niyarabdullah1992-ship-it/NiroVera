@@ -11,7 +11,7 @@ import {
   isWpsLate,
   wpsDeadline,
 } from "@/lib/payrollDerivations";
-import { buildWpsFileRows, checkWpsFileGate, wpsRowBlockers } from "@/lib/complianceDerivations";
+import { buildWpsFileRows, checkWpsFileGate, splitWpsLines, wpsRowBlockers } from "@/lib/complianceDerivations";
 import { localPayrollAction } from "@/lib/localPayrollFallback";
 import { toast } from "@/components/ui/use-toast";
 import EmployeeIdentityRow from "@/components/employees/EmployeeIdentityRow";
@@ -40,6 +40,7 @@ function wpsLineFrom(item, employee) {
     employeeName: employee?.name || item.employeeName || "",
     nationalId: profile.nationalId || employee?.nationalId || "",
     iban: profile.iban || "",
+    gosiNumber: profile.gosiNumber || "",
     netPay: netOf(item),
     base,
     allowances,
@@ -119,7 +120,9 @@ export default function PayrollWpsBoard({
 
   useEffect(() => { load(); }, [company?.id, month]);
 
-  const lines = items.map((item) => wpsLineFrom(item, employeeForItem?.(item)));
+  const allLines = items.map((item) => wpsLineFrom(item, employeeForItem?.(item)));
+  // No wage and no GOSI number (an owner who draws no salary) → outside the Mudad file, named below.
+  const { inFile: lines, outOfFile } = splitWpsLines(allLines);
   const rows = buildWpsFileRows(lines);
   const fileGate = checkWpsFileGate(rows);
   const entries = sortByBlockers(rows.map((row) => ({ row, blockers: rowBlockers(row, ar) })), ar);
@@ -165,7 +168,7 @@ export default function PayrollWpsBoard({
       } else {
         toast({
           description: ar
-            ? (late ? "أُنشئ ملف مدى بعد المهلة النظامية — راجِع البنك." : "أُنشئ ملف حماية الأجور. الإرسال الحي لمدى مؤجّل حتى الاعتمادات الرسمية.")
+            ? (late ? "أُنشئ ملف مدد بعد المهلة النظامية — راجِع البنك." : "أُنشئ ملف حماية الأجور. الإرسال الحي لمدد مؤجّل حتى الاعتمادات الرسمية.")
             : (late ? "Mudad file built after the statutory deadline — review with the bank." : "Wage-protection file built. Live Mudad send waits for official credentials."),
         });
         if (remote.run) {
@@ -240,7 +243,7 @@ export default function PayrollWpsBoard({
             {busy ? <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" /> : <Send style={{ width: 14, height: 14 }} />}
             {sent
               ? (ar ? "أُنشئ ملف حماية الأجور" : "Wage-protection file built")
-              : (ar ? "إنشاء ملف مدى" : "Build the Mudad file")}
+              : (ar ? "إنشاء ملف مدد" : "Build the Mudad file")}
           </button>
         </div>
 
@@ -336,6 +339,13 @@ export default function PayrollWpsBoard({
                 </div>
               );
             })}
+            {outOfFile.length ? (
+              <p data-wps-out="" style={{ margin: "10px 0 0", fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.7 }}>
+                {ar
+                  ? `خارج ملف مدد: ${outOfFile.map((l) => l.employeeName || l.employeeId).join("، ")} — بلا أجر في المسير ولا رقم تأمينات. مدد يطابق الملف على المسجّلين في التأمينات؛ إن كان له أجر أو سُجّل فأكمل ملفه ويعود إلى الملف.`
+                  : `Outside the Mudad file: ${outOfFile.map((l) => l.employeeName || l.employeeId).join(", ")} — no wage on the run and no GOSI number. Mudad matches the file to GOSI-registered workers; add a wage or a GOSI number and the row returns.`}
+              </p>
+            ) : null}
             <p style={{ margin: "10px 0 0", fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
               {ar
                 ? "الصافي المحوَّل هو نفسه رقم القسيمة: الأساسي والبدلات والمكافأة + الأجر الإضافي المعتمد − الخصومات الموثّقة − حصة التأمينات."

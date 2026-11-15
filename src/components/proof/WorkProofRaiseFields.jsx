@@ -302,14 +302,17 @@ export default function WorkProofRaiseFields({
   raiserName = "",
 }) {
   const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
-  const people = formPeople(form);
-  const vehicles = formVehicles(form);
+  // shown as typed (see patchPerson) — the trimmed rows dropped the space the worker had just typed
+  const people = Array.isArray(form.people) && form.people.length ? form.people.map((row) => ({ ...formPeople({ people: [row] })[0], ...row })) : formPeople(form);
+  const vehicles = Array.isArray(form.vehicles) && form.vehicles.length ? form.vehicles.map((row) => ({ ...formVehicles({ vehicles: [row] })[0], ...row })) : formVehicles(form);
   const setPeople = (next) => setForm((current) => ({ ...current, people: next }));
   const setVehicles = (next) => setForm((current) => ({ ...current, vehicles: next }));
   const patchPerson = (index, key) => (event) => {
     const value = event.target.value;
     setForm((current) => {
-      const list = formPeople(current);
+      // Edit the rows as typed — formPeople trims every field, so the space after a first name was cut on
+      // the next keystroke and «عامل اختبار» could only be typed as «عاملاختبار». Trimming is the save's job.
+      const list = Array.isArray(current.people) && current.people.length ? current.people : formPeople(current);
       return {
         ...current,
         people: list.map((person, i) => {
@@ -326,7 +329,7 @@ export default function WorkProofRaiseFields({
   const patchVehicle = (index, key) => (event) => {
     const value = event.target.value;
     setForm((current) => {
-      const list = formVehicles(current);
+      const list = Array.isArray(current.vehicles) && current.vehicles.length ? current.vehicles : formVehicles(current);
       return {
         ...current,
         vehicles: list.map((vehicle, i) => (i === index ? { ...vehicle, [key]: value } : vehicle)),

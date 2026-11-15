@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { reconcileAdvanceInstallments } from "@/lib/deductionGenerators";
 import { useSearchParams } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
@@ -119,6 +120,8 @@ export default function Payroll() {
       ensurePayrollRun(company.id, liveMonth);
       // Art. 91: accepted damage objections are refunded on the open line.
       if (canManage) reconcileDamageObjections(company.id, liveMonth);
+      // Art. 92(1): each approved advance still owed takes this month's instalment (≤ 10% of the wage).
+      if (canManage) reconcileAdvanceInstallments(company.id, liveMonth, currentUser);
     }
     if (company && view === SELF) refreshOwnPayrollDerivation(company.id, liveMonth);
   }, [company?.id, liveMonth, canView, includeOwner, view]);

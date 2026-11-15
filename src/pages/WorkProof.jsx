@@ -898,7 +898,7 @@ export default function WorkProof() {
         title={editingProof ? (ar ? "تعديل الإثبات" : "Edit proof") : (ar ? "إثبات عمل جديد" : "New work proof")}
         hint={editingProof
           ? (remainingEditLabel(editingProof, ar) || (ar ? "مهلة يوم واحد من الرفع." : "One day from the original raise."))
-          : (ar ? "لجهة خارج الشركة — يصل للمشرف للاعتماد، ثم يُختم ويُرسل للجهة برابط تحقق." : "For an outside party — the supervisor approves, then it is sealed and sent with a verify link.")}
+          : (ar ? "لجهة خارج الشركة — يُختم عند إنهائه بصورة البعد، ويُرسل للجهة برابط تحقق. الالتقاط خارج النطاق يقف عند المشرف." : "For an outside party — sealed when it ends with the after photo, and sent with a verify link. A capture outside the boundary waits for the supervisor.")}
         onClose={cancelForm}
         onSubmit={editingProof ? saveEdit : raise}
         submitLabel={editingProof ? (ar ? "حفظ التعديل" : "Save edit") : (ar ? "افتح الإثبات الآن" : "Open the proof now")}

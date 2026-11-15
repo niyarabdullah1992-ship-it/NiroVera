@@ -33,7 +33,11 @@ export function serviceYears(hireDate, nowMs = Date.now(), suspendedDays = 0) {
 export function eosEndMs(caseRow = {}, nowMs = Date.now()) {
   const exit = caseRow?.contractExit || caseRow?.profile?.contractExit || {};
   const d = parseLocalDate(exit.effectiveDate || exit.lastDay || caseRow?.lastWorkDate || caseRow?.lastDay);
-  return d ? d.getTime() : nowMs;
+  if (d) return d.getTime();
+  // Service is counted in days (Art. 84): the running estimate ends at the start of today, as the
+  // employee file reads it — counting to this minute put the payroll figure 3 SAR above the file's.
+  const now = new Date(nowMs);
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 }
 
 /** Exit reasons that are the worker leaving through force majeure beyond his will (Art. 87). */

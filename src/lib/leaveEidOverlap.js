@@ -161,6 +161,9 @@ export function rosterRestDows(company, employee, dateKey) {
     const keys = weekKeysAround(`${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`);
     const on = keys.map((key) => (company.schedules || []).some((schedule) => employeeAssignedOn(schedule, id, key)));
     if (!on.some(Boolean)) continue;
+    // A week with more empty days than his rest count is not his rest pattern — a roster begun mid-week,
+    // a leave, a hire: read as rest it named every earlier weekday «rest».
+    if (on.filter((assigned) => !assigned).length > weeklyRestDayCountOf(company, employee)) continue;
     weeks += 1;
     on.forEach((assigned, dow) => { if (!assigned) tally[dow] += 1; });
   }
@@ -229,6 +232,25 @@ function nearbyDateKey(dateKey, delta) {
   return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
 }
 
+/** The Sunday that opens this date's roster week (publishedWeeks keys). */
+function weekStartKey(dateKey) {
+  const [y, m, d] = String(dateKey || "").split("-").map(Number);
+  if (!y) return "";
+  const at = new Date(y, m - 1, d);
+  at.setDate(at.getDate() - at.getDay());
+  return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
+}
+
+/** True only when the schedule records publications and this date's week is not among them. */
+function weekUnpublished(schedule, dateKey) {
+  const weeks = schedule?.publishedWeeks;
+  if (!weeks || typeof weeks !== "object" || !Object.keys(weeks).length) return false;
+  if (weeks[weekStartKey(dateKey)]) return false;
+  // a painted day of an otherwise unpublished week still counts as drawn
+  const dated = schedule?.assignments?.[dateKey];
+  return !(dated && typeof dated === "object" && !Array.isArray(dated) && Object.values(dated).some((ids) => Array.isArray(ids) && ids.length));
+}
+
 function employeeHasRosterNearby(schedule, employeeId, dateKey) {
   for (let delta = -7; delta <= 7; delta += 1) {
     if (employeeAssignedOn(schedule, employeeId, nearbyDateKey(dateKey, delta))) return true;
@@ -245,6 +267,9 @@ export function employeeRosterDayKind(company, employee, dateKey) {
   const schedule = scheduleForEmployee(company, employee);
   if (!schedule || employee?.id == null) return "unknown";
   if (employeeAssignedOn(schedule, employee.id, dateKey)) return "duty";
+  // A week not published yet says nothing about rest: a leave approved before its week was drawn read
+  // Monday and Tuesday as rest cells, so two work days left the balance whole.
+  if (weekUnpublished(schedule, dateKey)) return "unknown";
   if (employeeHasRosterNearby(schedule, employee.id, dateKey)) return "rest";
   return "unknown";
 }

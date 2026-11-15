@@ -459,3 +459,43 @@ export function deriveEidOverlap({ start, end, type, company, calendar, employee
       : chargeableSpanExcludingHolidays(from, to, calendar),
   };
 }
+
+/**
+ * Repair for annual leaves locked before the unpublished-week rule: a day frozen as rest («company» /
+ * «cycle») while its roster week was not yet published was a guess from an empty week, not his rest.
+ * Each such day is re-read as approval would read it today — his weekly off day stays rest, any other
+ * day is a work day taken from the balance (Art. 109). Days of weeks published before the lock, and
+ * holidays, keep their frozen kind. Returns the number of leaves changed.
+ */
+export function repairGuessedRestLocks(company) {
+  let changed = 0;
+  for (const employee of company?.employees || []) {
+    const schedule = scheduleForEmployee(company, employee);
+    const weeks = schedule?.publishedWeeks;
+    if (!weeks || typeof weeks !== "object" || !Object.keys(weeks).length) continue;
+    const statutory = weeklyRestDowOf(company, employee);
+    for (const leave of employee.leaveRequests || []) {
+      if (String(leave?.type || "").toLowerCase() !== "annual") continue;
+      if (!["approved", "pending"].includes(String(leave.status || ""))) continue;
+      const locked = leave.lockedDays && typeof leave.lockedDays === "object" ? leave.lockedDays : null;
+      if (!locked) continue;
+      const lockedAt = String(leave.lockedAt || leave.approvedAt || "");
+      let touched = false;
+      for (const [key, kind] of Object.entries(locked)) {
+        if (kind !== "company" && kind !== "cycle") continue;
+        const published = weeks[weekStartKey(key)];
+        const publishedAt = String(published?.at || "");
+        if (published && (!lockedAt || !publishedAt || publishedAt <= lockedAt)) continue;
+        const [y, m, d] = key.split("-").map(Number);
+        const dow = new Date(y, m - 1, d).getDay();
+        const next = isWeeklyOffDay(key, company, employee) ? (dow === statutory ? "law" : "company") : "charge";
+        if (next !== kind) { locked[key] = next; touched = true; }
+      }
+      if (!touched) continue;
+      leave.days = Object.values(locked).filter((k) => k === "charge" || k === "dutyOnRest").length;
+      leave.lockRepairedAt = new Date().toISOString();
+      changed += 1;
+    }
+  }
+  return changed;
+}

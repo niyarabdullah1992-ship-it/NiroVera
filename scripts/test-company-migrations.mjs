@@ -15,7 +15,13 @@ const legacy = {
   cameras: [{ id: "c1" }],
   jobGrades: [{ id: "grade_tc1", title: "مبتدئ", gradeNumber: "TC1" }, { id: "g_real", title: "مهندس أول", gradeNumber: "A7" }],
   orgSeats: [{ id: "s1", gradeId: "grade_tc1" }],
-  employees: [{ id: "e1", profile: { gradeId: "grade_tc1", leaveTotals: { annual: 25 } }, otherRequests: [{ id: "o1", type: "overtime", balanceApplied: true, appliedDays: 2 }] }],
+  employees: [{
+    id: "e1",
+    profile: { gradeId: "grade_tc1", leaveTotals: { annual: 25 }, workStationId: "st1" },
+    otherRequests: [{ id: "o1", type: "overtime", balanceApplied: true, appliedDays: 2 }],
+    leaveRequests: [{ id: "l1", type: "annual", status: "approved", startDate: "2026-11-16", endDate: "2026-11-16", lockedAt: "2026-11-10T00:00:00Z", lockedDays: { "2026-11-16": "cycle" } }],
+  }],
+  schedules: [{ stationId: "st1", shiftTypes: [], assignments: {}, publishedWeeks: { "2026-11-08": { at: "2026-11-07T00:00:00Z" } } }],
   hoursPolicy: { continuousWork103: true },
   restPlans: { "e1:2026-01-01": { parts: [] } },
 };
@@ -30,6 +36,7 @@ assert.equal(legacy.employees[0].profile.leaveTotals.annual, 23, "v3 took the co
 assert.equal(legacy.employees[0].otherRequests[0].compMovedOut, true);
 assert.equal(legacy.hoursPolicy.continuousWork103, false, "v4 cleared Art. 103");
 assert.deepEqual(legacy.restPlans, {}, "v5 dropped rest plans");
+assert.equal(legacy.employees[0].leaveRequests[0].lockedDays["2026-11-16"], "charge", "v6 re-read a rest day guessed from an unpublished week");
 assert.deepEqual(legacy.schemaLog.map((row) => row.id), COMPANY_MIGRATIONS.map((m) => m.id), "every step logged with its id");
 assert.ok(legacy.schemaLog.every((row) => row.at === at()));
 

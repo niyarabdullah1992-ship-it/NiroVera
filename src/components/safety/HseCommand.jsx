@@ -56,6 +56,8 @@ export function deriveHseCommand({ stations = [], recFor, employees = [], now = 
   const capas = openCapas(incidents, now);
   const queue = [];
   incidents.filter((item) => item.status !== "closed" && Number(item.card?.score) >= 15).forEach((item) => queue.push({ key: `crit-${item.id}`, tone: "bad", tab: "register", ar: `بلاغ حرج مفتوح — ${item.card?.code || ""} · ${item.stationName}`, en: `Critical report open — ${item.card?.code || ""} · ${item.stationName}` }));
+  // a «مرتفع» report carries a 24-hour window (safetyReportSlaLine) — it is a decision too, not only the ≥15 ones
+  incidents.filter((item) => item.status !== "closed" && !item.card?.positive && Number(item.card?.score) >= 10 && Number(item.card?.score) < 15).forEach((item) => queue.push({ key: `high-${item.id}`, tone: "warn", tab: "register", ar: `بلاغ مرتفع مفتوح — يُعالج خلال 24 ساعة · ${item.card?.code || ""} · ${item.stationName}`, en: `High report open — 24 h to treat · ${item.card?.code || ""} · ${item.stationName}` }));
   gosi.forEach((item) => {
     const st = injuryReportState(item, now);
     queue.push({ key: `gosi-${item.id}`, tone: st.state === "overdue" ? "bad" : "warn", tab: "incidents", ar: st.state === "overdue" ? `إصابة تجاوزت مهلة إبلاغ التأمينات — ${item.card?.code || ""}` : `أبلغ التأمينات عن إصابة ${item.card?.code || ""} خلال ${st.left} يوم`, en: st.state === "overdue" ? `Injury past the GOSI window — ${item.card?.code || ""}` : `Report injury ${item.card?.code || ""} to GOSI within ${st.left} d` });

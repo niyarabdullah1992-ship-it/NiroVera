@@ -309,8 +309,13 @@ export default function Complaints() {
         }
         return;
       }
-      if (managerId && String(managerId) !== String(currentUser?.id)) {
-        addNotification(company.id, managerId, voiceDecisionNoticeText(notice, lang), { voiceNotice: notice });
+      // whoever holds the level it starts at — the station's manager field is empty when the seat is
+      // vacant, and then nobody was told
+      const startHandlers = (chain[startLevel]?.handlerIds || []).map(String);
+      const receivers = startHandlers.length ? startHandlers : (managerId ? [String(managerId)] : []);
+      for (const id of new Set(receivers)) {
+        if (id === String(currentUser?.id)) continue;
+        addNotification(company.id, id, voiceDecisionNoticeText(notice, lang), { voiceNotice: notice, to: "/app/complaints?tab=manage" });
       }
     };
     const voiceFields = {

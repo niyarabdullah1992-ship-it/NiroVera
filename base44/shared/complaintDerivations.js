@@ -357,11 +357,13 @@ export function checkAdoptNoteGate(note) {
  */
 export function firstReviewLevel(chain = [], authorId, stationManagerId) {
   const me = String(authorId || "");
-  if (!me) return 0;
   for (let i = 0; i < chain.length; i += 1) {
     const tier = chain[i] || {};
+    // A vacant seat has nobody to read it: the ladder says «مقعد شاغر — يُتخطّى», so the voice starts
+    // at the next filled tier. It used to sit there 48 hours, told to no one, before the SLA moved it.
+    if (tier.vacant) continue;
     const handlers = (tier.handlerIds || []).map(String);
-    const isMe = handlers.includes(me) || (tier.id === "station_manager" && String(stationManagerId || "") === me);
+    const isMe = Boolean(me) && (handlers.includes(me) || (tier.id === "station_manager" && String(stationManagerId || "") === me));
     if (!isMe) return i;
   }
   return Math.max(0, chain.length - 1);

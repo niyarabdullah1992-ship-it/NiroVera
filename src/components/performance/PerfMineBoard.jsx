@@ -232,7 +232,9 @@ function driverSources(employee, from, to, data, facts, ar) {
   }).length;
   return {
     done: facts && facts.assigned
-      ? (ar ? `${proven.length} من ${facts.assigned} وحدة مستهدفة في المهام المعتمدة` : `${proven.length} of ${facts.assigned} targeted units in approved tasks`)
+      // the percentage is weighted by each task's approved quality level (personFacts), so the count
+      // alone («1 من 1») beside 83% read as a contradiction — say what the number is made of
+      ? (ar ? `${proven.length} من ${facts.assigned} مهمة معتمدة · موزونة بمستوى الجودة` : `${proven.length} of ${facts.assigned} tasks approved · weighted by quality level`)
       : DASH,
     time: proven.length
       ? (ar ? `${onTime} من ${proven.length} مهمة أُغلقت قبل موعدها` : `${onTime} of ${proven.length} tasks closed before the due date`)

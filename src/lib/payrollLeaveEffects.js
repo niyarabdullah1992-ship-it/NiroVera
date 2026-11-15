@@ -54,6 +54,18 @@ function requestDays(r) {
 }
 
 /**
+ * The days an annual leave actually takes from the balance. The approval locks each day as
+ * «charge» / «dutyOnRest» (counted) or a rest day — «company», «cycle», a holiday (not counted,
+ * Art. 104 / 112) — and the balance reads that map; payroll counted every calendar day, so a leave
+ * over two rest days read «2 أيام» here and 0 in «رصيد إجازاتي». Unlocked rows keep the calendar span.
+ */
+function chargedLeaveDays(r) {
+  const locked = r?.lockedDays && typeof r.lockedDays === "object" ? r.lockedDays : null;
+  if (!locked || !Object.keys(locked).length) return requestDays(r);
+  return requestDays(r).filter((d) => locked[d] === "charge" || locked[d] === "dutyOnRest");
+}
+
+/**
  * The month's sick days split into the Art. 117 bands, counted from the first sick leave of the
  * statutory year, and what they take off the wage. Daily wage = monthly actual wage ÷ 30.
  */
@@ -98,7 +110,8 @@ function daysOfType(employee, month, type) {
   let days = 0;
   const starts = [];
   for (const r of rows) {
-    const inside = requestDays(r).filter((d) => d >= range.start && d <= range.end);
+    const days_ = type === "annual" ? chargedLeaveDays(r) : requestDays(r);
+    const inside = days_.filter((d) => d >= range.start && d <= range.end);
     days += inside.length;
     if (inside.length && dateOnly(r.startDate) >= range.start) starts.push(dateOnly(r.startDate));
   }

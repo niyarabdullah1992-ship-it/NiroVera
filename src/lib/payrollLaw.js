@@ -73,6 +73,13 @@ function requestDays(row) {
   return eachDay(a, b);
 }
 
+/** Days an annual leave charges — the approval's lockedDays map, as the balance reads it (rest days excluded). */
+function chargedLeaveDays(row) {
+  const locked = row?.lockedDays && typeof row.lockedDays === "object" ? row.lockedDays : null;
+  if (!locked || !Object.keys(locked).length) return requestDays(row);
+  return requestDays(row).filter((d) => locked[d] === "charge" || locked[d] === "dutyOnRest");
+}
+
 /** Daily actual wage: the monthly actual wage over thirty (the payroll convention). */
 export function dailyWage(monthlyWage) {
   return Math.max(0, Number(monthlyWage) || 0) / Number(ruleValue("payroll.month.conventionDays") || 30);
@@ -595,7 +602,9 @@ export function pendingAnnualAdvances(employees = [], today, horizonDays = 14) {
   for (const employee of employees || []) {
     for (const leave of employee?.leaveRequests || []) {
       const gate = checkAnnualLeaveAdvanceGate({ leave, today, horizonDays });
-      if (!gate.ok) out.push({ employee, leave, gate, days: requestDays(leave).length });
+      // a leave that falls wholly on rest days charges nothing, so there is no leave wage to advance
+      const days = chargedLeaveDays(leave).length;
+      if (!gate.ok && days > 0) out.push({ employee, leave, gate, days });
     }
   }
   return out.sort((a, b) => String(a.leave.startDate).localeCompare(String(b.leave.startDate)));

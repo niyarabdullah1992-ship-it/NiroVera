@@ -13,6 +13,8 @@ import { hoursPolicyOf } from "@/lib/laborHoursPolicy";
 import { stationPrayerTimes } from "@/lib/prayerTimes";
 import { isRamadanDay, ruleValue } from "@/lib/laborRules";
 import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
+import { isLocationRequired } from "@/lib/attendance";
+import { checkLocationAgainstGeofence } from "@/lib/settingsDerivations";
 
 function todayKey() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
@@ -74,14 +76,35 @@ function toCloudAttendanceRow(row) {
   };
 }
 
-export function localAttendanceSettings() {
+/**
+ * The company's own attendance policy, read locally. GPS follows what the company set
+ * (attendanceSettings.gps_enabled / gps_required) so the local punch keeps the same
+ * place gate as the cloud one — attendance is person + place + time, offline too.
+ */
+export function localAttendanceSettings(companyId) {
+  const saved = companyId ? (getCompanyData(companyId)?.attendanceSettings || {}) : {};
   return {
     schedule_required: true,
-    gps_enabled: false,
-    emergency_active: false,
+    gps_enabled: saved.gps_enabled === true,
+    gps_required: saved.gps_required === true,
+    emergency_active: saved.emergency_active === true,
     late_grace_minutes: ruleValue("hours.grace.minutes"),
     localPreview: true,
   };
+}
+
+/**
+ * Place gate for a local check-in: the station's geofence against the device fix, through the
+ * same named derivation the server uses. Returns the gate result; `ok:false` carries the reason
+ * (OUTSIDE_GEOFENCE with distanceMeters / radiusMeters, or GEOFENCE_NOT_CONFIGURED).
+ */
+export function checkLocalPunchPlaceGate(companyId, { stationId, lat, lng }) {
+  const data = getCompanyData(companyId);
+  if (!isLocationRequired(localAttendanceSettings(companyId))) {
+    return { ok: true, verdict: "self_declaration", distanceMeters: null };
+  }
+  const station = (data?.stations || []).find((row) => String(row.id) === String(stationId)) || null;
+  return checkLocationAgainstGeofence({ geofenceVerificationRequired: true, lat, lng, station, requireCoordsWhenOn: true });
 }
 
 /** Today's personalAttendance rows, same YYYY-MM-DD key as localCheckIn. */
@@ -183,7 +206,7 @@ function throwGate(gate) {
   throw err;
 }
 
-export function localCheckIn(companyId, { employeeId, employeeName, stationId }) {
+export function localCheckIn(companyId, { employeeId, employeeName, stationId, place = null }) {
   const data = getCompanyData(companyId);
   const employee = (data?.employees || []).find((row) => String(row.id) === String(employeeId));
   const day = employee ? selfCheckInDay(data, employee, new Date()) : { dateKey: todayKey(), shift: null, nowMin: riyadhMinutesOf(new Date()) };
@@ -228,7 +251,10 @@ export function localCheckIn(companyId, { employeeId, employeeName, stationId })
       checkOutAt: null,
       status: late.status || "present",
       lateMinutes: late.lateMinutes || 0,
-      locationStatus: "disabled",
+      // Place: the geofence verdict when the policy asked for it, else "disabled" as before.
+      locationStatus: place?.verdict === "inside" ? "inside" : place?.verdict === "outside" ? "outside" : "disabled",
+      ...(place?.lat != null && place?.lng != null ? { lat: place.lat, lng: place.lng, accuracy: place.accuracy ?? null } : {}),
+      ...(place?.distanceMeters != null ? { distanceMeters: place.distanceMeters } : {}),
       localPreview: true,
     };
     if (idx >= 0) list[idx] = { ...list[idx], ...row };

@@ -2,7 +2,7 @@
  *  Keep in sync — Reports library, timesheet (rostered shift + actual duty), payroll-close gates.
  */
 
-import { ruleValue } from "./laborRules.js";
+import { lateBeyondGrace, ruleValue } from "./laborRules.js";
 import { deriveActualDuty, punchClockMinutes } from "./actualDuty.js";
 import { nursingHourOn } from "./dutyRequests.js";
 import { rosterShiftFor } from "./otDecisionPlan.js";
@@ -200,7 +200,7 @@ export function deriveTimesheetDay(punch, opts = {}) {
   const win = rosterWindow(shift);
   // Art. 154: her nursing minutes at the start are not lateness, at the end not an early checkout.
   const nursingDay = win ? nursingHourOn(opts.employee, punch.date) : null;
-  const lateMinutes = win ? Math.max(0, inM - win.start - grace - (nursingDay?.startMinutes || 0)) : 0;
+  const lateMinutes = win ? lateBeyondGrace(inM - win.start - (nursingDay?.startMinutes || 0), grace) : 0;
   const late = lateMinutes > 0;
   const openCheckout = outM == null;
   const base = {

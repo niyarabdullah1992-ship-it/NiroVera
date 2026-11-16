@@ -128,7 +128,7 @@ export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTyp
 
   useEffect(() => {
     refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [stationId, year, monthIndex, JSON.stringify(shiftTypes), JSON.stringify(assignments), JSON.stringify(schedule?.sunExposure || null)]);
 
   const publish = async () => {

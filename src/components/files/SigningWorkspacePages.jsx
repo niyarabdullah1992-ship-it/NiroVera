@@ -201,7 +201,7 @@ function useSignerStampPreviews(signers) {
       if (alive) setPreviews(out);
     })();
     return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [key]);
   return previews;
 }

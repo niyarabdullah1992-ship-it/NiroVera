@@ -1,4 +1,4 @@
-import { consentFileKind, normalizeSignMark } from "./documentReadGate.js";
+import { checkDocumentReadGate, consentFileKind, normalizeSignMark } from "./documentReadGate.js";
 
 /** Written consent raised by a manager and signed from My Requests. */
 
@@ -284,12 +284,31 @@ export function checkRaiseConsentGate({ employeeId, body, deadline, file, paper 
   return { ok: true };
 }
 
-export function checkAcceptConsentGate({ ack, paper }) {
-  return checkConfirmConsentPaperGate({ paper, ack });
+export function checkAcceptConsentGate({ ack, paper, readAt, file, pageCount, seen }) {
+  // «لا إقرار قبل قراءة الملف» — checkDocumentReadGate كانت معرَّفة وغير مستدعاة، وهذه البوابة
+  // كانت تستقبل readAt وترميه، فتصل الموافقة موقَّعة وما فُتح المستند.
+  // والترتيب: الإقرار والورقة أولاً ثم القراءة. البوابتان تحجبان كلتاهما؛ الترتيب يحدّد
+  // ما يُقال للمستخدم أولاً، والناقص الملموس (النسخة الموقّعة) أوضح من ختم قراءة.
+  const paperGate = checkConfirmConsentPaperGate({ paper, ack });
+  if (!paperGate.ok) return paperGate;
+  const doc = file || null;
+  const read = checkDocumentReadGate({
+    required: !!doc,
+    pageCount: Number(pageCount) || Number(doc?.pageCount) || 1,
+    seen,
+    readAt,
+  });
+  if (!read.ok) return read;
+  return paperGate;
 }
 
-export function checkRefuseConsentGate() {
-  return { ok: true };
+export function checkRefuseConsentGate({ note } = {}) {
+  // الرفض لا يُشترط له سبب. هذا الملف نفسه يقول «ارفض بزر واحد» و«الرفض لا يُتخذ سبباً
+  // لجزاء»، واختبار المشروع يسمّيها «ministry refuse is direct». جُرِّب هنا اشتراط سبب
+  // مكتوب استنادًا إلى أن كل حجب يسمّي سببه — وذاك يصحّ على قرار سلطة، لا على موظف
+  // يمارس حقًّا: فكان الاشتراط واجبًا لم يفرضه أحد، وحدُّ الأحرف يرفض «لا» وهي رفض تامّ.
+  // والسبب يُمرَّر حين يُكتب، فلا يُحفظ الردّ فارغًا.
+  return { ok: true, note: String(note || "").trim() };
 }
 
 export async function hashConsentFile(file) {

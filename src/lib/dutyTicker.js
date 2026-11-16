@@ -135,7 +135,8 @@ export function breakClockOf(ctx, now) {
   if (Array.isArray(ctx.punches.breaks)) return null;
   const inM = lift(punchClockMinutes(ctx.punches.checkIn));
   let nowM = Math.floor((nowMs - dayStart) / 60000);
-  if (inM != null && nowM < inM) nowM += 1440;
+  // a clock a tick behind the punch is the punch minute; only a real midnight crossing (> half a day) wraps
+  if (inM != null && nowM < inM) nowM = inM - nowM < 720 ? inM : nowM + 1440;
   const w = rosterBreakWindows(ctx.shift, ctx.onDate).find((row) => row.startMin <= nowM && nowM < row.endMin && row.startMin >= inM);
   return w ? out("fixed", w.startMin, w.endMin) : null;
 }

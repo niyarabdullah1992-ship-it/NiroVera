@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { PdfPageCanvas, useSigningPdf } from "@/components/files/SigningWorkspacePages";
 import { consentFileKind, defaultConsentMark, normalizeSignMark } from "@/lib/documentReadGate";
 import { STAMP_WIDTH_PERCENT } from "@/lib/signatureStampGeometry";
-import { BORDER, MUTED, NAVY, NAVY_FILL, SURFACE } from "@/lib/platformStyles";
+import { BORDER, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
 
 function pointOn(node, event) {
   const rect = node.getBoundingClientRect();

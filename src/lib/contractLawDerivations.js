@@ -5,6 +5,7 @@
 import { citeRule, ruleAt, ruleValue } from "./laborRules.js";
 import { daysUntilExpiry, deriveSaudiStatus, localDateKey, nationalityIsSaudi } from "./complianceDerivations.js";
 import { leaveTypesForProfile, statutoryLeaveFloor } from "./leaveTypes.js";
+import { checkIllnessTerminationGate } from "./laborProtectionGates.js";
 
 export const WORK_PATTERN_OPTIONS = [
   { value: "ordinary", ar: "دائم / عادي", en: "Permanent / ordinary" },
@@ -307,6 +308,10 @@ export function checkTerminationGate(input = {}) {
       cite,
     };
   }
+  // Art. 82: no termination for illness before sick leave (Art. 117) is exhausted. The gate was
+  // written in full but never called anywhere, so nothing blocked an illness-reasoned termination.
+  const illness = checkIllnessTerminationGate(input);
+  if (!illness.ok) return illness;
   const art155 = isArt155Protected(input);
   if (art155 && reason.id === "article_80") {
     return {

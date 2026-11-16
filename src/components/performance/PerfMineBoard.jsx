@@ -9,6 +9,7 @@ import { taskQualityFor, taskQualityLine } from "@/lib/taskQuality";
 import { modelLaw } from "@/lib/modelArticleTexts";
 import RightHint from "@/components/shared/RightHint";
 import { countPersonalHseDuty } from "@/lib/perfDerivations";
+import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import {
   PERF_DRIVERS,
   isoDay,
@@ -200,8 +201,8 @@ function inspectionCount(employee, data) {
     const actorId = String(rec.inspectorId || rec.lastActionById || "");
     const mine = (actor && actor === name) || (actorId && actorId === String(employee?.id || ""));
     if (!mine) continue;
-    const inspectionEnd = new Date(rec.lastInspection).setHours(23, 59, 59, 999);
-    const needsAnother = rec.lastIncidentAt && inspectionEnd < new Date(rec.lastIncidentAt).getTime();
+    // يوم مقابل يوم بتقويم الرياض — المقارنة بتوقيت الجهاز كانت تُسقط تفتيشاً مُنجزاً من العدّ.
+    const needsAnother = rec.lastIncidentAt && toRiyadhDateKey(rec.lastIncidentAt) > toRiyadhDateKey(rec.lastInspection);
     if (!needsAnother) met += 1;
   }
   return met;
@@ -231,7 +232,9 @@ function driverSources(employee, from, to, data, facts, ar) {
   }).length;
   return {
     done: facts && facts.assigned
-      ? (ar ? `${proven.length} من ${facts.assigned} وحدة مستهدفة في المهام المعتمدة` : `${proven.length} of ${facts.assigned} targeted units in approved tasks`)
+      // the percentage is weighted by each task's approved quality level (personFacts), so the count
+      // alone («1 من 1») beside 83% read as a contradiction — say what the number is made of
+      ? (ar ? `${proven.length} من ${facts.assigned} مهمة معتمدة · موزونة بمستوى الجودة` : `${proven.length} of ${facts.assigned} tasks approved · weighted by quality level`)
       : DASH,
     time: proven.length
       ? (ar ? `${onTime} من ${proven.length} مهمة أُغلقت قبل موعدها` : `${onTime} of ${proven.length} tasks closed before the due date`)

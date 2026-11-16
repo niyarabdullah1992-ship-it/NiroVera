@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { listCompanyAccounts } from "@/api/platformEntities";
 import { History, Loader2 } from "lucide-react";
 import OwnerExportButtons from "@/components/owner/OwnerExportButtons";
 import { OwnerSectionHead, OwnerStatTile, ownerGrid, ownerPaper, ownerStack } from "@/components/owner/ownerUi";
@@ -12,7 +13,7 @@ export default function AuditLogDashboard({ ar, companies = [] }) {
   useEffect(() => {
     Promise.all([
       base44.functions.invoke("companyDirectory", { action: "getAllAuditLog", companyId: "platform" }),
-      base44.entities.CompanyAccount.list("-created_date", 500),
+      listCompanyAccounts(),
     ]).then(([res, companyAccounts]) => {
       setLogs(res.data.logs || []);
       setAccounts(companyAccounts);

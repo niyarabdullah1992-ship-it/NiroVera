@@ -84,6 +84,9 @@ export function applyPayrollWagePatch(item, employee, data, month) {
     detentionCut: row.detentionCut,
     lateCut: row.lateCut,
     lateMinutes: row.lateMinutes,
+    earlyLeaveCut: row.earlyLeaveCut,
+    earlyLeaveMinutes: row.earlyLeaveMinutes,
+    earlyLeaveDays: row.earlyLeaveDays,
     refunds: row.refunds,
     qiwaWage: row.qiwaWage,
   });
@@ -127,7 +130,7 @@ export function payrollItemIssues(item) {
   const fields = ["allowances", "bonus", "deductions"];
   if (fields.some((field) => !Number.isFinite(Number(item?.[field])) || Number(item[field]) < 0)) return ["INVALID_AMOUNTS"];
   // A month fully without injury compensation (Art. 139) may lawfully net zero.
-  if (!item?.isOwner && netOf(item) <= 0 && !(Number(item?.injuryUnpaid) > 0) && !(Number(item?.injuryWageStop) > 0) && !(Number(item?.sickUnpaid) > 0) && !(Number(item?.unpaidLeaveCut) > 0) && !(Number(item?.detentionCut) > 0) && !(Number(item?.lateCut) > 0)) return ["NET_REQUIRED"];
+  if (!item?.isOwner && netOf(item) <= 0 && !(Number(item?.injuryUnpaid) > 0) && !(Number(item?.injuryWageStop) > 0) && !(Number(item?.sickUnpaid) > 0) && !(Number(item?.unpaidLeaveCut) > 0) && !(Number(item?.detentionCut) > 0) && !(Number(item?.lateCut) > 0) && !(Number(item?.earlyLeaveCut) > 0)) return ["NET_REQUIRED"];
   if (!checkArticle90Gate(item).ok) return ["ARTICLE_93_EXCEEDED"];
   // Year-to-date when the run carries it: one month can never reach 720 hours, so
   // checking the month alone left the annual ceiling unenforceable.

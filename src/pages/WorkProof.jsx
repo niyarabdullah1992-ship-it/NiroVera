@@ -31,11 +31,8 @@ import ProofPeoplePanel from "@/components/proof/ProofPeoplePanel";
 import { getCompanyData } from "@/lib/store";
 import { toast } from "@/components/ui/use-toast";
 import {
-  BORDER,
   CARD,
   MUTED,
-  NAVY,
-  SURFACE,
   ui,
   field,
 } from "@/lib/platformStyles";
@@ -52,7 +49,7 @@ import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import ComposerModalShell from "@/components/shared/ComposerModalShell";
 import SectionBackLink from "@/components/shared/SectionBackLink";
 import OpsTaskSection from "@/components/tasks/detail/OpsTaskSection";
-import { DetailHero, Fact, HeroBar, HeroFigure, HeroPill, HeroPrintButton } from "@/components/tasks/detail/DetailKit";
+import { DetailHero, Fact, HeroFigure, HeroPill, HeroPrintButton } from "@/components/tasks/detail/DetailKit";
 import { printSheet } from "@/lib/printSheet";
 import { workProofSheet } from "@/lib/printRecords";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
@@ -901,7 +898,7 @@ export default function WorkProof() {
         title={editingProof ? (ar ? "تعديل الإثبات" : "Edit proof") : (ar ? "إثبات عمل جديد" : "New work proof")}
         hint={editingProof
           ? (remainingEditLabel(editingProof, ar) || (ar ? "مهلة يوم واحد من الرفع." : "One day from the original raise."))
-          : (ar ? "لجهة خارج الشركة — يصل للمشرف للاعتماد، ثم يُختم ويُرسل للجهة برابط تحقق." : "For an outside party — the supervisor approves, then it is sealed and sent with a verify link.")}
+          : (ar ? "لجهة خارج الشركة — يُختم عند إنهائه بصورة البعد، ويُرسل للجهة برابط تحقق. الالتقاط خارج النطاق يقف عند المشرف." : "For an outside party — sealed when it ends with the after photo, and sent with a verify link. A capture outside the boundary waits for the supervisor.")}
         onClose={cancelForm}
         onSubmit={editingProof ? saveEdit : raise}
         submitLabel={editingProof ? (ar ? "حفظ التعديل" : "Save edit") : (ar ? "افتح الإثبات الآن" : "Open the proof now")}

@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { openDueEmployerDutyNotices } from "@/lib/employerDutyNotices";
+import { runLocalEscalationSweep } from "@/lib/localOpsFallback";
 import { updateCompany, getCompanyData, getCompanyToken, openDueHeatBanNotices, openDueDisciplineDeadlineNotices, openDueNecessityNotices, openDueCompLeaveNotices, openDueReligionNotices, openDueGrievanceNotices, settleDueResignations } from "@/lib/store";
 import { base44 } from "@/api/base44Client";
 import { toast } from "@/components/ui/use-toast";
@@ -71,11 +72,15 @@ export default function Layout({ children }) {
       try { openDueReligionNotices(company.id); } catch { /* notices are best-effort */ }
       try { openDueGrievanceNotices(company.id); } catch { /* notices are best-effort */ }
       try { openDueEmployerDutyNotices(company.id); } catch { /* notices are best-effort */ }
+      // Proof Cycle step 4. The only live trigger was the cloud cron, so offline and preview had no
+      // auto-escalation at all — a burned quota just sat there. The sweep is idempotent per day
+      // (`lastAutoEscalationDay`), so running it on this pass is safe.
+      try { runLocalEscalationSweep(company.id, data); } catch { /* best-effort; runs again next tick */ }
     };
     tick();
     const timer = window.setInterval(tick, 60000);
     return () => window.clearInterval(timer);
-  }, [company?.id]);
+  }, [company?.id, data]);
 
   useEffect(() => {
     applyStoredPlatformTheme(company?.id);
@@ -557,7 +562,7 @@ export default function Layout({ children }) {
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <main className="nv-bg platform-main-scroll min-h-0 flex-1 overflow-y-auto p-5 pb-28 md:px-[26px] md:pb-12 md:pt-5" style={{ background: "var(--nv-page)" }}>
-          <div className="powercare-interior-page mx-auto w-full max-w-[1600px]">
+          <div className="powercare-interior-page mx-auto w-full max-w-[var(--nv-content-max)]">
             <AppTopBar
               pageTitle={pageTitle}
               isSyncing={isSyncing}

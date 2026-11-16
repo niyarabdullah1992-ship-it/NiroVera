@@ -36,9 +36,11 @@ export default function SubscriberRow({ row, ar, onChanged }) {
   const [editOpen, setEditOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
   const [daysOpen, setDaysOpen] = useState(false);
+  const [error, setError] = useState("");
   const fmt = (value) => (value ? new Date(value).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB") : "—");
   const act = async (action, reason = "", extra = {}) => {
     setBusy(true);
+    setError("");
     try {
       await base44.functions.invoke("subscriptionOverview", {
         action,
@@ -48,6 +50,12 @@ export default function SubscriberRow({ row, ar, onChanged }) {
         ...extra,
       });
       await onChanged();
+    } catch {
+      // كان try/finally بلا catch: يُرفض الطلب فلا يُقال شيء — ولا يُنادى onChanged
+      // فيبقى الصف على حاله، و OwnerConfirmActionDialog ينتظر وعداً مرفوضاً فيبقى
+      // مفتوحاً بلا خبر فيضغط المالك «تأكيد» مرة أخرى. وهذه أثقل إجراءات اللوحة:
+      // التجميد يقطع وصول كل مستخدمي الشركة، والإلغاء الفوري ينهي اشتراكها.
+      setError(ar ? "تعذر تنفيذ الإجراء — لم يتغيّر شيء." : "The action could not be applied — nothing changed.");
     } finally {
       setBusy(false);
     }
@@ -174,6 +182,9 @@ export default function SubscriberRow({ row, ar, onChanged }) {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+        {error ? (
+          <p style={{ margin: "4px 0 0", fontSize: 10, color: "var(--nv-bad-ink, #DC2626)" }}>{error}</p>
+        ) : null}
         <EditSubscriptionDialog open={editOpen} onOpenChange={setEditOpen} row={row} ar={ar} onSaved={onChanged} />
         <AddSubscriptionDaysDialog open={daysOpen} onOpenChange={setDaysOpen} ar={ar} onConfirm={(days) => act("addDays", "", { days })} />
         <OwnerConfirmActionDialog

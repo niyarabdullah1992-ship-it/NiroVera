@@ -22,7 +22,20 @@ export const AuthProvider = ({ children }) => {
     try {
       setIsLoadingPublicSettings(true);
       setAuthError(null);
-      
+
+      // No backend configured (local preview / frontend-only): the Base44 proxy
+      // is unset, so the request below only 404s and logs noise. Fall straight to
+      // the offline state instead of firing it.
+      if (!appParams.appBaseUrl) {
+        setAppPublicSettings(null);
+        setAuthError(null);
+        setIsAuthenticated(false);
+        setAuthChecked(true);
+        setIsLoadingPublicSettings(false);
+        setIsLoadingAuth(false);
+        return;
+      }
+
       // First, check app public settings (with token if available)
       // This will tell us if auth is required, user not registered, etc.
       const appClient = createAxiosClient({
@@ -49,18 +62,6 @@ export const AuthProvider = ({ children }) => {
         setIsLoadingPublicSettings(false);
       } catch (appError) {
         console.error('App state check failed:', appError);
-        
-        // Offline / frontend-only: Base44 proxy is often unset locally.
-        // Do not block the PowerCare company login or local preview.
-        if (!appParams.appBaseUrl) {
-          setAppPublicSettings(null);
-          setAuthError(null);
-          setIsAuthenticated(false);
-          setAuthChecked(true);
-          setIsLoadingPublicSettings(false);
-          setIsLoadingAuth(false);
-          return;
-        }
 
         // Handle app-level errors
         if (appError.status === 403 && appError.data?.extra_data?.reason) {

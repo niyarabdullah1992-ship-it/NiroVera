@@ -94,7 +94,7 @@ export function Nv7Band({ kicker, title, hint, num = "" }) {
           {rest ? <span>{rest}</span> : null}
         </span>
       ) : null}
-      <h1 className="nv-h" style={{ margin: 0, fontFamily: "var(--font-heading)", fontSize: 18, fontWeight: 700, color: "#fff", lineHeight: 1.4, letterSpacing: 0 }}>{title}</h1>
+      <h1 className="nv-h" style={{ margin: 0, fontFamily: "var(--font-heading)", fontSize: 20, fontWeight: 700, color: "#fff", lineHeight: 1.4, letterSpacing: 0 }}>{title}</h1>
       {hint ? (
         <div className="nv7-section-hint" style={{ margin: 0, fontSize: 12, lineHeight: 1.7, color: "#C5DBCD", maxWidth: 720 }}>{hint}</div>
       ) : null}

@@ -197,7 +197,10 @@ export async function executeAssistantAction(action, { data, company, currentUse
     const routes = {
       dashboard: "/app", executive: "/app/executive", tasks: "/app/tasks", attendance: "/app/attendance",
       reports: "/app", performance: "/app/performance", employees: "/app/employees",
-      stations: "/app/stations", hr: "/app/hr", payroll: "/app/payroll", complaints: "/app/complaints",
+      // «المحطات» انتقلت إلى لوحة «الفروع والمحطات» في الموارد البشرية (hrSection: orgRedirectTarget).
+      // والمفتاح بقي يشير إلى /app/stations وهو مسار لا وجود له: فيبلّغ المساعد «جارٍ فتح الصفحة»
+      // ثم يفتح تبويباً على «الصفحة غير موجودة».
+      stations: "/app/hr?tab=branches", hr: "/app/hr", payroll: "/app/payroll", complaints: "/app/complaints",
       files: "/app/files",
       signing: "/app/signing", verify: "/verify",
       safety: "/app/safety",

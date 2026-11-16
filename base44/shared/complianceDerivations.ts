@@ -879,6 +879,22 @@ export type WpsReadyLine = {
   allowances?: number;
 };
 
+/** Twin of src/lib/complianceDerivations.js wpsLineOutOfFile: no wage on the line and no GOSI number → not a Mudad row. */
+export function wpsLineOutOfFile(line: any): boolean {
+  const wage = Number(line?.base || 0) + Number(line?.allowances || 0);
+  const net = Number(line?.netPay || 0);
+  const gosi = String(line?.gosiNumber || "").trim();
+  return wage <= 0 && net <= 0 && !gosi;
+}
+
+/** Twin of splitWpsLines. */
+export function splitWpsLines<T>(lines: T[]): { inFile: T[]; outOfFile: T[] } {
+  const inFile: T[] = [];
+  const outOfFile: T[] = [];
+  for (const line of lines || []) (wpsLineOutOfFile(line) ? outOfFile : inFile).push(line);
+  return { inFile, outOfFile };
+}
+
 export function buildWpsFileRows(lines: WpsReadyLine[]) {
   return (lines || []).map((line) => {
     const expected = Math.max(0, Number(line.base || 0) + Number(line.allowances || 0));

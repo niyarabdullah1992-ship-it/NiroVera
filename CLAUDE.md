@@ -37,6 +37,14 @@ Apply these as product UX rules — calm, clear, connected:
 - Never commit secrets from `.env.local`.
 - Company data is one blob per `companyId`, written only through `updateCompany`. It is read in three named passes: `src/lib/data/companyMigrations.js` (one-time, versioned by `schemaVersion`, append-only), `src/lib/data/companyInvariants.js` (rules kept true on every read), `src/lib/preview/previewUpkeep.js` (demo seeds, preview only). A legacy-shape fix is a migration; a rule new records must also satisfy is an invariant; nothing demo-only goes anywhere else.
 
+### Sustainability guards (`npm test`)
+
+Five layers — UI → API → Business → Data → Database. These checks run under `npm test` (`scripts/test-*.mjs`); each records a baseline that only goes down, so new drift fails the build:
+
+- `test-layers.mjs` — layer boundaries. The UI never touches the database (`base44.entities`, `localStorage` for data/session): route reads/writes through `src/api/platformEntities.js` or the `src/lib/facts/` data layer, not `base44.entities`/`store.js`, from a component.
+- `test-twin-drift.mjs` — client (`src/lib/*.js`) ↔ server (`base44/shared/*.ts`) gate parity. A `check*Gate` that blocks in one twin must block in the other; a rule enforced only in the client is bypassable by a direct API call.
+- `test-server-bundles.mjs` — every `base44/**` file must `esbuild`-bundle clean. `jsconfig.json` type-checks `src` only, so this is the server's type-safety net (catches malformed edits and missing/renamed exports).
+
 ### Design — live platform only
 
 The visual source of truth is the running app (`/app` via `src/pages/` and `src/components/Layout.jsx`). Do not add parallel HTML mockups or restore deleted screens.

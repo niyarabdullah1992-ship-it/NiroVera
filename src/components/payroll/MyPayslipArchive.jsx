@@ -23,7 +23,7 @@ function monthName(month, ar) {
 
 function statusOf(run, line, ar) {
   if (line.paid) return ar ? "مدفوع" : "Paid";
-  if (run.status === "sent") return ar ? "أُرسل مدى" : "Mudad sent";
+  if (run.status === "sent") return ar ? "أُرسل إلى مدد" : "Mudad sent";
   if (run.status === "approved") return ar ? "معتمد" : "Approved";
   return ar ? "قيد التجهيز" : "In preparation";
 }
@@ -39,7 +39,7 @@ export function payslipArchiveItems(runs = [], employeeIds = [], ar = true) {
     .map(({ run, line }) => {
       const parts = lineComponents(line);
       const gross = parts.base + parts.allowances + parts.bonus + (Number(parts.overtimePay) || 0) + (Number(parts.refunds) || 0);
-      const withheld = (Number(parts.deductions) || 0) + (Number(parts.gosiEmployee) || 0) + (Number(parts.injuryCut) || 0) + (Number(parts.sickCut) || 0) + (Number(parts.unpaidLeaveCut) || 0) + (Number(parts.detentionCut) || 0) + (Number(parts.lateCut) || 0);
+      const withheld = (Number(parts.deductions) || 0) + (Number(parts.gosiEmployee) || 0) + (Number(parts.injuryCut) || 0) + (Number(parts.sickCut) || 0) + (Number(parts.unpaidLeaveCut) || 0) + (Number(parts.detentionCut) || 0) + (Number(parts.lateCut) || 0) + (Number(parts.earlyLeaveCut) || 0);
       const [y, m] = run.month.split("-").map(Number);
       const lastDay = new Date(y, m, 0).getDate();
       return {

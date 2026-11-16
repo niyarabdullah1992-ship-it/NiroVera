@@ -131,13 +131,26 @@ export function checkExitCloseoutGate({ serviceCertificateIssued, documentsRetur
  * AGREE to leave all or some of them out: `eosExcludeCommissions` (profile or contract) records
  * that agreement. `eosAllWageElements` keeps its old meaning for bonus/grants agreed into the base.
  */
+/**
+ * Monthly allowances on a file or exit case: the case's own figure when it carries one, else the named
+ * housing + transport + other the wage card writes, else the legacy lump `allowances`. Reading only the
+ * lump settled a worker with housing/transport on the file on his base wage alone (Arts. 77, 84, 111).
+ */
+export function exitAllowances(caseRow = {}, profile = caseRow?.profile || {}) {
+  const n = (v) => Math.max(0, Number(v) || 0);
+  const own = n(caseRow?.allowances);
+  if (own > 0) return own;
+  const named = n(profile?.housingAllowance) + n(profile?.transportAllowance) + n(profile?.otherAllowances);
+  return named > 0 ? named : n(profile?.allowances);
+}
+
 export function eosWageBase(caseRow = {}) {
   const profile = caseRow.profile || {};
   const contract = profile.contract || {};
   const excluded = isTruthy(profile.eosExcludeCommissions ?? contract.eosExcludeCommissions ?? caseRow.eosExcludeCommissions);
   const bonusAgreed = isTruthy(profile.eosAllWageElements || caseRow.eosAllWageElements);
   const base = Math.max(0, Number(caseRow.base ?? profile.base) || 0);
-  const allowances = Math.max(0, Number(caseRow.allowances ?? profile.allowances) || 0);
+  const allowances = exitAllowances(caseRow, profile);
   const bonus = Math.max(0, Number(caseRow.bonus ?? profile.bonus) || 0);
   const commission = Math.max(0, Number(caseRow.commissionAmount ?? profile.commissionAmount) || 0)
     + Math.max(0, Number(caseRow.commission ?? profile.commission) || 0);

@@ -26,4 +26,8 @@ assert.equal(ruled.steps[0].when, "قرّر", "the decider reads «قرّر», n
 const own = board.cards.find((c) => c.item.id === "p2");
 assert.equal(own.steps[0].when, "تخطّاه — صاحب الصوت");
 assert.ok(!own.tier.includes("رُفع"), "a skipped first level is not an escalation");
+// a vacant seat is skipped: the voice starts at the first filled tier, not 48 hours with nobody
+const vacantFirst = [{ id: "vacant_0", vacant: true, handlerIds: [] }, { id: "owner", handlerIds: ["boss"] }];
+assert.equal(firstReviewLevel(vacantFirst, "w1", ""), 1, "vacant branch-manager seat → the owner");
+assert.equal(firstReviewLevel(vacantFirst, "boss", ""), 1, "nothing above → stays at the last tier");
 console.log("voice board states OK");

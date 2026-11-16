@@ -753,6 +753,26 @@ export function checkGosiFileGate(input) {
   return { ok: true };
 }
 
+/**
+ * A payroll line with no wage on it and no GOSI subscriber number is not a Mudad row: Mudad matches the file
+ * against the workers registered with GOSI, so an owner who draws no salary is outside it — he must not
+ * block every other worker's transfer. Anyone with a wage, or a GOSI number, stays in and is checked.
+ */
+export function wpsLineOutOfFile(line) {
+  const wage = Number(line?.base || 0) + Number(line?.allowances || 0);
+  const net = Number(line?.netPay || 0);
+  const gosi = String(line?.gosiNumber || "").trim();
+  return wage <= 0 && net <= 0 && !gosi;
+}
+
+/** { inFile, outOfFile } — the rows Mudad reads, and the people left out with that reason. */
+export function splitWpsLines(lines) {
+  const inFile = [];
+  const outOfFile = [];
+  for (const line of lines || []) (wpsLineOutOfFile(line) ? outOfFile : inFile).push(line);
+  return { inFile, outOfFile };
+}
+
 export function buildWpsFileRows(lines) {
   return (lines || []).map((line) => {
     const expected = Math.max(0, Number(line.base || 0) + Number(line.allowances || 0));

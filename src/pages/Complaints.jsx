@@ -23,7 +23,7 @@ import {
   deriveEscalationChain,
 } from "@/lib/complaintDerivations";
 import { getRoleLabel } from "@/lib/roles";
-import { voicePublicId,
+import {
   ABUSE_VOICE_CHANNEL,
   channelOf,
   collectVoiceItems,
@@ -31,7 +31,6 @@ import { voicePublicId,
   voiceDecisionNoticeText,
 } from "@/lib/voiceBoard";
 import VoiceArchiveBoard from "@/components/complaints/VoiceArchiveBoard";
-import VoiceAuditTrail from "@/components/complaints/VoiceAuditTrail";
 import VoiceChainBoard from "@/components/complaints/VoiceChainBoard";
 import VoiceGuaranteeList from "@/components/complaints/VoiceGuaranteeList";
 import VoiceLawPanel from "@/components/complaints/VoiceLawPanel";
@@ -41,7 +40,6 @@ import VoiceQueueList from "@/components/complaints/VoiceQueueList";
 import VoiceDecisionCard from "@/components/complaints/VoiceDecisionCard";
 import TwoPaneWorkspace, { ListStack } from "@/components/shared/TwoPaneWorkspace";
 import VoiceRaiseCard from "@/components/complaints/VoiceRaiseCard";
-import VoiceRelatedLinks from "@/components/complaints/VoiceRelatedLinks";
 import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
 import StatusFilterPills from "@/components/shared/StatusFilterPills";
 import AbuseCaseRaise from "@/components/complaints/AbuseCaseRaise";
@@ -164,7 +162,7 @@ export default function Complaints() {
       chain,
       chainFor,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [allItems, queueItems, employees, stations, ar, canManage, currentUser?.id, currentUser?.stationId, chain, data?.branchEscalationChains, data?.orgTree, data?.stations],
   );
   const mineSettled = useMemo(
@@ -311,8 +309,13 @@ export default function Complaints() {
         }
         return;
       }
-      if (managerId && String(managerId) !== String(currentUser?.id)) {
-        addNotification(company.id, managerId, voiceDecisionNoticeText(notice, lang), { voiceNotice: notice });
+      // whoever holds the level it starts at — the station's manager field is empty when the seat is
+      // vacant, and then nobody was told
+      const startHandlers = (chain[startLevel]?.handlerIds || []).map(String);
+      const receivers = startHandlers.length ? startHandlers : (managerId ? [String(managerId)] : []);
+      for (const id of new Set(receivers)) {
+        if (id === String(currentUser?.id)) continue;
+        addNotification(company.id, id, voiceDecisionNoticeText(notice, lang), { voiceNotice: notice, to: "/app/complaints?tab=manage" });
       }
     };
     const voiceFields = {

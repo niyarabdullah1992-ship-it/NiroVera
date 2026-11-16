@@ -3,6 +3,7 @@ import { checkSafetyDecisionGate, safetyReporterNotice } from "@/lib/safetyBranc
 import { checkHazardCloseGate } from "@/lib/hseDerivations";
 import { buildSafetyReportCard } from "@/lib/safetyReportCard";
 import { readSafety } from "@/lib/facts";
+import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import {
   checkDrillGate,
   checkInspectionGate,
@@ -54,8 +55,9 @@ export function updateSafetyRecord(companyId, stationId, updates, actorName = ""
       rec.approvedBy = null;
       rec.approvedAt = null;
     }
-    const inspectionEnd = rec.lastInspection ? new Date(rec.lastInspection).setHours(23, 59, 59, 999) : 0;
-    const incidentUnreviewed = rec.lastIncidentAt && inspectionEnd < new Date(rec.lastIncidentAt).getTime();
+    // يوم مقابل يوم بتقويم الرياض — لا لحظة نهاية يوم بتوقيت جهاز من يفتح الشاشة.
+    const incidentUnreviewed = !!rec.lastIncidentAt
+      && (!rec.lastInspection || toRiyadhDateKey(rec.lastIncidentAt) > toRiyadhDateKey(rec.lastInspection));
     if (rec.level === "green" && ((rec.hazards || []).length || incidentUnreviewed)) rec.level = "amber";
   });
 }
@@ -279,6 +281,17 @@ export function decideSafetyCard(companyId, stationId, incidentId, decision = {}
   if (reporterId && reporterId !== String(actor.id || "")) {
     const text = safetyReporterNotice(action, saved, { lang, assigneeName: saved.assignedTo?.name || "", level: saved.escalationLevel || 0 });
     if (text) addNotification(companyId, reporterId, text, { to: "/app/safety", key: `safety-${saved.id}-${action}-${now}` });
+  }
+  // the one handed the card has to know it is theirs — only the reporter was told, so the assignee
+  // found out only by opening the safety tab
+  const assigneeId = action === "assign" ? String(saved.assignedTo?.id || "") : "";
+  if (assigneeId && assigneeId !== String(actor.id || "")) {
+    const code = saved.card?.code || saved.id;
+    const what = String(saved.card?.what || saved.description || "").trim();
+    const text = lang === "en"
+      ? `Safety report ${code} was assigned to you to treat${what ? ` — ${what}` : ""}.`
+      : `أُسند إليك بلاغ السلامة ${code} للمعالجة${what ? ` — ${what}` : ""}.`;
+    addNotification(companyId, assigneeId, text, { to: "/app/safety", key: `safety-${saved.id}-assignee-${now}` });
   }
   return { ok: true, item: saved };
 }

@@ -3,6 +3,12 @@ import { appParams } from '@/lib/app-params';
 
 const { appId, token, functionsVersion, appBaseUrl } = appParams;
 
+// No backend configured (local preview / frontend-only): the SDK's analytics
+// module otherwise fires an init event and POSTs /api/apps/null/analytics/track/batch
+// on every page, which only 404s. Disable it when there is nowhere to send it;
+// a configured backend keeps analytics on as before.
+const backendConfigured = Boolean(appBaseUrl && String(appId || "").trim());
+
 //Create a client with authentication required
 export const base44 = createClient({
   appId,
@@ -10,7 +16,8 @@ export const base44 = createClient({
   functionsVersion,
   serverUrl: '',
   requiresAuth: false,
-  appBaseUrl
+  appBaseUrl,
+  analytics: { enabled: backendConfigured }
 });
 
 // Security: these backend functions authorize every call server-side using the

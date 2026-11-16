@@ -800,7 +800,15 @@ export function checkDisciplineRepeatGate(caseRow, { cases = [], today } = {}) {
 
 export function employeeContractWage(employee) {
   const profile = employee?.profile || {};
-  return (Number(profile.baseSalary) || 0) + (Number(profile.allowances) || 0);
+  // The same wage the payroll line carries (employeeWageSplit: base + named allowances, else the lump, + extras).
+  // Reading only `profile.allowances` missed housing/transport, so a fine was posted as 10 while payroll cut 13.5.
+  // Kept inline: employeeFileView reaches back into this module, and the cycle broke its load order.
+  const n = (v) => Math.max(0, Number(v) || 0);
+  const named = n(profile.housingAllowance) + n(profile.transportAllowance) + n(profile.otherAllowances);
+  const allowances = named > 0 ? named : n(profile.allowances);
+  const extras = n(profile.hazardAllowance) + n(profile.livingAllowance) + n(profile.commissionAmount)
+    + n(profile.remoteAreaAllowance) + n(profile.medicalDistanceAllowance) + n(profile.mealAllowance);
+  return n(profile.baseSalary) + allowances + extras;
 }
 
 /** المادة 73 — سجل الغرامات/الجزاءات: الاسم والأجر والمقدار والسبب والتاريخ. */

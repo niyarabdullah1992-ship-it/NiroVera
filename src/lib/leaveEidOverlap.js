@@ -53,6 +53,13 @@ export function weeklyRestDayCountOf(company, employee) {
   const fromFile = countOneOrTwo(employee?.profile?.weeklyRestDayCount ?? employee?.weeklyRestDayCount);
   if (fromFile) return fromFile;
   const fromCompany = countOneOrTwo(postingOf(company).weeklyRestDayCount ?? postingOf(company).companyRestDays);
+  // يومان، كما في التوأمين على الخادم: laborHoursPolicy.ts (مسار الساعات) و
+  // leaveDerivations.ts (مسار الإجازة، وفيه `countRaw === 1 ? 1 : 2` صراحةً).
+  // جُرِّب هنا يومٌ واحد استنادًا إلى أن المادة 104 تمنح يوماً واحداً، فكسر ذلك احتساب
+  // المادة 109: صار السبت يُخصم من رصيد الـ21 يوماً (22 يوماً بدل 18 لنفس المدة)، وخالف
+  // الخادم في المسارين. والافتراض الأسلم للموظف هو يومان ما لم تسجّل الشركة يوماً واحداً.
+  // يبقى سؤال الأجر الإضافي على يوم راحة مفترض لم يسجّله أحد قائماً — وهو قرار يمسّ
+  // الأجور، فلا يُحسم من جهة واحدة ولا في العميل وحده.
   return fromCompany || 2;
 }
 
@@ -85,11 +92,22 @@ function weekKeysAround(dateKey) {
 }
 
 /** Days of this person's week that hold work: a rostered shift (any branch) or a punched check-in. */
+/** An approved leave day is consumed from the balance — it is not also a day worked. */
+function onApprovedLeaveDay(employee, key) {
+  return (employee?.leaveRequests || []).some((row) => {
+    if (String(row?.status || "") !== "approved") return false;
+    const from = String(row?.startDate || row?.date || "").slice(0, 10);
+    const to = String(row?.endDate || row?.startDate || row?.date || "").slice(0, 10);
+    if (!from) return false;
+    return key >= from && key <= (to || from);
+  });
+}
+
 export function weekWorkedKeys(company, employee, dateKey) {
   const id = employee?.id;
   if (id == null) return [];
   const keys = weekKeysAround(dateKey);
-  return keys.filter((key) => (
+  return keys.filter((key) => !onApprovedLeaveDay(employee, key) && (
     (company?.schedules || []).some((schedule) => employeeAssignedOn(schedule, id, key))
     || (company?.personalAttendance || []).some((row) => (
       String(row?.employeeId ?? row?.employee_id) === String(id)
@@ -143,6 +161,9 @@ export function rosterRestDows(company, employee, dateKey) {
     const keys = weekKeysAround(`${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`);
     const on = keys.map((key) => (company.schedules || []).some((schedule) => employeeAssignedOn(schedule, id, key)));
     if (!on.some(Boolean)) continue;
+    // A week with more empty days than his rest count is not his rest pattern — a roster begun mid-week,
+    // a leave, a hire: read as rest it named every earlier weekday «rest».
+    if (on.filter((assigned) => !assigned).length > weeklyRestDayCountOf(company, employee)) continue;
     weeks += 1;
     on.forEach((assigned, dow) => { if (!assigned) tally[dow] += 1; });
   }
@@ -211,6 +232,25 @@ function nearbyDateKey(dateKey, delta) {
   return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
 }
 
+/** The Sunday that opens this date's roster week (publishedWeeks keys). */
+function weekStartKey(dateKey) {
+  const [y, m, d] = String(dateKey || "").split("-").map(Number);
+  if (!y) return "";
+  const at = new Date(y, m - 1, d);
+  at.setDate(at.getDate() - at.getDay());
+  return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
+}
+
+/** True only when the schedule records publications and this date's week is not among them. */
+function weekUnpublished(schedule, dateKey) {
+  const weeks = schedule?.publishedWeeks;
+  if (!weeks || typeof weeks !== "object" || !Object.keys(weeks).length) return false;
+  if (weeks[weekStartKey(dateKey)]) return false;
+  // a painted day of an otherwise unpublished week still counts as drawn
+  const dated = schedule?.assignments?.[dateKey];
+  return !(dated && typeof dated === "object" && !Array.isArray(dated) && Object.values(dated).some((ids) => Array.isArray(ids) && ids.length));
+}
+
 function employeeHasRosterNearby(schedule, employeeId, dateKey) {
   for (let delta = -7; delta <= 7; delta += 1) {
     if (employeeAssignedOn(schedule, employeeId, nearbyDateKey(dateKey, delta))) return true;
@@ -227,6 +267,9 @@ export function employeeRosterDayKind(company, employee, dateKey) {
   const schedule = scheduleForEmployee(company, employee);
   if (!schedule || employee?.id == null) return "unknown";
   if (employeeAssignedOn(schedule, employee.id, dateKey)) return "duty";
+  // A week not published yet says nothing about rest: a leave approved before its week was drawn read
+  // Monday and Tuesday as rest cells, so two work days left the balance whole.
+  if (weekUnpublished(schedule, dateKey)) return "unknown";
   if (employeeHasRosterNearby(schedule, employee.id, dateKey)) return "rest";
   return "unknown";
 }
@@ -415,4 +458,44 @@ export function deriveEidOverlap({ start, end, type, company, calendar, employee
       ? chargeableAnnualWorkDays(from, to, calendar, company, employee)
       : chargeableSpanExcludingHolidays(from, to, calendar),
   };
+}
+
+/**
+ * Repair for annual leaves locked before the unpublished-week rule: a day frozen as rest («company» /
+ * «cycle») while its roster week was not yet published was a guess from an empty week, not his rest.
+ * Each such day is re-read as approval would read it today — his weekly off day stays rest, any other
+ * day is a work day taken from the balance (Art. 109). Days of weeks published before the lock, and
+ * holidays, keep their frozen kind. Returns the number of leaves changed.
+ */
+export function repairGuessedRestLocks(company) {
+  let changed = 0;
+  for (const employee of company?.employees || []) {
+    const schedule = scheduleForEmployee(company, employee);
+    const weeks = schedule?.publishedWeeks;
+    if (!weeks || typeof weeks !== "object" || !Object.keys(weeks).length) continue;
+    const statutory = weeklyRestDowOf(company, employee);
+    for (const leave of employee.leaveRequests || []) {
+      if (String(leave?.type || "").toLowerCase() !== "annual") continue;
+      if (!["approved", "pending"].includes(String(leave.status || ""))) continue;
+      const locked = leave.lockedDays && typeof leave.lockedDays === "object" ? leave.lockedDays : null;
+      if (!locked) continue;
+      const lockedAt = String(leave.lockedAt || leave.approvedAt || "");
+      let touched = false;
+      for (const [key, kind] of Object.entries(locked)) {
+        if (kind !== "company" && kind !== "cycle") continue;
+        const published = weeks[weekStartKey(key)];
+        const publishedAt = String(published?.at || "");
+        if (published && (!lockedAt || !publishedAt || publishedAt <= lockedAt)) continue;
+        const [y, m, d] = key.split("-").map(Number);
+        const dow = new Date(y, m - 1, d).getDay();
+        const next = isWeeklyOffDay(key, company, employee) ? (dow === statutory ? "law" : "company") : "charge";
+        if (next !== kind) { locked[key] = next; touched = true; }
+      }
+      if (!touched) continue;
+      leave.days = Object.values(locked).filter((k) => k === "charge" || k === "dutyOnRest").length;
+      leave.lockRepairedAt = new Date().toISOString();
+      changed += 1;
+    }
+  }
+  return changed;
 }

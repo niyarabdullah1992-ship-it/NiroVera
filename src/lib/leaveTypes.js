@@ -643,7 +643,13 @@ export function annualBalanceBuckets(profile, requests, onDate, company, employe
     windows.forEach((win, idx) => {
       const span = overlapRange(start, end, win.start, win.end);
       if (!span) return;
-      chunks.push({ start: span.start, idx, days: chargeableAnnualDays(span.start, span.end, undefined, company, emp) });
+      // The days frozen at approval decide (as usedLeaveDays reads them) — re-reading today's roster counted
+      // the rest days of an approved leave once a later week was published over them.
+      const locked = r.lockedDays && typeof r.lockedDays === "object" && Object.keys(r.lockedDays).length ? r.lockedDays : null;
+      const days = locked
+        ? Object.entries(locked).filter(([day, kind]) => day >= span.start && day <= span.end && (kind === "charge" || kind === "dutyOnRest")).length
+        : chargeableAnnualDays(span.start, span.end, undefined, company, emp);
+      chunks.push({ start: span.start, idx, days });
     });
   }
   chunks.sort((a, b) => a.start.localeCompare(b.start));

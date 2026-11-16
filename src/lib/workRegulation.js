@@ -424,8 +424,9 @@ export function newClauseId() {
 
 /**
  * The lateness clauses of the model regulation (time 1–7) by actual minutes late and whether other
- * workers were held up. «Actual» is the punch's recorded minutes plus the establishment's grace —
- * the regulation counts from the start of work, not from the end of a house grace.
+ * workers were held up. «Actual» is the punch's recorded minutes: past the grace the punch already
+ * counts every minute from the start of work (laborRules.lateBeyondGrace), and inside it nothing is
+ * recorded — adding the grace again read a 237-minute punch as 247.
  */
 const LATE_BANDS = [
   { upTo: 15, alone: "late15", others: "time_2" },
@@ -453,7 +454,7 @@ export function lateClauseHint({ regulation, attendance = [], employeeId, dateKe
   const row = (attendance || []).find((r) => String(r?.employeeId || r?.employee_id || "") === id && String(r?.date || r?.attendanceDate || r?.day || "").slice(0, 10) === day);
   const recorded = Math.max(0, Math.round(Number(row?.lateMinutes) || 0));
   if (!row || !recorded) return null;
-  const actual = recorded + Math.max(0, Number(graceMinutes) || 0);
+  const actual = recorded;
   const suggestedId = lateClauseFor(actual, { heldUpOthers });
   const clause = (regulation?.clauses || []).find((c) => c.id === suggestedId) || null;
   const chosenIsLate = LATE_CLAUSE_IDS.has(chosenClauseId);

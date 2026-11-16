@@ -31,10 +31,15 @@ function CertDialog({ lang, title, intro, details, href, view, note, children })
   );
 }
 
-function Row({ icon, title, caption, value }) {
+// forwardRef: CertDialog mounts this via Radix <DialogTrigger asChild>, which
+// clones the child and hands it a ref plus the open handler. A plain function
+// component drops both (ref warning + dead trigger); forward them to the button.
+const Row = React.forwardRef(function Row({ icon, title, caption, value, ...props }, ref) {
   return (
     <button
+      ref={ref}
       type="button"
+      {...props}
       style={{
         width: "100%",
         height: "100%",
@@ -75,7 +80,7 @@ function Row({ icon, title, caption, value }) {
       </span>
     </button>
   );
-}
+});
 
 export default function LegalCertificatesStrip({ lang }) {
   const ip = ipCertificateTranslations[lang] || ipCertificateTranslations.en;

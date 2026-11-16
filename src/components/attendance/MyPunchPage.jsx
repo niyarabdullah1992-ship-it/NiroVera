@@ -11,11 +11,10 @@ import { formatShiftHm } from "@/lib/shiftDerivations";
 import CheckInOutCard, { breakBand, workedClock } from "@/components/attendance/CheckInOutCard";
 import { resolveDayBreaks } from "@/lib/actualDuty";
 import { AttendanceProofChain, punchChainFromAttendance } from "@/components/attendance/AttendanceTrustChrome";
-import { DutyBoard, DutyHeadline, DutyNumber, DutyTile, DutyTiles } from "@/components/schedules/DutyTiles";
+import { DutyBoard } from "@/components/schedules/DutyTiles";
 import DutySide, { dutyHeatCopy } from "@/components/schedules/DutySide";
 import useMyDutyWeek, { findNextShift, inLabel } from "@/components/schedules/myDutyWeek";
 import { mono, quietAction, slab } from "@/components/schedules/scheduleChrome";
-import { dutyLabel, dutyTone } from "@/components/schedules/dutyStatus";
 import AttendanceMinistryPanel from "@/components/attendance/AttendanceMinistryPanel";
 
 /**

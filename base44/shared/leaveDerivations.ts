@@ -12,7 +12,7 @@ import { checkExamStudyConsentGate, EXAM_LEAVE_TRACK_ANNUAL_OR_UNPAID, EXAM_LEAV
 export const LEAVE_THRESHOLD_DAYS = ruleValue("leave.attachment.thresholdDays");
 
 export const CHAPTER_LEAVE_TYPES = [
-  "annual", "grant", "sick", "maternity", "maternity_extend", "maternity_companion", "iddah", "paternity", "marriage", "bereavement", "bereavement_sibling", "hajj", "eid", "exam", "emergency", "comp", "job_search", "dialysis", "therapy", "unpaid",
+  "annual", "grant", "sick", "maternity", "maternity_extend", "maternity_companion", "iddah", "paternity", "marriage", "bereavement", "bereavement_sibling", "hajj", "eid", "exam", "work_injury", "emergency", "comp", "job_search", "dialysis", "therapy", "unpaid",
 ] as const;
 
 export const LEAVE_TYPES = [
@@ -30,6 +30,11 @@ export const LEAVE_TYPES = [
   { key: "hajj", total: ruleValue("leave.hajj.days"), article: citeLeaveType("hajj")?.article ?? null, ar: "حج", en: "Hajj" },
   { key: "eid", total: null, article: citeLeaveType("eid")?.article ?? null, ar: "اليوم الوطني · يوم التأسيس · العيد", en: "National Day · Founding Day · Eid" },
   { key: "exam", total: null, article: citeLeaveType("exam")?.article ?? null, ar: "امتحان", en: "Exam", requiresFile: true },
+  // كان هذا الصف غائبًا عن الخادم وحده، والدالتان القارئتان له متطابقتان على الجهتين:
+  // leaveNeedsAttachment كانت تسقط إلى عتبة الأيام (5)، فإصابة عمل من يوم إلى خمسة أيام
+  // تُحفظ بلا تقرير طبي رغم أن العميل يطلبه دائمًا؛ و leaveNeedsArticle118Ack كانت تعيد
+  // false فلا يُطلب إقرار المادة 118. الصف منقول حرفيًا عن src/lib/leaveDerivations.js.
+  { key: "work_injury", total: null, article: null, ar: "إصابة عمل", en: "Work injury", requiresFile: true },
   { key: "emergency", total: ruleValue("leave.emergency.days"), article: citeLeaveType("emergency")?.article ?? null, ar: "اضطرارية", en: "Emergency" },
   { key: "comp", total: null, article: "107", ar: "تعويضية (بدل إضافي)", en: "Compensatory (for overtime)" },
   { key: "job_search", total: null, article: "78", ar: "يوم بحث عن عمل", en: "Job-search day" },
@@ -989,7 +994,12 @@ export function annualBalanceBuckets(profile: any, requests: any[] | undefined, 
       const a0 = start > win.start ? start : win.start;
       const a1 = end < win.end ? end : win.end;
       if (a0 > a1) return;
-      chunks.push({ start: a0, idx, days: chargeableAnnualDays(a0, a1, undefined, company, emp) });
+      // Twin of the client: the days frozen at approval decide, not today's roster.
+      const locked = r.lockedDays && typeof r.lockedDays === "object" && Object.keys(r.lockedDays).length ? (r.lockedDays as Record<string, string>) : null;
+      const days = locked
+        ? Object.entries(locked).filter(([day, kind]) => day >= a0 && day <= a1 && (kind === "charge" || kind === "dutyOnRest")).length
+        : chargeableAnnualDays(a0, a1, undefined, company, emp);
+      chunks.push({ start: a0, idx, days });
     });
   }
   chunks.sort((a, b) => a.start.localeCompare(b.start));
@@ -1172,6 +1182,19 @@ export function checkLeaveSelfRaiseGate(request: LeaveRequestLike | null | undef
   const subjectId = String(extras.employee?.id || extras.employeeId || request?.employeeId || "").trim();
   if (!actorId || !subjectId) return { ok: true as const };
   if (actorId === subjectId) return { ok: true as const };
+  // Twin of leaveDerivations.js: management may RECORD leave on the worker's behalf when it carries
+  // the supporting paper (a sick report, the event document). Without this branch the same request
+  // was accepted by the client and refused by the server — one rule, two answers.
+  const papers = (Array.isArray(request?.files) ? request.files : []).filter(Boolean);
+  if (extras.employerRecorded === true && papers.length) return { ok: true as const, onBehalf: true as const };
+  if (extras.employerRecorded === true) {
+    return {
+      ok: false as const,
+      error: "LEAVE_ON_BEHALF_PAPER",
+      reason: "تسجيل الإجازة نيابة عن الموظف يحتاج المستند المؤيد (تقرير أو ورقة الواقعة).",
+      reasonEn: "Recording leave on a worker's behalf needs the supporting paper (report or event document).",
+    };
+  }
   return {
     ok: false as const,
     error: "LEAVE_EMPLOYEE_ONLY",
@@ -1670,6 +1693,19 @@ export function checkApproveLeaveGate(
           cite,
           remaining,
           total,
+          days,
+        };
+      }
+      // Twin of the client: days of the running year are an advance (Art. 109, model regulation Art. 33).
+      const dueNow = round2(split.carryLeft + grants);
+      if (request.advanceLeave !== true && days > dueNow) {
+        return {
+          ok: false as const,
+          error: "ANNUAL_ADVANCE_REQUIRED",
+          reason: `موقوف — إجازة هذه السنة تُكتسب بمرور السنة: المستحق الآن ${dueNow} يوماً من سنوات مكتملة، وما زاد يُطلب مقدماً بنسبة ما قضيته وبموافقة المنشأة (المادة 109، النموذج الموحد م33).`,
+          reasonEn: `Blocked — this year's leave is earned as the year runs: ${dueNow} days are due now from completed years; the rest is an advance, pro-rata and with the company's consent (Art. 109, Model regulation Art. 33).`,
+          cite,
+          dueNow,
           days,
         };
       }

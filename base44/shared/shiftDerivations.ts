@@ -368,7 +368,8 @@ export function resolveFlexDayBreaks({ shift, breaks, checkIn, checkOut, now, on
   let outM = lift(riyadhClockOf(checkOut));
   if (inM != null && outM != null && outM <= inM) outM += 1440;
   let nowM = outM != null ? outM : lift(riyadhClockOf(now));
-  if (inM != null && nowM != null && nowM < inM) nowM += 1440;
+  // a clock a tick behind the punch is the punch minute; only a real midnight crossing (> half a day) wraps
+  if (inM != null && nowM != null && nowM < inM) nowM = inM - nowM < 720 ? inM : nowM + 1440;
   out.windowState = nowM == null || flex.fromMin == null ? "" : nowM < flex.fromMin ? "before" : nowM < flex.toMin ? "open" : "closed";
   out.forDuty = [];
   out.forConsec = [];

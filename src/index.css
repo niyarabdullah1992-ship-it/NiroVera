@@ -93,6 +93,9 @@
     --nv-paper: 0 1px 2px var(--nv-shadow2);
     --nv-radius: 12px;
     --nv-radius-control: 8px;
+    /* One content width for the /app page: the top bar and every section shell share it,
+       so their edges line up on any screen. */
+    --nv-content-max: 1360px;
     --nv-ok-ink: #2F6B43;
     --nv-ok-soft: #E6F2EA;
     --nv-ok-line: #C5CEC9;
@@ -4544,3 +4547,268 @@ html:not(.dark) .nv-mark-on-dark { display: none !important; }
   [data-sec-strip] > nav > button { flex: none; min-height: 38px; scroll-snap-align: start; }
   [data-sec-strip] > nav > span { display: none; }
 }
+
+/* ───────────────────────── Design system v8 — layout & type ─────────────────────────
+   One content width: every section shell fills the page width the top bar uses, so the
+   top bar, the section band and the cards share one pair of edges. */
+.powercare-interior-page [data-nv-shell] {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+/* Legibility floor. Pages set micro sizes inline (10–12px, eight variants); Arabic below
+   12px loses its dots and marks. Fold them into a short scale — 11.5 for badges and meta,
+   12.5 for secondary text — without touching a thousand style objects. */
+main.platform-main-scroll [style*="font-size: 10px"],
+main.platform-main-scroll [style*="font-size: 10.5px"] { font-size: 11.5px !important; }
+main.platform-main-scroll [style*="font-size: 11px"],
+main.platform-main-scroll [style*="font-size: 11.5px"],
+main.platform-main-scroll [style*="font-size: 12px"] { font-size: 12.5px !important; }
+
+/* A time, date, amount or ID never breaks across lines ("07:00–" / "16:00"). These are the
+   left-to-right monospace runs inside Arabic text. */
+main.platform-main-scroll [dir="ltr"][style*="Mono"],
+main.platform-main-scroll [dir="ltr"][style*="tabular-nums"] { white-space: nowrap; }
+
+/* Two corner radii: 8 for controls and chips, 12 for cards. The stray 5/6/7 and 10 made
+   neighbouring cards and buttons look slightly off from each other. */
+main.platform-main-scroll [style*="border-radius: 5px"],
+main.platform-main-scroll [style*="border-radius: 6px"],
+main.platform-main-scroll [style*="border-radius: 7px"] { border-radius: 8px !important; }
+main.platform-main-scroll [style*="border-radius: 10px"] { border-radius: 12px !important; }
+
+/* Figure rows («سطر لا بطاقة») were designed to sit on white, but they land directly on the
+   grey page under the section band (attendance, voice, payroll). Give them the same quiet
+   white strip as the section strip — hairline, no shadow — so figures read as one surface. */
+main.platform-main-scroll .nv-figrow {
+  background: var(--nv-card);
+  border: 1px solid var(--nv-line);
+  border-radius: 12px;
+  padding: 12px 18px;
+}
+/* …but never a box inside a box. */
+main.platform-main-scroll [data-sec-strip] .nv-figrow,
+main.platform-main-scroll [data-nv="stamp"] .nv-figrow,
+main.platform-main-scroll .nv-figrow .nv-figrow { background: transparent; border: 0; padding: 2px 0; border-radius: 0; }
+
+/* ───────────────────────── Design system v9 — identity & depth ─────────────────────────
+   1) The rail carries the brand: deep NiroVera green, white type, one gold mark on the
+      current page. The rail's inline styles read tokens, so re-scoping the tokens here
+      recolours every row, label, tab and divider without touching the component. */
+.powercare-shell > aside.nv-suite-rail,
+.nv-suite-rail {
+  --nv-card: #0B3D27;
+  --nv-line: rgba(255, 255, 255, 0.10);
+  --nv-ink: #EAF3EE;
+  --nv-ink3: #9FC2AE;
+  --nv-ok-ink: #FFFFFF;
+  --nv-bad-ink: #F2B8C1;
+  --nv-accent-soft: rgba(255, 255, 255, 0.10);
+  --nv-hover: rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, #0B3D27 0%, #0A3522 100%) !important;
+  border-inline-start: 0 !important;
+  color: #EAF3EE;
+  box-shadow: 0 0 0 1px rgba(6, 40, 25, 0.6), 0 8px 30px rgba(6, 40, 25, 0.18);
+}
+html.dark .powercare-shell > aside.nv-suite-rail,
+html.dark .nv-suite-rail {
+  --nv-card: #0C1F16;
+  background: linear-gradient(180deg, #0D2219 0%, #0A1A13 100%) !important;
+  box-shadow: 0 0 0 1px #1F3328;
+}
+/* Light logo on the green rail in both themes. */
+.nv-suite-rail .nv-rail-brand .nv-mark-on-light { display: none !important; }
+html .nv-suite-rail .nv-rail-brand .nv-mark-on-dark { display: block !important; }
+.nv-suite-rail .nv-rail-cluster-name { color: #C8A45A !important; letter-spacing: 0 !important; font-size: 11px !important; }
+.nv-suite-rail .nv-rail-cluster { border-bottom-color: transparent !important; }
+.nv-suite-rail .nv-rail-row { height: 34px !important; font-size: 13px !important; }
+.nv-suite-rail .nv-rail-row .nv-rail-name { font-size: 13px !important; }
+.nv-suite-rail .nv-rail-row svg { opacity: .85; }
+.nv-suite-rail a.nv-rail-row[aria-current="page"] {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #FFFFFF !important;
+}
+.nv-suite-rail a.nv-rail-row[aria-current="page"] svg { opacity: 1; color: #E2C57E; }
+.nv-suite-rail a.nv-rail-row[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 3px;
+  background: #C8A45A;
+}
+.nv-suite-rail .nv-rail-row span[dir="ltr"] { border-radius: 999px !important; font-weight: 600; }
+.nv-suite-rail .nv-rail-tab { height: 30px !important; border-radius: 8px !important; }
+.nv-suite-rail .nv-rail-tab[aria-selected="false"] { background: rgba(255, 255, 255, 0.06) !important; border-color: rgba(255, 255, 255, 0.12) !important; color: #CFE2D7 !important; }
+.nv-suite-rail .nv-rail-tab[aria-selected="true"][style*="#fff"] { background: #FFFFFF !important; color: #0B3D27 !important; }
+.nv-suite-rail .nv-rail-fold { border-color: rgba(255, 255, 255, 0.12) !important; border-radius: 8px !important; }
+.nv-suite-rail .nv-rail-brand img { border-color: rgba(255, 255, 255, 0.16) !important; border-radius: 8px !important; }
+.nv-suite-rail .nv-rail-foot-card,
+html.dark .nv-suite-rail .nv-rail-foot-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+.nv-suite-rail .nv-rail-foot-card:hover,
+.nv-suite-rail .nv-rail-foot-card[data-active="true"] {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(200, 164, 90, 0.55);
+  box-shadow: none;
+}
+.nv-suite-rail .nv-rail-foot-card button { color: #E2C57E !important; }
+.nv-suite-rail .nv-rail-foot-card [style*="bottom: calc"] { --nv-card: #FFFFFF; --nv-ink: #111418; --nv-line: #E4E9E6; }
+.nv-suite-rail a.nv-rail-row:focus-visible,
+.nv-suite-rail button.nv-rail-row:focus-visible { outline-color: #E2C57E; }
+
+/* 2) Section bands: a quiet lattice and a gold baseline — the stamp of the page. */
+.nv7-section-head,
+.nv-stamp-head {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.nv7-section-head { padding: 18px 22px !important; }
+.nv7-section-head::before,
+.nv-stamp-head::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(200, 164, 90, 0.16) 0%, transparent 46%),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 14px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 14px);
+  -webkit-mask-image: linear-gradient(to left, #000 0%, rgba(0, 0, 0, 0.15) 70%);
+  mask-image: linear-gradient(to left, #000 0%, rgba(0, 0, 0, 0.15) 70%);
+}
+[dir="ltr"] .nv7-section-head::before,
+[dir="ltr"] .nv-stamp-head::before {
+  -webkit-mask-image: linear-gradient(to right, #000 0%, rgba(0, 0, 0, 0.15) 70%);
+  mask-image: linear-gradient(to right, #000 0%, rgba(0, 0, 0, 0.15) 70%);
+}
+.nv7-section-head::after,
+.nv-stamp-head::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(to left, #C8A45A, rgba(200, 164, 90, 0.35) 40%, transparent 85%);
+  pointer-events: none;
+}
+.nv7-section-head h1.nv-h { font-size: 22px !important; }
+
+/* 3) Depth: white surfaces lift a hair off the page, so the page reads as a set of
+      objects rather than outlines. Nested boxes stay flat. */
+main.platform-main-scroll {
+  background:
+    radial-gradient(1200px 380px at 50% -120px, rgba(11, 61, 39, 0.05), transparent 70%),
+    var(--nv-page);
+}
+.nv-app-topbar {
+  box-shadow: 0 1px 2px rgba(12, 20, 16, 0.04), 0 6px 20px rgba(12, 20, 16, 0.045) !important;
+  border-color: #E1E7E3 !important;
+}
+main.platform-main-scroll [style*="background: var(--nv-card)"][style*="border: 1px solid"],
+main.platform-main-scroll [style*="background: rgb(255, 255, 255)"][style*="border: 1px solid"],
+main.platform-main-scroll .nv-figrow,
+main.platform-main-scroll [data-sec-strip] {
+  box-shadow: 0 1px 2px rgba(12, 20, 16, 0.04), 0 6px 20px rgba(12, 20, 16, 0.04);
+}
+main.platform-main-scroll [style*="border: 1px solid"] [style*="background: var(--nv-card)"][style*="border: 1px solid"],
+main.platform-main-scroll [style*="border: 1px solid"] [style*="background: rgb(255, 255, 255)"][style*="border: 1px solid"],
+main.platform-main-scroll [data-nv="stamp"] [style*="border: 1px solid"],
+main.platform-main-scroll [data-sec-strip] .nv-figrow { box-shadow: none; }
+html.dark main.platform-main-scroll { background: var(--nv-page); }
+html.dark .nv-app-topbar,
+html.dark main.platform-main-scroll [style*="border: 1px solid"],
+html.dark main.platform-main-scroll .nv-figrow,
+html.dark main.platform-main-scroll [data-sec-strip] { box-shadow: none !important; }
+html.dark .nv-app-topbar { border-color: var(--nv-line) !important; }
+
+/* ───────────────────────── Ease v1 — show less, decide faster ───────────────────────── */
+/* An empty decision list is one quiet line, not a titled card. */
+.nv-all-clear {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 16px; border-radius: 12px;
+  background: var(--nv-ok-soft); border: 1px solid var(--nv-ok-line);
+}
+.nv-all-clear__dot {
+  width: 24px; height: 24px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--nv-ok-fill); color: #fff;
+}
+/* The person's name is the link — no «افتح ›» beside every cell. */
+.nv-team-name:hover { color: var(--nv-ok-ink) !important; text-decoration: underline !important; text-underline-offset: 3px; }
+.nv-team-more {
+  display: block; width: 100%; height: 42px; border: 0; border-top: 1px solid var(--nv-line);
+  background: var(--nv-card); color: var(--nv-ok-ink); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.nv-team-more:hover { background: var(--nv-hover); }
+/* «المزيد ▾» — rarely-used section tabs. */
+.nv-more-tabs__menu {
+  position: absolute; top: calc(100% + 6px); inset-inline-start: 0; z-index: 40; min-width: 200px;
+  display: flex; flex-direction: column; padding: 6px; border-radius: 12px;
+  background: var(--nv-card); border: 1px solid var(--nv-line);
+  box-shadow: 0 18px 44px rgba(12, 20, 16, 0.16);
+}
+.nv-more-tabs__menu > button {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  height: 36px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent;
+  color: var(--nv-ink); font: inherit; font-size: 13px; font-weight: 600; text-align: start; cursor: pointer;
+}
+.nv-more-tabs__menu > button:hover { background: var(--nv-hover); }
+/* Payroll: one «next step» bar under the stages — where you are and one button. */
+.nv-cycle-next {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  padding: 12px 14px; border-radius: 12px;
+  background: rgba(200, 164, 90, 0.14); border: 1px solid rgba(200, 164, 90, 0.55);
+}
+.nv-cycle-next__go {
+  height: 38px; padding: 0 22px; border: 0; border-radius: 8px; cursor: pointer;
+  background: #C8A45A; color: #2A1E05; font: inherit; font-size: 14px; font-weight: 700;
+}
+.nv-cycle-next__go:hover { background: #D5B46C; }
+/* «الفريق اليوم» as a table: one person per row, aligned columns. */
+.nv-team-table { display: flex; flex-direction: column; }
+.nv-team-tr {
+  display: grid; align-items: center; column-gap: 16px;
+  grid-template-columns: minmax(180px, 1.6fr) minmax(150px, 1.2fr) minmax(70px, .6fr) minmax(110px, .8fr);
+  padding: 10px 20px; min-height: 52px; border-bottom: 1px solid var(--nv-line2, #EEF1EF);
+}
+.nv-team-tr:last-child { border-bottom: 0; }
+.nv-team-tr:not(.nv-team-th):hover { background: var(--nv-hover); }
+.nv-team-th {
+  min-height: 40px; padding-block: 0; background: var(--nv-soft, #F5F7F6);
+  font-size: 12px; font-weight: 700; color: var(--nv-muted);
+  border-bottom: 1px solid var(--nv-line);
+}
+.nv-team-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.nv-team-avatar {
+  width: 30px; height: 30px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--nv-accent-soft); color: var(--nv-ok-ink); font-size: 13px; font-weight: 700;
+}
+.nv-team-name {
+  font-size: 13.5px; font-weight: 600; color: var(--nv-ink) !important; text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.nv-team-shift { display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--nv-ink2); min-width: 0; }
+.nv-team-mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; font-size: 12.5px; white-space: nowrap; color: var(--nv-ink2); }
+.nv-team-in { color: var(--nv-ink); font-weight: 600; }
+.nv-team-dim { color: var(--nv-muted); font-size: 13px; }
+.nv-team-extra { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; padding-inline-start: 40px; }
+.nv-team-extra:empty { display: none; }
+@media (max-width: 720px) {
+  .nv-team-th { display: none; }
+  .nv-team-tr { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; padding: 10px 14px; }
+  .nv-team-shift { grid-column: 1; grid-row: 2; padding-inline-start: 40px; font-size: 12px; }
+  .nv-team-tr > [role="cell"]:nth-child(3) { display: none; }
+  .nv-team-tr > [role="cell"]:nth-child(4) { grid-column: 2; grid-row: 1; }
+}
+/* The filter head and the table read as one card. */
+main.platform-main-scroll [data-team-today].nv-list-stack { gap: 0 !important; }
+main.platform-main-scroll [data-team-today] > :first-child { border-end-start-radius: 0 !important; border-end-end-radius: 0 !important; border-bottom: 0 !important; box-shadow: none !important; }
+main.platform-main-scroll [data-team-today] > section { border-start-start-radius: 0 !important; border-start-end-radius: 0 !important; }

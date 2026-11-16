@@ -40,13 +40,15 @@ assert.equal(lateClauseFor(25, { heldUpOthers: true }), "time_4");
 assert.equal(lateClauseFor(45), "time_5");
 assert.equal(lateClauseFor(61), "time_7");
 assert.equal(lateClauseFor(0), "");
-// The punch records 15 after a 10-minute grace → 25 actual → «15–30», not «up to 15».
-const hint = lateClauseHint({ regulation: MODEL_REGULATION, attendance: [{ employeeId: "e1", date: "2026-10-12", lateMinutes: 15 }], employeeId: "e1", dateKey: "2026-10-12", graceMinutes: 10, chosenClauseId: "late15" });
+// Past the 10-minute grace the punch records every minute from the start (25) → «15–30», not «up to 15»;
+// the grace is not added on top a second time.
+const hint = lateClauseHint({ regulation: MODEL_REGULATION, attendance: [{ employeeId: "e1", date: "2026-10-12", lateMinutes: 25 }], employeeId: "e1", dateKey: "2026-10-12", graceMinutes: 10, chosenClauseId: "late15" });
 assert.equal(hint.actual, 25);
 assert.equal(hint.suggestedId, "late30");
 assert.equal(hint.mismatch, true);
 assert.equal(lateClauseHint({ regulation: MODEL_REGULATION, attendance: [], employeeId: "e1", dateKey: "2026-10-12" }), null);
-assert.equal(lateClauseHint({ regulation: MODEL_REGULATION, attendance: [{ employeeId: "e1", date: "2026-10-12", lateMinutes: 15 }], employeeId: "e1", dateKey: "2026-10-12", graceMinutes: 10, chosenClauseId: "late30" }).mismatch, false);
+assert.equal(lateClauseHint({ regulation: MODEL_REGULATION, attendance: [{ employeeId: "e1", date: "2026-10-12", lateMinutes: 25 }], employeeId: "e1", dateKey: "2026-10-12", graceMinutes: 10, chosenClauseId: "late30" }).mismatch, false);
+assert.equal(lateClauseHint({ regulation: MODEL_REGULATION, attendance: [{ employeeId: "e1", date: "2026-10-12", lateMinutes: 237 }], employeeId: "e1", dateKey: "2026-10-12", graceMinutes: 10 }).actual, 237, "no grace added twice");
 
 // One fine base: the payroll line uses the actual wage, as the fines register does (Art. 2).
 const gen = readFileSync(new URL("../src/lib/deductionGenerators.js", import.meta.url), "utf8");

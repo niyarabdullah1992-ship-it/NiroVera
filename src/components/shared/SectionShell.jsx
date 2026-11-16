@@ -1,5 +1,5 @@
 import React from "react";
-import { BORDER, CARD, MUTED, RADIUS, STAGE, SURFACE } from "@/lib/platformStyles";
+import { BORDER, CARD, MUTED, RADIUS, STAGE } from "@/lib/platformStyles";
 import { StampNestContext } from "@/components/shared/stampNestContext";
 
 const mono = { fontFamily: "'IBM Plex Mono', monospace" };
@@ -58,14 +58,14 @@ export default function SectionShell({
 
   if (bare) {
     return (
-      <div className={className} dir={ar ? "rtl" : "ltr"} style={{ width: "100%", maxWidth, margin: "0 auto" }}>
+      <div className={className} data-nv-shell="" dir={ar ? "rtl" : "ltr"} style={{ width: "100%", maxWidth, margin: "0 auto" }}>
         {body}
       </div>
     );
   }
 
   return (
-    <div className={className} dir={ar ? "rtl" : "ltr"} style={{ width: "100%", maxWidth, margin: "0 auto" }}>
+    <div className={className} data-nv-shell="" dir={ar ? "rtl" : "ltr"} style={{ width: "100%", maxWidth, margin: "0 auto" }}>
       <section
         data-nv="stamp"
         style={{
@@ -100,7 +100,7 @@ export default function SectionShell({
                   {kicker}
                 </span>
               ) : null}
-              <h1 className="nv-h" style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: 0, color: "#FFFFFF" }}>{title}</h1>
+              <h1 className="nv-h" style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: 0, color: "#FFFFFF" }}>{title}</h1>
               {subtitle ? (
                 <p style={{ margin: "3px 0 0", fontSize: 12, lineHeight: 1.7, color: "#C5DBCD", maxWidth: 680 }}>{subtitle}</p>
               ) : null}

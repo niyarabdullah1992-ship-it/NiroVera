@@ -93,7 +93,10 @@ console.log("payroll review ok");
   const src = (await import("node:fs")).readFileSync(new URL("../src/lib/payrollDeductions.js", import.meta.url), "utf8");
   assert.match(src, /line\.source === "manual" && line\.consent !== true\) return "CONSENT_REQUIRED"/);
   // Art. 93 text follows the amended Law: the Labour Court, not the old commission.
-  const texts = (await import("node:fs")).readFileSync(new URL("../src/lib/laborArticleTexts.js", import.meta.url), "utf8");
-  assert.match(texts, /ما لم يثبت لدى المحكمة العمالية إمكان الزيادة/);
+  // Behavioral check on the article data (single source, re-exported), not on
+  // which file holds it.
+  const { LABOR_ARTICLE_TEXTS } = await import("../src/lib/laborArticleTexts.js");
+  const allArticleAr = LABOR_ARTICLE_TEXTS.map((r) => r.ar).join("\n");
+  assert.match(allArticleAr, /ما لم يثبت لدى المحكمة العمالية إمكان الزيادة/);
   console.log("art 92/93 ok");
 }

@@ -16,6 +16,7 @@ import {
 } from "@/lib/offboardingDerivations";
 import { averageActualWage, deriveFinalSettlement, isAverageWageBasis } from "@/lib/payrollLaw";
 import { recordFinalSettlementPaid } from "@/lib/payrollLawStore";
+import { exitAllowances } from "@/lib/laborProtectionGates";
 import RightHint from "@/components/shared/RightHint";
 import OffboardingLawPanel from "@/components/employees/OffboardingLawPanel";
 import { payHintFor } from "@/lib/rightHints.pay";
@@ -137,7 +138,8 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
           stationId: employee.stationId || null,
           hireDate: employee.profile?.hireDate || employee.hireDate || undefined,
           base: employee.profile?.baseSalary ?? employee.profile?.salary?.base ?? employee.salary?.base,
-          allowances: employee.profile?.allowances ?? employee.profile?.salary?.allowances ?? employee.salary?.allowances,
+          // the named housing/transport/other the wage card writes — the lump alone opened the case on the base wage
+          allowances: exitAllowances({}, employee.profile || {}) || employee.profile?.salary?.allowances || employee.salary?.allowances,
           annualLeaveUsed: employee.profile?.leave?.annual,
         });
       }
@@ -332,7 +334,12 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
       ? (ar
         ? `${outstanding} عهدة لم تُستلم — إنهاء الخدمة موقوف`
         : `${outstanding} custody items outstanding — offboarding is blocked`)
-      : (ar ? "كل العهد مُستلمة — يمكن إنهاء الخدمة" : "All custody returned — offboarding can complete");
+      : !caseRow
+        // no exit case loaded (the offboarding service did not answer) — «0 outstanding» is unknown, not clear
+        ? (ar ? "تعذّر تحميل ملف إنهاء الخدمة — لا يُعرف حال العهد بعد، أعد المحاولة" : "The exit case did not load — custody status is unknown, try again")
+        : gateOpen
+          ? (ar ? "كل العهد مُستلمة — يمكن إنهاء الخدمة" : "All custody returned — offboarding can complete")
+          : (ar ? "العهد مُستلمة — بقيت خطوات الإغلاق قبل إنهاء الخدمة" : "Custody returned — closing steps remain before offboarding");
 
   const offCompleteStyle = completed
     ? {

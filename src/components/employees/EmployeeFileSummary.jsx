@@ -204,7 +204,7 @@ function Readiness({ readiness, ar, self, onOpenTab }) {
     <section style={paper}>
       <SectionHead
         title={title}
-        note={ar ? (self ? "ما ينقص الملف أو يقترب انتهاؤه، وعلى من الخطوة." : "What the file misses or is about to lose, and whose move it is.") : "What is missing or ending, and whose move it is."}
+        note={ar ? (self ? "ما ينقص ملفك أو يقترب انتهاؤه، وعلى من الخطوة." : "ما ينقص الملف أو يقترب انتهاؤه، وعلى من الخطوة.") : "What is missing or ending, and whose move it is."}
         end={(
           <div style={{ flex: "0 1 200px", minWidth: 150, display: "flex", flexDirection: "column", gap: 6 }}>
             <span style={{ fontSize: 12.5, color: "var(--nv-ink)", fontWeight: 600 }}>

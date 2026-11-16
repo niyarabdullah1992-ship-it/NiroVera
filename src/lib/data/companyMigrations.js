@@ -11,6 +11,7 @@
  * a blob stored before a migration must still be able to find it.
  */
 import { moveCompCreditsOutOfAnnual } from "../compLeave.js";
+import { repairGuessedRestLocks } from "../leaveEidOverlap.js";
 
 const PRESET_GRADE_TITLES = new Set(["مبتدئ", "متوسط", "أول", "مشرف", "مدير"]);
 
@@ -84,6 +85,12 @@ export const COMPANY_MIGRATIONS = Object.freeze([
       data.restPlans = {};
       return true;
     },
+  },
+  {
+    version: 6,
+    id: "repair-guessed-rest-locks",
+    why: "Annual leaves approved before their roster week was published froze work days as rest — those days are re-read once (Art. 109).",
+    run: (data) => repairGuessedRestLocks(data) > 0,
   },
 ]);
 

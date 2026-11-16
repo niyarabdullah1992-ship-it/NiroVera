@@ -24,7 +24,7 @@ import { stationPrayerTimes } from "@/lib/prayerTimes";
 import NvIcon from "@/components/shared/NvIcon";
 import { hoursPolicyOf, isJuvenile as isJuvenileOn, weekHoursCap } from "@/lib/laborHoursPolicy.js";
 import ShiftBreakMode from "@/components/schedules/ShiftBreakMode";
-import { nextDistinctShift, repairedShiftWindow, STANDARD_SHIFT_WINDOWS, formatShiftHm, shiftHoursLine, shiftWindowKey } from "@/lib/shiftDerivations";
+import { nextDistinctShift, repairedShiftWindow, STANDARD_SHIFT_WINDOWS, shiftHoursLine, shiftWindowKey } from "@/lib/shiftDerivations";
 import { useTimeFormat } from "@/hooks/useTimeFormat";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import {
@@ -103,9 +103,7 @@ import { DS_CONTROL_RADIUS } from "@/lib/designSystem";
 import { WEEK_HINT_ADMIN_AR, WEEK_HINT_EMP_AR } from "@/lib/packageMinistryCatalog";
 import ScheduleCompliancePanel, { useComplianceSummary } from "@/components/schedules/ScheduleCompliancePanel";
 import AttendanceSectionFrame from "@/components/attendance/AttendanceSectionFrame";
-import { DutyHeadline, DutyNumber, DutyTile, DutyTiles } from "@/components/schedules/DutyTiles";
-import { dutyTone } from "@/components/schedules/dutyStatus";
-import ManageDutySide, { attendanceQueueCount, PendingDutyRequestsCard, pendingRequestCount, useManagedDutyPeople } from "@/components/schedules/ManageDutySide";
+import { attendanceQueueCount, PendingDutyRequestsCard, pendingRequestCount, useManagedDutyPeople } from "@/components/schedules/ManageDutySide";
 import { dateFromKey, revealNode } from "@/components/schedules/dutyLinks";
 import { listLocalTodayAttendance } from "@/lib/localAttendanceFallback";
 import ScheduleHowItWorks from "@/components/schedules/ScheduleHowItWorks";
@@ -737,7 +735,7 @@ export default function ShiftWeekBoard({
     if (["18632", "3337", "labour", "all"].includes(linkSrc)) setComplianceSource(linkSrc);
     const id = window.setTimeout(scrollToCompliance, 350);
     return () => window.clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [linkSrc, mode]);
   useEffect(() => {
     if (!focusEmp || mode === "mine") return undefined;

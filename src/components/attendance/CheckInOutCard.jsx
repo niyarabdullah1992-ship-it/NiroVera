@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/PowerCareAuth";
-import { getTodaysShift, isAttendancePolicyError, isForgottenCheckout, isLocationRequired } from "@/lib/attendance";
+import { isAttendancePolicyError, isForgottenCheckout, isLocationRequired } from "@/lib/attendance";
 import { checkCheckInLeaveGate } from "@/lib/attendanceGate";
 import LeaveCutOffer from "@/components/attendance/LeaveCutOffer";
 import { isStatutoryOffDay } from "@/lib/leaveTypes";
@@ -184,7 +184,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [currentUser?.id, company?.id]);
 
   useEffect(() => {
@@ -396,8 +396,10 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const outsideRange = /OUTSIDE_STATION|OUTSIDE_GEOFENCE|خارج نطاق|خارج النطاق|Outside the/i.test(error || "");
   const locationFailed = !outsideRange && /GPS_REQUIRED|STATION_LOCATION|location|موقع|النطاق/i.test(error || "");
   const forgotten = isForgottenCheckout(shift, attendance, tick);
-  const inTime = attendance?.check_in_at ? toWesternDigits(riyadhTime(attendance.check_in_at, format, "en-GB")) : "—";
-  const outTime = attendance?.check_out_at ? toWesternDigits(riyadhTime(attendance.check_out_at, format, "en-GB")) : "—";
+  // the day path draws its own «ص/م» beside each clock — drop the locale's «am/pm» so it is not said twice
+  const bareClock = (iso) => toWesternDigits(riyadhTime(iso, format, "en-GB")).replace(/\s*[ap]\.?m\.?$/i, "");
+  const inTime = attendance?.check_in_at ? bareClock(attendance.check_in_at) : "—";
+  const outTime = attendance?.check_out_at ? bareClock(attendance.check_out_at) : "—";
   // Art. 154: arriving inside her nursing minutes at the start is on time — read from the punch clock,
   // so a row stored before the excuse (late) and one stored after it (present) read the same.
   const nursingEmployee = (data?.employees || []).find((row) => String(row.id) === String(currentUser?.id)) || currentUser;
@@ -1132,7 +1134,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
               ]}
               locked={!!flexDay.assumed && !flexDay.assumedRunning && !!attendance?.check_in_at}
               onSave={async (parts) => {
-                setRestPlan(company.id, currentUser.id, dutyDay, parts);
+                setRestPlan(company.id, currentUser.id, dutyDay, parts, { shift, continuous103 });
                 await refresh?.();
               }}
             />

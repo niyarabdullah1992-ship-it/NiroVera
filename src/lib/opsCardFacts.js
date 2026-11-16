@@ -61,7 +61,11 @@ export function taskRhythm(task, today = new Date()) {
     expected = Object.entries(plan).filter(([d]) => d <= todayKey).reduce((n, [, v]) => n + v, 0);
   } else {
     const elapsed = days.filter((d) => d <= todayKey).length;
-    expected = days.length ? Math.round((target * elapsed) / days.length) : target;
+    // the sum of the day shares themselves (the remainder rides the first days: 20 over 6 → 4,4,3,3,3,3),
+    // so «المفروض حتى اليوم» matches «المطلوب اليوم» — rounding target×elapsed/days said 3 beside a 4 quota
+    const even = days.length ? Math.floor(target / days.length) : target;
+    const extra = days.length ? target % days.length : 0;
+    expected = days.length ? elapsed * even + Math.min(elapsed, extra) : target;
   }
   expected = Math.min(target, Math.max(0, expected));
   return {

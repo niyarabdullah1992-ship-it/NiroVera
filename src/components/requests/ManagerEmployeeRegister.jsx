@@ -1,5 +1,4 @@
 import React, { useEffect } from "react";
-import { BORDER, CARD, MUTED, NAVY, NAVY_FILL, PAPER_SHADOW, RADIUS, SURFACE } from "@/lib/platformStyles";
 import { managerEmployeeRegister } from "@/lib/requestWorkspace";
 
 /**
@@ -28,10 +27,11 @@ export default function ManagerEmployeeRegister({
   focusStationId = "",
   recording = false,
   companyId,
+  data,
   onFocusStation,
 }) {
   const ar = lang === "ar";
-  const board = managerEmployeeRegister(employees, lang, { stations, companyId, focusStationId });
+  const board = managerEmployeeRegister(employees, lang, { stations, companyId, focusStationId, data });
   const rail = board.rail;
   const standingId = String(rail.focusStationId || "");
 

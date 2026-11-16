@@ -1,4 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { hrEmployeeFlags } from "@/lib/hrOverview";
+import { isSaudiForNitaqat } from "@/lib/complianceDerivations";
 import { useNavigate } from "react-router-dom";
 import StationTransferPanel from "@/components/employees/StationTransferPanel";
 import { toast } from "@/components/ui/use-toast";
@@ -6,8 +8,9 @@ import { collectEmployeeValidityDocs } from "@/lib/complianceDerivations";
 import { employeeFileStatus } from "@/lib/employeeFileBoard";
 import { readEmployeeNo } from "@/lib/employeeNumber";
 import { profileCompletionStats } from "@/lib/employeeProfileFields";
-import { addHRMessage } from "@/lib/store";
-import { isCompanyRootStation, isHrUnit } from "@/lib/stationTree";
+import { addNotification } from "@/lib/store";
+import { hrManagerForStation } from "@/lib/hrTree";
+import { isCompanyRootStation, isHrUnit, isManagerUnit, stationParentId, stationSubtreeIds } from "@/lib/stationTree";
 import { kpiActionStyle, meterStyles } from "@/lib/statusFlag";
 import { chip, chipButton, mono } from "@/components/schedules/scheduleChrome";
 import { btnGhost, btnPrimary, btnQuiet } from "@/components/hr/orgdesign/orgDesignUi";
@@ -131,11 +134,25 @@ const STATUS = {
 
 const FILTERS = [
   ["", "الكل", "All"],
+  ["done", "ملف مكتمل", "Complete"],
   ["miss", "ملف ناقص", "Incomplete"],
   ["act", "مكلَّفون", "Acting"],
   ["warn", "تنبيه", "Alert"],
   ["vac", "الشواغر", "Vacant"],
 ];
+
+// what needs a decision on a file — the same rules as «التنبيهات» rows that open this list (?filter=)
+const FLAGS = [
+  ["", "كل الملفات", "All files"],
+  ["incomplete", "ملف ناقص على الموارد البشرية", "File gaps"],
+  ["expiring", "وثيقة تنتهي", "Document expiring"],
+  ["contract", "عقد يحتاج قراراً", "Contract due"],
+  ["probation", "تجربة تنتهي", "Probation ending"],
+  ["gosi", "بلا تأمينات", "No GOSI"],
+  ["saudi", "سعودي", "Saudi"],
+  ["expat", "وافد", "Expat"],
+];
+const FLAG_IDS = FLAGS.map((f) => f[0]).filter(Boolean);
 
 const SORTS = [
   ["name", "الاسم", "Name"],
@@ -156,13 +173,16 @@ export default function OrgEmployeeFilesBoard({
   actor = null,
   onHire,
   onManage,
+  initialFlag = "",
+  scopeIds = null,
 }) {
   const navigate = useNavigate();
+  const [flag, setFlag] = useState(FLAG_IDS.includes(initialFlag) ? initialFlag : "");
+  useEffect(() => { if (FLAG_IDS.includes(initialFlag)) setFlag(initialFlag); }, [initialFlag]);
   const [query, setQuery] = useState("");
   const [branchId, setBranchId] = useState("");
   const [status, setStatus] = useState("");
   const [sort, setSort] = useState("name");
-  const [selected, setSelected] = useState(() => new Set());
   const [transferId, setTransferId] = useState("");
 
   const byId = useMemo(() => new Map(nodes.map((node) => [String(node.id), node])), [nodes]);
@@ -229,34 +249,70 @@ export default function OrgEmployeeFilesBoard({
     return [...people, ...seats];
   }, [data?.employees, nodes, stationById, byId, ar]);
 
+  // branches in the structure's own order: the company, then each unit depth-first (regions before
+  // branches, then by name), indented under its parent — a region counts everything beneath it
   const tiles = useMemo(() => {
     const occupied = catalog.filter((row) => !row.vacant);
-    const counts = new Map();
-    occupied.forEach((row) => {
-      if (!row.stationId) return;
-      counts.set(row.stationId, (counts.get(row.stationId) || 0) + 1);
-    });
+    const own = new Map();
+    occupied.forEach((row) => { if (row.stationId) own.set(row.stationId, (own.get(row.stationId) || 0) + 1); });
     const seen = new Set();
     catalog.forEach((row) => { if (row.stationId) seen.add(row.stationId); });
-    const rows = [...seen].map((id) => {
-      const station = stationById.get(id);
-      return {
-        id,
-        name: station?.name || DASH,
-        count: counts.get(id) || 0,
-        rank: isCompanyRootStation(station) ? 0 : isHrUnit(station) ? 1 : 2,
-      };
+    const stations = (data?.stations || []).filter((st) => !st.closedAt || seen.has(String(st.id)));
+    const kids = new Map();
+    stations.forEach((st) => {
+      const parent = stationParentId(st) || "";
+      kids.set(parent, [...(kids.get(parent) || []), st]);
     });
-    rows.sort((a, b) => a.rank - b.rank || String(a.name).localeCompare(String(b.name), "ar"));
-    return [{ id: "", name: ar ? "كل الفروع" : "All branches", count: occupied.length }, ...rows];
-  }, [catalog, stationById, ar]);
+    const ids = new Set(stations.map((st) => String(st.id)));
+    const order = (list) => list.slice().sort((x, y) => {
+      const rx = isCompanyRootStation(x) ? 0 : isHrUnit(x) ? 1 : isManagerUnit(x) ? 2 : 3;
+      const ry = isCompanyRootStation(y) ? 0 : isHrUnit(y) ? 1 : isManagerUnit(y) ? 2 : 3;
+      return rx - ry || String(x.name || "").localeCompare(String(y.name || ""), "ar");
+    });
+    const out = [];
+    const walk = (st, depth) => {
+      const id = String(st.id);
+      const children = order(kids.get(id) || []);
+      const start = out.length;
+      out.push(null);
+      const root = isCompanyRootStation(st);
+      let sub = own.get(id) || 0;
+      // the company's own units sit beside it at the top level, not under it
+      children.forEach((child) => { sub += walk(child, root ? 0 : depth + 1); });
+      if (sub > 0 || seen.has(id)) {
+        out[start] = { id, name: st.name || DASH, depth, count: root ? (own.get(id) || 0) : sub, subtree: !root };
+      }
+      return sub;
+    };
+    const roots = order(stations.filter((st) => { const pid = stationParentId(st); return !pid || !ids.has(pid); }));
+    roots.forEach((st) => walk(st, 0));
+    const list = out.filter(Boolean);
+    return [{ id: "", name: ar ? "كل الفروع" : "All branches", count: occupied.length, depth: 0 }, ...list];
+  }, [catalog, data?.stations, ar]);
+  const branchScope = useMemo(() => {
+    if (!branchId) return null;
+    const tile = tiles.find((t) => t.id === branchId);
+    return new Set(tile?.subtree ? stationSubtreeIds(data?.stations || [], branchId).map(String) : [branchId]);
+  }, [branchId, tiles, data?.stations]);
 
   const rows = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("ar");
     const shown = catalog.filter((row) => {
       if (row.vacant && status !== "vac") return false;
-      if (branchId && row.stationId !== branchId) return false;
+      if (branchScope && !branchScope.has(String(row.stationId || ""))) return false;
+      if (scopeIds && !scopeIds.includes(String(row.stationId || ""))) return false;
+      if (flag) {
+        if (row.vacant || !row.employee) return false;
+        if (flag === "saudi" || flag === "expat") {
+          if (isSaudiForNitaqat(row.employee) !== (flag === "saudi")) return false;
+        } else {
+          let f = {};
+          try { f = hrEmployeeFlags(row.employee, { ar }) || {}; } catch { f = {}; }
+          if (!f[flag]) return false;
+        }
+      }
       if (status === "miss") return !row.vacant && !row.done;
+      if (status === "done") return !row.vacant && row.done;
       if (status && row.tone !== status) return false;
       if (!q) return true;
       const hay = [row.name, row.title, row.no, row.branch].join(" ").toLocaleLowerCase("ar");
@@ -277,49 +333,48 @@ export default function OrgEmployeeFilesBoard({
       return String(a.name).localeCompare(String(b.name), "ar");
     });
     return shown;
-  }, [catalog, query, branchId, status, sort]);
+  }, [catalog, query, branchScope, status, sort, flag, ar, scopeIds]);
 
-  const selectable = rows.filter((row) => !row.vacant);
-  const allOn = selectable.length > 0 && selectable.every((row) => selected.has(row.key));
+  const incomplete = rows.filter((row) => !row.vacant && !row.done && row.employee);
+  // Completing files is the branch HR officer's job: group the incomplete files by who holds HR for each branch.
+  const hrFor = (row) => hrManagerForStation(data, row.stationId);
+  const hrGroups = useMemo(() => {
+    const map = new Map();
+    incomplete.forEach((row) => {
+      const hr = hrFor(row);
+      const key = hr ? String(hr.id) : "";
+      if (!map.has(key)) map.set(key, { hr, rows: [], branches: new Set() });
+      const g = map.get(key);
+      g.rows.push(row);
+      if (row.branch && row.branch !== DASH) g.branches.add(row.branch);
+    });
+    return [...map.values()].sort((a, b) => (a.hr ? 0 : 1) - (b.hr ? 0 : 1) || b.rows.length - a.rows.length);
+
+  }, [incomplete.map((r) => r.key).join("|"), data]);
   const branchName = tiles.find((tile) => tile.id === branchId)?.name || (ar ? "كل الفروع" : "All branches");
   const countLabel = query.trim()
     ? (ar ? `${rows.length} نتيجة لـ «${query.trim()}» في ${branchName}` : `${rows.length} for “${query.trim()}” in ${branchName}`)
     : (ar ? `${rows.length} نتيجة` : `${rows.length} results`);
   const transferEmployee = catalog.find((row) => row.key === transferId)?.employee || null;
 
-  const askCompletion = (row) => {
-    if (!row?.employee || row.done || !companyId) return;
-    const gaps = row.missing.map((field) => (ar ? field.ar : field.en)).filter(Boolean);
-    const text = ar
-      ? `طلب استكمال الملف: ${gaps.join("، ") || DASH}`
-      : `Complete the file: ${gaps.join(", ") || DASH}`;
-    addHRMessage(companyId, row.employee.id, {
-      from: "hr",
-      targetId: row.employee.id,
-      targetName: row.employee.name,
-      text,
-      senderName: actor?.name || (ar ? "الموارد البشرية" : "HR"),
-      channel: "company",
-    });
-    toast({ description: ar ? `أُرسل طلب الاستكمال إلى ${row.name}.` : `Completion request sent to ${row.name}.` });
-  };
 
-  const askSelected = () => {
-    const targets = selectable.filter((row) => selected.has(row.key) && !row.done);
-    if (!targets.length) {
-      toast({ description: ar ? "لا نواقص في الملفات المحددة." : "The selected files have nothing missing." });
-      return;
-    }
-    targets.forEach(askCompletion);
-  };
 
-  const toggle = (key) => {
-    setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  // One request to the branch HR officer, naming each file and what it lacks.
+  const sendToHr = (group) => {
+    if (!group?.hr || !companyId) return;
+    // A notification to the HR officer alone (not a message on her own employee file), linking to the list.
+    const who = actor?.name || (ar ? "الموارد البشرية" : "HR");
+    const where = [...group.branches].join("، ") || (ar ? "فرعك" : "your branch");
+    const names = group.rows.slice(0, 3).map((row) => row.name).join("، ");
+    addNotification(companyId, group.hr.id, ar
+      ? `${who}: نرجو استكمال ${group.rows.length} ${group.rows.length === 1 ? "ملف" : group.rows.length <= 10 ? "ملفات" : "ملفاً"} في ${where} — منها ${names}${group.rows.length > 3 ? " وغيرهم" : ""}. افتح القائمة لترى ما ينقص كل ملف.`
+      : `${who}: please complete ${group.rows.length} files in ${where}.`, { lane: "manage", to: "/app/hr?tab=people&filter=incomplete", key: `files-complete-${group.hr.id}-${new Date().toISOString().slice(0, 16)}` });
+    toast({ description: ar ? `أُرسل إلى ${group.hr.name} طلب استكمال ${group.rows.length} ${group.rows.length <= 10 ? "ملفات" : "ملفاً"}.` : `Sent to ${group.hr.name}: ${group.rows.length} files.` });
+  };
+  const sendRowToHr = (row) => {
+    const hr = hrFor(row);
+    if (!hr) { toast({ description: ar ? "لا مسؤول موارد بشرية لهذا الفرع — يُكمَل الملف من «إدارة الملف»." : "No HR officer for this branch — complete it from Manage file." }); return; }
+    sendToHr({ hr, rows: [row], branches: new Set([row.branch].filter((b) => b && b !== DASH)) });
   };
 
   const seg = (on) => chipButton(on, { height: 28 });
@@ -337,17 +392,30 @@ export default function OrgEmployeeFilesBoard({
           aria-label={ar ? SEARCH_AR : "Search employee files"}
           style={{ width: "100%", maxWidth: 520 }}
         />
-        <div role="group" aria-label={ar ? "الفرع" : "Branch"} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "8px 18px", flexWrap: "wrap", alignItems: "center" }}>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={label}>{ar ? "المتابعة" : "Follow-up"}</span>
+          <select className="nv-od-select" value={flag} onChange={(e) => setFlag(e.target.value)} data-files-flag="1" style={{ minWidth: 220, height: 36 }}>
+            {FLAGS.map(([id, a, e]) => <option key={id || "all"} value={id}>{ar ? a : e}</option>)}
+          </select>
+        </label>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <span style={label}>{ar ? "الفرع" : "Branch"}</span>
-          {tiles.map((tile) => {
-            const on = branchId === tile.id;
-            return (
-              <button key={tile.id || "all"} type="button" aria-pressed={on} onClick={() => setBranchId(tile.id)} style={chipButton(on, { maxWidth: 220 })}>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{tile.name}</span>
-                <span dir="ltr" style={{ ...mono, fontSize: 10.5, opacity: 0.8 }}>{tile.count}</span>
-              </button>
-            );
-          })}
+          <select
+            className="nv-od-select"
+            value={branchId}
+            onChange={(event) => setBranchId(event.target.value)}
+            aria-label={ar ? "الفرع" : "Branch"}
+            data-files-branch="1"
+            style={{ minWidth: 260, maxWidth: 420, height: 36 }}
+          >
+            {tiles.map((tile) => (
+              <option key={tile.id || "all"} value={tile.id}>
+                {`${"\u00A0\u00A0\u00A0".repeat(tile.depth || 0)}${tile.depth ? "↳ " : ""}${tile.name} (${tile.count})`}
+              </option>
+            ))}
+          </select>
+        </label>
         </div>
         <div style={{ display: "flex", gap: "8px 18px", flexWrap: "wrap", alignItems: "center" }}>
           <div role="group" aria-label={ar ? "الحالة" : "Status"} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -371,11 +439,6 @@ export default function OrgEmployeeFilesBoard({
 
       <section style={{ flex: "none" }}>
         <header style={{ padding: "10px 18px", borderBottom: hair, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <CheckBox
-            on={allOn}
-            label={ar ? "تحديد الكل" : "Select all"}
-            onClick={() => setSelected(allOn ? new Set() : new Set(selectable.map((row) => row.key)))}
-          />
           <strong style={{ fontSize: 13, color: "var(--nv-ink)" }}>{ar ? "ملفات الموظفين" : "Employee files"}</strong>
           <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{countLabel}</span>
           <span style={{ flex: 1 }} />
@@ -385,15 +448,44 @@ export default function OrgEmployeeFilesBoard({
             </button>
           ) : null}
         </header>
-        {selected.size ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 18px", background: "var(--nv-soft)", borderBottom: hair }}>
-            <strong style={{ fontSize: 12.5, color: "var(--nv-ink)" }}>{ar ? `${selected.size} محدد` : `${selected.size} selected`}</strong>
-            <button type="button" onClick={askSelected} style={btnGhost({ height: 28 })}>
-              {ar ? "طلب استكمال للمحدَّد" : "Request completion"}
-            </button>
-            <button type="button" onClick={() => setSelected(new Set())} style={btnQuiet()}>
-              {ar ? "إلغاء التحديد" : "Clear"}
-            </button>
+        {/* Who has not completed the file — named, with what is missing; one press asks them all. */}
+        {incomplete.length ? (
+          <div data-files-incomplete="1" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 18px", background: "var(--nv-warn-soft, #FBF3E2)", borderBottom: hair }}>
+            <strong style={{ fontSize: 12.5, color: "var(--nv-warn-ink, #7A5A12)" }}>
+              {ar ? `${incomplete.length} ${incomplete.length === 1 ? "ملف لم يكتمل" : incomplete.length <= 10 ? "ملفات لم تكتمل" : "ملفاً لم يكتمل"}` : `${incomplete.length} incomplete`}
+            </strong>
+            <span style={{ fontSize: 11.5, color: "var(--nv-ink2)", flex: "1 1 220px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={incomplete.map((row) => row.name).join("، ")}>
+              {incomplete.slice(0, 4).map((row) => row.name).join("، ")}{incomplete.length > 4 ? (ar ? ` و${incomplete.length - 4} غيرهم` : ` and ${incomplete.length - 4} more`) : ""}
+            </span>
+            {flag !== "incomplete" ? (
+              <button type="button" onClick={() => setFlag("incomplete")} style={btnQuiet()}>
+                {ar ? "اعرضهم فقط" : "Show only them"}
+              </button>
+            ) : (
+              <button type="button" onClick={() => setFlag("")} style={btnQuiet()}>
+                {ar ? "اعرض الجميع" : "Show everyone"}
+              </button>
+            )}
+            {canWrite || scopeIds ? (
+              <div data-files-hr-groups="1" style={{ flexBasis: "100%", display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                {hrGroups.map((g) => (
+                  <div key={g.hr ? g.hr.id : "none"} data-hr-group={g.hr ? g.hr.id : "none"} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "6px 10px", borderRadius: 8, background: "var(--nv-card, #fff)", border: hair }}>
+                    <span style={{ flex: "1 1 260px", minWidth: 0, fontSize: 12.5, color: "var(--nv-ink)", lineHeight: 1.6 }}>
+                      {g.hr
+                        ? (ar ? <><b>{g.hr.name}</b> — موارد {[...g.branches].join("، ") || "الفرع"}: <b dir="ltr" style={mono}>{g.rows.length}</b> {g.rows.length <= 10 ? "ملفات ناقصة" : "ملفاً ناقصاً"}</> : <><b>{g.hr.name}</b> — {g.rows.length} incomplete</>)
+                        : (ar ? <><b>بلا مسؤول موارد للفرع</b> ({[...g.branches].join("، ") || "—"}): <b dir="ltr" style={mono}>{g.rows.length}</b> — يكملها فريق الموارد في المقر بزر «أكمل الملف»، أو عيّن مسؤول موارد للفرع</> : <><b>No branch HR officer</b>: {g.rows.length}</>)}
+                    </span>
+                    {g.hr && String(g.hr.id) === String(actor?.id || "") ? (
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? "هذه ملفاتك — أكملها من «أكمل الملف»" : "These are yours to complete"}</span>
+                    ) : g.hr ? (
+                      <button type="button" onClick={() => sendToHr(g)} style={btnGhost({ height: 28 })}>
+                        {ar ? `أرسل إلى ${String(g.hr.name).split(" ")[0]}` : `Send to ${g.hr.name}`}
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
         {rows.length ? rows.map((row) => {
@@ -403,9 +495,6 @@ export default function OrgEmployeeFilesBoard({
           return (
             <div key={row.key} data-org-file-row="1" style={{ display: "flex", flexWrap: "wrap", gap: "8px 14px", alignItems: "center", padding: "10px 18px", borderBottom: hair }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: "1 1 240px" }}>
-                {row.vacant ? <span style={{ width: 18, flex: "none" }} /> : (
-                  <CheckBox on={selected.has(row.key)} label={row.name} onClick={() => toggle(row.key)} />
-                )}
                 <span style={{ width: 32, height: 32, borderRadius: "50%", flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11.5, fontWeight: 600, ...(row.vacant ? { border: "1.5px dashed var(--nv-mute-fill, var(--nv-line))", color: "var(--nv-muted)", background: "transparent" } : { border: "1px solid var(--nv-line)", background: "var(--nv-soft)", color: "var(--nv-ink2)" }) }}>
                   {row.vacant ? "＋" : initialsOf(row.name)}
                 </span>
@@ -433,21 +522,21 @@ export default function OrgEmployeeFilesBoard({
                 </div>
                 {row.pct == null ? null : <span style={meter.track}><span style={meter.fill} /></span>}
               </div>
+              {!row.vacant && !row.done && gaps ? (
+                <div data-file-gaps="1" style={{ flexBasis: "100%", order: 9, fontSize: 11.5, color: "var(--nv-warn-ink, #7A5A12)", lineHeight: 1.6, paddingInlineStart: 42 }}>
+                  {ar ? "ينقصه: " : "Missing: "}{gaps}
+                </div>
+              ) : null}
               <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginInlineStart: "auto" }}>
                 {st ? <span style={chip(st.tone, st.dashed ? { borderStyle: "dashed" } : {})}>{ar ? st.ar : st.en}</span> : null}
-                {canWrite && !row.vacant && !row.done ? (
-                  <button type="button" title={gaps || DASH} onClick={() => askCompletion(row)} style={btnQuiet()}>
-                    {ar ? "طلب استكمال" : "Request completion"}
-                  </button>
-                ) : null}
                 {canWrite && !row.vacant ? (
                   <button type="button" onClick={() => setTransferId(row.key)} style={btnQuiet()}>
                     {ar ? "نقل" : "Transfer"}
                   </button>
                 ) : null}
-                {canWrite && !row.vacant ? (
-                  <button type="button" onClick={() => onManage?.(row.employee)} style={btnGhost({ height: 28, padding: "0 11px" })}>
-                    {ar ? "إدارة الملف" : "Manage file"}
+                {(canWrite || (scopeIds && !row.done)) && !row.vacant ? (
+                  <button type="button" onClick={() => (canWrite ? onManage?.(row.employee) : navigate(`/app/employees/${encodeURIComponent(row.employee.id)}?tab=identity&complete=1`))} style={btnGhost({ height: 28, padding: "0 11px" })}>
+                    {row.done ? (ar ? "إدارة الملف" : "Manage file") : (ar ? "أكمل الملف" : "Complete file")}
                   </button>
                 ) : null}
                 <button

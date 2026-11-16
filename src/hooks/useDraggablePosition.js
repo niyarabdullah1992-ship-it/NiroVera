@@ -19,14 +19,27 @@ function headerSafeTop() {
 }
 
 /**
- * Keep a dragged spot on screen and out of the header band.
+ * The top of the mobile bottom tab bar when it is showing, else the window bottom — a saved
+ * spot must never sit on the tabs (it hid the last tab's label on phones).
+ */
+function bottomSafeLine() {
+  if (typeof document === "undefined") return window.innerHeight;
+  const bar = document.querySelector(".nv-bottom-bar");
+  if (!bar) return window.innerHeight;
+  const rect = bar.getBoundingClientRect();
+  const shown = rect.height > 0 && window.getComputedStyle(bar).display !== "none";
+  return shown ? Math.min(window.innerHeight, Math.round(rect.top)) : window.innerHeight;
+}
+
+/**
+ * Keep a dragged spot on screen, out of the header band and above the mobile tab bar.
  * `dropInBand`: a saved spot that sits on the header falls back to the default corner (null).
  */
 export function clampMusicPosition(position, { width = 66, height = 38, safeTop = EDGE, dropInBand = false } = {}) {
   if (!position || typeof window === "undefined") return position;
   if (dropInBand && safeTop > EDGE && (Number(position.y) || 0) < safeTop) return null;
   const maxX = Math.max(EDGE, window.innerWidth - width - EDGE);
-  const maxY = Math.max(EDGE, window.innerHeight - height - EDGE);
+  const maxY = Math.max(EDGE, bottomSafeLine() - height - EDGE);
   const minY = Math.min(safeTop, maxY);
   const x = Math.max(EDGE, Math.min(maxX, Number(position.x) || 0));
   const y = Math.max(minY, Math.min(maxY, Number(position.y) || 0));
@@ -56,8 +69,15 @@ export default function useDraggablePosition({ avoidHeader = false } = {}) {
     if (!hasPosition) return undefined;
     const settle = () => setPosition((current) => clampMusicPosition(current, { safeTop: avoidHeader ? headerSafeTop() : EDGE, dropInBand: true }));
     settle();
+    // The header and the mobile tab bar mount after this button; settle again once they are in.
+    const frame = window.requestAnimationFrame(settle);
+    const later = window.setTimeout(settle, 700);
     window.addEventListener("resize", settle);
-    return () => window.removeEventListener("resize", settle);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(later);
+      window.removeEventListener("resize", settle);
+    };
   }, [avoidHeader, hasPosition]);
 
   const onPointerDown = (event) => {

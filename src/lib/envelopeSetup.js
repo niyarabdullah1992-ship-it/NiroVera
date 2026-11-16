@@ -62,7 +62,7 @@ export function checkEnvelopeSetupGate({
   const mode = others.length ? "group" : "self";
   if (!(docs || []).length) gaps.push(ar ? "أضف مستنداً واحداً على الأقل" : "Add at least one document");
   if (!signers.length) gaps.push(ar ? "أضف مستلماً، أو اختر «أنا أيضاً أوقّع»" : "Add a recipient, or choose “I sign too”");
-  if (mode === "self" && signers.length && !sealReady) gaps.push(ar ? "صمّم ختمك أولاً — توقيعك وحدك يُختم به" : "Design your seal first — signing alone uses it");
+  // signing alone without a saved signature is allowed: the signature is uploaded or drawn on the way
   if (others.length && !canGroup) gaps.push(ar ? "إرسال المظاريف لأصحاب صلاحية الإرسال" : "Sending envelopes needs the sending right");
   if (signers.length > ENVELOPE_MAX_RECIPIENTS) gaps.push(ar ? `الحد ${ENVELOPE_MAX_RECIPIENTS} مستلم` : `Up to ${ENVELOPE_MAX_RECIPIENTS} recipients`);
   const unnamed = others.filter((row) => !String(row.name || "").trim()).length;

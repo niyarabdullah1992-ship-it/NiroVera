@@ -840,7 +840,12 @@ export function listIsoDaysInRange(fromIso: string, toIso: string, max = 366) {
 }
 
 export const PACE_CHIP_DAYS_MAX = 62;
-export const PACE_DATES_MAX = 366;
+/**
+ * التوأم في src/lib/opsDerivations.js رفعه إلى 800 في نسخة 2026-09-21 وبقي هنا 366،
+ * فكان الخادم يقصّ ما يزيد على سنة من التواريخ المختارة بلا خطأ: المدير يرى ما اختاره
+ * والنظام يحفظ أقل منه. القيمة تتبع العميل.
+ */
+export const PACE_DATES_MAX = 800;
 
 export const TASK_WINDOW_SPANS = [
   { id: "w", ar: "أسبوع", en: "Week" },
@@ -873,7 +878,10 @@ export function applyTaskWindowSpan(
 
 export function formPaceMode(form: Record<string, unknown> | null | undefined) {
   const mode = String(form?.paceMode || "all");
-  if (mode === "weekdays" || mode === "dates") return mode;
+  // "specific" حالة وسطى: المدير اختار «أيام محددة» ولم يحدّد بعد أيام الأسبوع أو تواريخ
+  // التقويم. كان يسقط هنا إلى "all" فيمر فحص الإيقاع بلا شرط، ويصير التوزيع على كل يوم
+  // في الفترة لا على ما نوى المدير اختياره. التوأم في العميل يرده بـPACE_KIND_REQUIRED.
+  if (mode === "weekdays" || mode === "dates" || mode === "specific") return mode;
   return "all";
 }
 
@@ -905,6 +913,15 @@ export function checkTaskPaceFromForm(form: Record<string, unknown> | null | und
   const win = checkTaskWindowFromForm({ ...form, recurrenceKind: "daily" });
   if (!win.ok) return win;
   const mode = formPaceMode(form);
+  if (mode === "specific") {
+    return {
+      ...win,
+      ok: false as const,
+      error: "PACE_KIND_REQUIRED",
+      reason: "اختر إن كان التوزيع يومًا ثابتًا في الفترة أو أيامًا مرنة من التقويم.",
+      reasonEn: "Choose a fixed weekday in the window, or pick specific dates on the calendar.",
+    };
+  }
   if (mode === "weekdays") {
     const days = normalizeWeekdays(form?.paceWeekdays, form?.recurrenceWeekdays ?? form?.recurrenceWeekday);
     if (!days.length) {

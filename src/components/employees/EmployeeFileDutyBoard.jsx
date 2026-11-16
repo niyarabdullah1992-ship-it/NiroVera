@@ -19,7 +19,7 @@ import useMyDutyWeek from "@/components/schedules/myDutyWeek";
 import MinistryPersonalPanel from "@/components/schedules/MinistryPersonalPanel";
 import HoursOnFile from "@/components/employees/HoursOnFile";
 import { dateFromKey, myRecordHref, myRosterDayHref, openLinkStyle, revealNode, rosterPersonHref } from "@/components/schedules/dutyLinks";
-import useDutyCareer from "@/components/attendance/dutyCareer";
+import useDutyCareer from "@/components/attendance/useDutyCareer";
 import { DutyCareerSection, DutyYearBar } from "@/components/attendance/DutyCareer";
 import { windowOf } from "@/lib/dutyYears";
 

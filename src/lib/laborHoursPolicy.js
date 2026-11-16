@@ -297,7 +297,10 @@ export function deriveNamedOvertime({
   const firstKey = days[0]?.key;
   const basis = criterion || hoursBasisOf(company, employee).basis || "daily";
   const dutyDays = days.filter((day) => Number(day.hours) > 0).length;
-  const weekCap = art108WeekCap(employee, firstKey, laborCalendar, dutyDays) ?? ordinaryWeekCap(employee, company, firstKey, laborCalendar);
+  // One cap for the week, resolved from every day in it — reading it off the first day alone made a
+  // Ramadan-boundary week answer 0 h here while the roster board answered «6 h over» for the same week.
+  const weekCap = art108WeekCap(employee, firstKey, laborCalendar, dutyDays)
+    ?? weekHoursCap(employee, company, days.map((day) => day.key), laborCalendar).hours;
   // The week's worked days decide which of them were rest days (the file's count, Arts 104/107).
   const workedKeys = days.filter((day) => Number(day.hours) > 0).map((day) => day.key);
   for (const day of days) {

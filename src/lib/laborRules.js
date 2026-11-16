@@ -526,6 +526,19 @@ export function ruleAt(id, onDate, catalog = LABOR_RULES) {
   return [...inForce].sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0] || null;
 }
 
+/**
+ * Late minutes once the operational grace is spent. Inside the grace → 0 (on time); past it → the full
+ * minutes from the start, not «minus the grace». The model work regulation deducts «أجر دقائق التأخر»
+ * with no grace of its own, so a grace is a courtesy, not ten free minutes on every late day; and the
+ * discipline clause, which reads the minutes from the start, now sees the same number as payroll.
+ * `rawLate` is already net of any excused minutes (Art. 154 nursing, approved permission).
+ */
+export function lateBeyondGrace(rawLate, graceMinutes = 0) {
+  const late = Math.max(0, Number(rawLate) || 0);
+  const grace = Math.max(0, Number(graceMinutes) || 0);
+  return late <= grace ? 0 : late;
+}
+
 export function ruleValue(id, onDate, catalog) {
   const row = ruleAt(id, onDate, catalog);
   if (!row || typeof row.value !== "number") {

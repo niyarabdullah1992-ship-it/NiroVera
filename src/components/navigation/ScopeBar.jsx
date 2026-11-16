@@ -3,14 +3,14 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
-import { useRailSide } from "@/lib/railSide";
+import { useHasManageSide, useRailSide } from "@/lib/railSide";
 import useStationSwitcher, { OPEN_STATION_SWITCH_EVENT } from "@/hooks/useStationSwitcher";
 import StationQuickSwitch from "@/components/navigation/StationQuickSwitch";
 import NotificationPanel from "@/components/notifications/NotificationPanel";
 import ManageNoticePanel from "@/components/notifications/ManageNoticePanel";
 import { Bell, ChevronDown, MapPin } from "lucide-react";
 import { isUrgentNotification } from "@/lib/notificationKind";
-import { isManagerUnit } from "@/lib/stationTree";
+import { isHrUnit, isManagerUnit } from "@/lib/stationTree";
 import { buildBranchNotices } from "@/lib/managerScopeChips";
 import { setStationScope } from "@/lib/stationScopeStore";
 import { listLocalTodayAttendance } from "@/lib/localAttendanceFallback";
@@ -47,12 +47,16 @@ function myStationLine(data, user, ar) {
   const acting = station ? actingAtStation(data, station.id) : null;
   const manager = workplaceManagerDisplay(station, people);
   const hr = station ? hrManagerForStation(data, station.id) : null;
+  // No HR officer on the branch → the head of the HR unit answers for it; the strip follows whoever is appointed.
+  const hrUnit = (data?.stations || []).find((item) => isHrUnit(item));
+  const hrHead = hr ? "" : (hrUnit ? (actingAtStation(data, hrUnit.id)?.employee?.name || workplaceManagerDisplay(hrUnit, people).managerName || "") : "");
+  const hrName = hr?.name || hrHead;
   const managerName = acting?.employee?.name || manager.managerName || "";
   return {
     station: station?.name || vacant,
     manager: managerName || vacant,
-    hr: hr?.name || vacant,
-    vacant: { station: !station?.name, manager: !managerName, hr: !hr?.name },
+    hr: hrName || vacant,
+    vacant: { station: !station?.name, manager: !managerName, hr: !hrName },
   };
 }
 
@@ -61,11 +65,26 @@ function myStationLine(data, user, ar) {
  * The header bell — one ghost segment in the utility group.
  * Manage: urgent branch notices (red). Employee: own unread, green; red only while an unread one is urgent.
  */
+/**
+ * A notice that is management work — about someone else's file, or opening a management screen.
+ * It belongs to «الإدارة»'s bell, never to the person's own «إشعاراتي».
+ */
+export function isManageNotice(item, userId) {
+  if (!item) return false;
+  if (item.lane === "manage") return true;
+  const to = String(item.to || "");
+  if (!to) return false;
+  if (/^\/app\/hr(\/|\?|$)/.test(to) || /[?&](lane|view)=manage\b/.test(to)) return true;
+  const file = to.match(/^\/app\/employees\/([^/?#]+)/);
+  if (file && decodeURIComponent(file[1]) !== String(userId || "")) return true;
+  return false;
+}
+
 export function NotificationBell({
   notifOpen = false,
   onToggleNotif,
   onCloseNotif,
-  notifItems = [],
+  notifItems: allNotifItems = [],
   onOpenNotif,
   onDismissNotif,
   onMarkAllNotifs,
@@ -76,6 +95,9 @@ export function NotificationBell({
   const { data, currentUser, company } = useAuth();
   const railSide = useRailSide();
   const manage = railSide !== "employee";
+  const hasManage = useHasManageSide();
+  // «إشعاراتي» (employee side) keeps only what concerns the person; management work waits on the management side.
+  const notifItems = manage || !hasManage ? allNotifItems : allNotifItems.filter((item) => !isManageNotice(item, currentUser?.id));
   const notifBtnRef = useRef(null);
   const notifPanelRef = useRef(null);
   const [notifBox, setNotifBox] = useState(null);

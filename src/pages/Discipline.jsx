@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
-import { updateCompany } from "@/lib/store";
+import { addNotification, updateCompany } from "@/lib/store";
 import { toast } from "@/components/ui/use-toast";
 import { decorateDisciplineCase, deriveDisciplineBoard, isDisciplineSettled, isErasedFromEmployeeRecord } from "@/lib/disciplineBoard";
 import {
@@ -295,6 +295,15 @@ export default function Discipline() {
     });
   };
 
+  // The file's people learn its steps inside the platform — the written notice, the signed decision and
+  // its objection window, the ruling, and (for the decider) an objection. Nothing was sent before, so a
+  // worker found a signed sanction only by opening «الجزاءات».
+  const tell = (userId, text) => {
+    if (!company?.id || !userId || String(userId) === String(currentUser?.id || "")) return;
+    addNotification(company.id, String(userId), text, { to: "/app/discipline" });
+  };
+  const offenceOf = (item) => String(item?.regulationOffence || item?.note || "").split(" — ")[0].slice(0, 80);
+
   const patch = (item, fields, stage = "") => {
     const now = new Date().toISOString();
     saveCases(cases.map((row) => (row.id === item.id ? { ...row, ...fields, updatedAt: now } : row)));
@@ -386,16 +395,30 @@ export default function Discipline() {
     setWorkConnected("");
     setQueueFace("all");
     setPickedId(`case:${newId}`);
+    tell(employeeId, ar
+      ? `إبلاغ كتابي بمخالفة: ${note.trim().slice(0, 80)} — لك أن تُدلي بأقوالك ودفاعك قبل أي جزاء (المادة 71).`
+      : `Written notice of an offence: ${note.trim().slice(0, 80)} — you may give your statement before any sanction (Article 71).`);
   };
 
-  const onAction = (item, actionId) => {
+  const onAction = (item, actionId, statement) => {
     const now = new Date().toISOString();
     const who = currentUser?.name || "";
     if (actionId === "hear") {
       const oral = isSimpleOralOffence(item);
-      const hearingMinutes = oral
-        ? (ar ? "استُجوب شفاهة وأُثبت دفاعه في المحضر (المادة 71)." : "Questioned orally; the defence is recorded in the minutes (Article 71).")
-        : (ar ? "حُقّق دفاعه كتابةً وأُثبت في المحضر (المادة 71)." : "The defence was heard in writing and recorded in the minutes (Article 71).");
+      // Art. 71: the minutes carry the worker's own words, or that he declined — never a stock line alone.
+      const said = String(statement?.text || "").trim();
+      const refused = statement?.refused === true;
+      if (!refused && said.length < 10) {
+        toast({ description: ar ? "اكتب أقوال العامل ودفاعه، أو أثبت امتناعه عن الإدلاء بها (المادة 71)." : "Write the worker's statement and defence, or record that he declined (Article 71).", variant: "destructive" });
+        return;
+      }
+      const how = oral
+        ? (ar ? "استُجوب شفاهة (المادة 71)." : "Questioned orally (Article 71).")
+        : (ar ? "حُقّق دفاعه كتابةً (المادة 71)." : "The defence was heard in writing (Article 71).");
+      const words = refused
+        ? (ar ? "امتنع العامل عن الإدلاء بأقواله بعد إبلاغه." : "The worker declined to give a statement after notice.")
+        : (ar ? `أقوال العامل: «${said}»` : `The worker's statement: “${said}”`);
+      const hearingMinutes = `${how} ${words} — ${ar ? "أثبته" : "recorded by"} ${who || (ar ? "المسؤول" : "the officer")}.`;
       const hearGate = checkAdvanceDisciplineGate(item, "hearing", { hearingMinutes, today: board.today });
       if (!hearGate.ok) {
         toast({ description: ar ? hearGate.reason : hearGate.reasonEn, variant: "destructive" });
@@ -408,6 +431,8 @@ export default function Discipline() {
         notifiedAt: item.notifiedAt || now,
         hearingMode: hearGate.oral ? "oral" : "written",
         hearingMinutes: hearingMinutes || item.hearingMinutes,
+        hearingStatement: refused ? "" : said,
+        hearingRefused: refused,
       }, "hearing");
       return;
     }
@@ -427,6 +452,9 @@ export default function Discipline() {
       saveDisciplineOnServer(company?.id, "sign", { ...item, ...signed, fineAmount: post?.amount || item.fineAmount || 0 }, regulation).then((r) => {
         if (r.error) toast({ description: ar ? r.reason : r.reasonEn, variant: "destructive" });
       });
+      tell(item.employeeId, ar
+        ? `وُقّع جزاء «${item.penaltyAr || item.penalty || ""}» على ملفك — ${offenceOf(item)}. لك الاعتراض كتابةً خلال 30 يوماً (المادة 72).`
+        : `A sanction «${item.penaltyEn || item.penalty || ""}» was signed on your file — ${offenceOf(item)}. You may object in writing within 30 days (Article 72).`);
       if (company?.id && Number(item.cutDays || 0) > 0) {
         const cutResult = generateDisciplineDeduction(company.id, item.employeeId, { ...item, ...signed }, currentUser);
         if (cutResult === "NO_OPEN_ITEM") {
@@ -450,6 +478,10 @@ export default function Discipline() {
         toast({ description: ar ? rulingGate.reason : rulingGate.reasonEn, variant: "destructive" });
         return;
       }
+    }
+    if (actionId === "keep" || actionId === "lower" || actionId === "void") {
+      const ruled = { keep: ar ? "ثُبِّت الجزاء" : "the sanction was upheld", lower: ar ? "خُفِّض الجزاء إلى إنذار" : "the sanction was reduced to a warning", void: ar ? "أُلغي الجزاء ورُفع من ملفك" : "the sanction was voided and lifted from your file" }[actionId];
+      tell(item.employeeId, ar ? `صدر القرار في اعتراضك على «${offenceOf(item)}»: ${ruled}.` : `Your objection on «${offenceOf(item)}» was ruled: ${ruled}.`);
     }
     if (actionId === "keep") {
       patch(item, { status: "ruling", rulingOutcome: "keep", rulingAt: now, rulingBy: who, rulingLabel: ar ? "ثُبِّت الجزاء" : "Sanction upheld", rulingNote: ar ? "نُظر في الاعتراض وصدر القرار. ثُبِّت الجزاء كما وُقّع." : "The objection was heard. The sanction stands as signed." }, "ruling");
@@ -530,6 +562,14 @@ export default function Discipline() {
     }
     patch(item, { status: "appeal", appealNote: text, appealedAt: now, appealFile }, "appeal");
     setAppealDraft("");
+    // Art. 72: the objection goes to someone other than the signer — the branch's manager, then the
+    // company head; only when nobody else holds the file does it fall back to the signer
+    const signer = employees.find((row) => row.name && row.name === item.signedBy);
+    const station = (data?.stations || []).find((row) => String(row.id) === String(item.stationId));
+    const others = [station?.managerId, data?.ownerId, data?.directorId].map((id) => String(id || "")).filter((id) => id && id !== String(signer?.id || ""));
+    const decider = others[0] || signer?.id;
+    const worker = employees.find((row) => String(row.id) === String(item.employeeId));
+    tell(decider, ar ? `اعتراض على جزاء — ${worker?.name || ""}: «${text.slice(0, 80)}». القرار عندك (المادة 72).` : `Objection to a sanction — ${worker?.name || ""}: “${text.slice(0, 80)}”. Yours to rule (Article 72).`);
   };
 
   // Model regulation Art. 68 · Law Art. 72 — how and when the decision reached the worker.
@@ -1065,10 +1105,15 @@ export default function Discipline() {
                     clauseStep={clauseStep}
                     lateHint={lateHint}
                     onClause={(next) => {
+                      const autoNote = (c) => (c ? `${ar ? c.ar || c.en : c.en || c.ar} — ${ar ? "يوم" : "on"} ${regulationDate(discoveredAt, ar)}` : "");
+                      const prevAuto = autoNote(regulation.clauses.find((c) => c.id === clauseId));
                       setClauseId(next || "");
                       const clause = regulation.clauses.find((c) => c.id === next);
                       // The clause names the offence; the date makes it this incident (one penalty per act — Art. 70).
-                      if (clause && !String(note || "").trim()) setNote(`${ar ? clause.ar || clause.en : clause.en || clause.ar} — ${ar ? "يوم" : "on"} ${regulationDate(discoveredAt, ar)}`);
+                      // A note still holding the previous clause's own wording follows the new clause — otherwise the
+                      // written notice named clause 1 while the fine was clause 3's. A note the manager wrote stays.
+                      const current = String(note || "").trim();
+                      if (clause && (!current || current === prevAuto)) setNote(autoNote(clause));
                     }}
                   />
                 ) : null}

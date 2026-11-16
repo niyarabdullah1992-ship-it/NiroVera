@@ -81,7 +81,16 @@ const registerSettled = (companyId, requests) => {
   });
 };
 
+/** Demo envelopes and demo signers belong to the local preview workspace only. */
+function isPreviewCompany(companyId) {
+  return String(companyId || "") === LOCAL_PREVIEW_COMPANY_ID || isLocalPreviewActive();
+}
+
 export function ensureDummySignatureRequests(companyId, actor, employees) {
+  // A real company whose signing service did not answer keeps only its own envelopes. Seeding here wrote six
+  // demo people into data.employees (then payroll, attendance and the org saw them) and showed seven demo
+  // envelopes with made-up turnaround figures on a company that had never sent one.
+  if (!isPreviewCompany(companyId)) return expireRetractWindows(rows(companyId)).store;
   const extras = dummySigningEmployees();
   updateCompany(companyId, (data) => {
     const have = new Set((data.employees || []).map((row) => String(row.email || "").toLowerCase()));
@@ -135,8 +144,20 @@ export function listLocalSignatureRequests(companyId, actor, employees) {
   return store.filter((row) => visibleToActor(row, actor)).map((row) => projectRequest(row, actor));
 }
 
+/** Every company blob on this device — a public signing link carries only its token, no company. */
+function localCompanyIds() {
+  try {
+    return Object.keys(localStorage)
+      .filter((key) => key.startsWith("powercare_company_"))
+      .map((key) => key.slice("powercare_company_".length))
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 function resolveStore(companyId, token) {
-  const ids = [companyId, LOCAL_PREVIEW_COMPANY_ID].filter(Boolean);
+  const ids = [...new Set([companyId, ...(token ? localCompanyIds() : []), LOCAL_PREVIEW_COMPANY_ID].filter(Boolean))];
   if (token) {
     const id = String(token).split(".")[0];
     for (const cid of ids) {
@@ -207,6 +228,15 @@ export function invokeLocalMultiSign(body = {}, { actor, employees } = {}) {
       auditTrail: [...(rec.auditTrail || []), { type: "reminder_sent", at: now, actorName: actor?.name, targetName: signer.name, targetEmail: signer.email, auto: body.auto === true }],
     };
     write(companyId, store.map((row) => (row.id === rec.id ? next : row)));
+    // «أُرسل التذكير» was only an audit line offline — a signer who works here is told inside the platform
+    const staff = (getCompanyData(companyId)?.employees || []).find((e) => (
+      (signer.employeeId && String(e.id) === String(signer.employeeId))
+      || (e.email && String(e.email).toLowerCase() === signer.email)
+    ));
+    if (staff?.id && String(staff.id) !== String(actor?.id || "")) {
+      const title = String(rec.title || rec.fileName || rec.name || "").trim();
+      addNotification(companyId, staff.id, `تذكير: مستند بانتظار توقيعك${title ? ` — ${title}` : ""}.`, { to: "/app/signing" });
+    }
     return { ok: true, signerEmail: signer.email, local: true };
   }
 
@@ -221,6 +251,7 @@ export function invokeLocalMultiSign(body = {}, { actor, employees } = {}) {
     const deleted = isDeletedRequest(rec);
     const pending = (rec.signers || []).filter((row) => row.status === "pending");
     return {
+      local: true,
       fileName: rec.fileName,
       creatorName: rec.creatorName,
       docUrl: resolveSigningDocUrl(rec),
@@ -295,6 +326,15 @@ export function invokeLocalMultiSign(body = {}, { actor, employees } = {}) {
       });
     }
     if (result.notifyComplete) notifyComplete(companyId, result.request, actor, body.lang === "ar");
+    else if (result.request?.creatorId) {
+      // «يصل الإشعار إلى المرسل» — each signature reaches the sender, not only the final completion
+      const req = result.request;
+      const who = (req.signers || []).find((row) => row.token === String(body.token || "").split(".")[1]);
+      const left = (req.signers || []).filter((row) => row.status === "pending").length;
+      const title = String(req.subject || req.fileName || "").trim();
+      const tail = left ? ` — بقي ${left === 1 ? "طرف واحد" : `${left} أطراف`}` : (result.cooling ? " — يُغلق المظروف بعد انقضاء مهلة التراجع" : "");
+      addNotification(companyId, String(req.creatorId), `وقّع ${who?.name || "طرف"} على «${title}»${tail}.`, { to: "/app/signing" });
+    }
     return {
       ok: true,
       completed: result.completed,

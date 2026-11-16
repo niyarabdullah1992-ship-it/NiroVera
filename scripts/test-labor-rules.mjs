@@ -888,10 +888,11 @@ for (const [startDate, endDate] of [["2026-05-26", "2026-05-29"], ["2026-09-11",
   assert.match(eidRequest.reason, /لا تُطلب \(المادة 112\)/);
 }
 // A legacy approved Eid request is history only: annual leave over Eid is extended, not blocked by it.
+// (Hired 2025 — a completed year's leave is due, so the request is not an Art. 33 advance.)
 const annualOverEid = checkApproveLeaveGate(
   { type: "annual", startDate: "2026-05-24", endDate: "2026-06-02", days: 10, status: "pending", noOtherEmployerAck: true },
   false,
-  { profile: { hireDate: "2026-01-01" }, requests: [{ type: "eid", status: "approved", startDate: "2026-05-26", endDate: "2026-05-29", days: 4 }] },
+  { profile: { hireDate: "2025-01-01" }, requests: [{ type: "eid", status: "approved", startDate: "2026-05-26", endDate: "2026-05-29", days: 4 }] },
 );
 assert.equal(annualOverEid.ok, true, annualOverEid.reason);
 
@@ -1199,7 +1200,7 @@ assert.equal(checkNoOtherEmployerGate({ type: "overtime" }).ok, true);
 assert.equal(leaveNeedsArticle118Ack("overtime"), false);
 assert.equal(checkSubmitLeaveGate(
   { type: "annual", startDate: "2026-08-01", endDate: "2026-08-03", days: 3, status: "pending" },
-  { profile: { hireDate: "2026-01-01" }, requests: [] },
+  { profile: { hireDate: "2025-01-01" }, requests: [] },
 ).error, "NO_OTHER_EMPLOYER_ACK");
 assert.equal(checkSubmitLeaveGate(
   { type: "emergency", startDate: "2026-09-14", endDate: "2026-09-14", days: 1, status: "pending" },

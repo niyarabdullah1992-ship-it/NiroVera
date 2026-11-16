@@ -13,6 +13,7 @@ import { POWERCARE_MARK_URL } from '../../shared/brand.ts';
 import { companyMetaCreatePayload, creatorEmployeeRecord } from '../../shared/companyBootstrap.ts';
 import { mergeAbuseCasesWrite, mergeEmployerDutyRoster, mergeWorkRegulationWrite } from '../../shared/syncLaw.ts';
 import { enforceEmployeeFileWrite } from '../../shared/employeeFileGate.ts';
+import { payrollSyncBoundary } from '../../shared/payrollDerivations.ts';
 import { mergeOrgDesignWrite } from '../../shared/orgDesignDerivations.ts';
 import { checkStationLocationGate } from '../../shared/geoPlaces.ts';
 
@@ -1106,6 +1107,18 @@ Deno.serve(async (req) => {
       const existing = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category });
       // Object-map blobs must not be coerced to [] — that erased branchEscalationChains.
       let data = normalizeBlobPayload(category, payload);
+      // الرواتب مال: الاعتماد وإرسال WPS حصريًّا عبر مسار الرواتب المبوَّب بعد فحص شروطه،
+      // لا عبر المزامنة العامة (كالجزاءات). المسوّدات تبقى حرّة؛ تخطّي البوابة أو تزوير
+      // الطابع أو حذف مسيرٍ مقفول يُرفض.
+      if (category === 'payrollRuns') {
+        const boundary = payrollSyncBoundary(
+          Array.isArray(existing[0]?.payload) ? existing[0].payload : [],
+          Array.isArray(data) ? data : [],
+        );
+        if (!boundary.ok) {
+          return Response.json({ error: boundary.error, reason: boundary.reason, reasonEn: boundary.reasonEn }, { status: 403 });
+        }
+      }
       const ownerOf = (item) => item.userId || item.employeeId || item.ownerId || item.createdBy || null;
       if (selfWrite) {
         // Merge: the employee's own records come from the client, everyone else's stay untouched.

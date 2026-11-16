@@ -315,6 +315,9 @@ Deno.serve(async (req) => {
         overtimeMinutes: derived.overtimeMinutes,
         decision: body.decision,
         alreadyDecided: punch.overtimeApproved,
+        // The punches on this row are what proves presence — the reject branch needs them named.
+        workedProven: !!(punch.checkInAt && punch.checkOutAt),
+        note: body.note ?? body.reason,
       });
       if (!gate.ok) {
         return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn }, { status: 400 });

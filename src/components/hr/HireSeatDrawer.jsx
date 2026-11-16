@@ -1,3 +1,5 @@
+import ContractLeaveFields from "@/components/hr/ContractLeaveFields";
+import { applyContractLeave } from "@/lib/contractLeave";
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
@@ -104,6 +106,7 @@ export default function HireSeatDrawer({
   const [busy, setBusy] = useState(false);
   const [extraStationIds, setExtraStationIds] = useState([]);
   const [makeManager, setMakeManager] = useState(false);
+  const [leaveTerms, setLeaveTerms] = useState({ annual: 21, restCount: 1, restDows: [5] });
 
   const packs = useMemo(() => companyLists(data), [data]);
   const hasLists = packs.length > 0;
@@ -411,6 +414,7 @@ export default function HireSeatDrawer({
       toast({ description: map[result?.error] || (ar ? `تعذّر الحفظ (${result?.error || "unknown"}).` : `Could not save (${result?.error || "unknown"}).`), variant: "destructive" });
       return;
     }
+    if (result.employeeId) applyContractLeave(companyId, result.employeeId, leaveTerms);
     if (makeManager && !hasManager && seatHomeId && result.employeeId) {
       setStationManager(companyId, seatHomeId, result.employeeId);
     }
@@ -588,6 +592,7 @@ export default function HireSeatDrawer({
                 : "If the end date is left blank the term is deemed one year from the start date and renews for a like period."}
             </p>
           ) : null}
+          <ContractLeaveFields value={leaveTerms} onChange={setLeaveTerms} />
           {hireType === "trial" ? (
             <>
             <Field label={ar ? "أيام التجربة (حد 180)" : "Probation days (max 180)"}>

@@ -4,7 +4,9 @@ import { isHrOnlyVoiceRow } from "../../shared/voicePrivacy.ts";
 import {
   appendVoiceAudit,
   applySlaAutoEscalate,
+  checkAdoptNoteGate,
   checkCloseGate,
+  checkSelfReviewGate,
   checkEscalateGate,
   checkFileAnonymousGate,
   countFilingsInWindow,
@@ -486,6 +488,26 @@ Deno.serve(async (req) => {
           reasonEn: gate.reasonEn,
         }, { status: 400 });
       }
+      // الواجهة تفرض هاتين على مسار «الاعتماد»، وكان الخادم يكتب القرار بلا واحدة
+      // منهما: فيُغلق الصوت بقرارٍ فارغ، أو يحكم عليه من رفعه بنفسه إن كان معالجًا.
+      // close هنا هو الاعتماد نفسه (يكتب appendVoiceAudit "adopt")، فالفرض على مكانه.
+      const noteText = String(body.note || body.reason || "");
+      const selfReview = checkSelfReviewGate(report, auth.userId);
+      if (!selfReview.ok) {
+        return Response.json({
+          error: selfReview.error,
+          reason: selfReview.reason,
+          reasonEn: selfReview.reasonEn,
+        }, { status: 400 });
+      }
+      const noteGate = checkAdoptNoteGate(noteText);
+      if (!noteGate.ok) {
+        return Response.json({
+          error: noteGate.error,
+          reason: noteGate.reason,
+          reasonEn: noteGate.reasonEn,
+        }, { status: 400 });
+      }
       const nowIso = new Date().toISOString();
       data.reports[idx] = {
         ...report,
@@ -495,7 +517,7 @@ Deno.serve(async (req) => {
         satisfaction: body.satisfaction != null ? Number(body.satisfaction) : report.satisfaction ?? null,
         auditTrail: appendVoiceAudit(report, "adopt", { id: auth.userId, name: auth.name, role: auth.role }, {
           at: nowIso,
-          detail: String(body.note || body.reason || "").trim(),
+          detail: noteText.trim(),
           level: Number(report.escalationLevel) || 0,
         }),
       };

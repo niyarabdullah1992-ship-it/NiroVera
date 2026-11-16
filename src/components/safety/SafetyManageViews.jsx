@@ -157,7 +157,13 @@ export function SafetyDashboard({ ar, stations, recFor, onOpenRegister, data = n
   return (
     <div data-hse="admin-board" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
-        <Kpi label={L("مخاطر مفتوحة", "Open hazards")} value={openHazards} sub={L("في نطاقك", "In your scope")} tone={openHazards ? "bad" : "ok"} />
+        {/* an open unsafe-condition report is an open hazard too — the card read only the register and said 0 beside one */}
+        <Kpi
+          label={L("مخاطر مفتوحة", "Open hazards")}
+          value={openHazards + openReports.filter((item) => !item.card?.positive).length}
+          sub={L(`${openReports.filter((item) => !item.card?.positive).length} بلاغ · ${openHazards} في السجل`, `${openReports.filter((item) => !item.card?.positive).length} reports · ${openHazards} in the register`)}
+          tone={openHazards + openReports.filter((item) => !item.card?.positive).length ? "bad" : "ok"}
+        />
         <Kpi label={L("تصاريح عمل سارية", "Live permits")} value={livePermits} sub={expiringWeek ? (ar ? `${expiringWeek} تنتهي هذا الأسبوع` : `${expiringWeek} expire this week`) : "—"} tone={expiringWeek ? "warn" : "ok"} />
         {(() => {
           const scopeIds = new Set(stations.map((s) => String(s.id)));
@@ -192,7 +198,7 @@ export function SafetyDashboard({ ar, stations, recFor, onOpenRegister, data = n
         <article style={{ ...shell, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
             <strong style={{ fontSize: 13.5, color: "var(--nv-ink)" }}>{L("خريطة المخاطر المفتوحة", "Open risk map")}</strong>
-            <span style={{ fontSize: 11, color: "var(--nv-ink3)" }}>{ar ? `${riskMap.openCount} بلاغاً مفتوحاً` : `${riskMap.openCount} open reports`}</span>
+            <span style={{ fontSize: 11, color: "var(--nv-ink3)" }}>{ar ? (riskMap.openCount === 1 ? "بلاغ واحد مفتوح" : riskMap.openCount === 2 ? "بلاغان مفتوحان" : riskMap.openCount <= 10 ? `${riskMap.openCount} بلاغات مفتوحة` : `${riskMap.openCount} بلاغاً مفتوحاً`) : `${riskMap.openCount} open reports`}</span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "18px repeat(5, 38px)", gap: 4, justifyContent: "center", alignItems: "center" }}>
             {[5, 4, 3, 2, 1].map((severity) => (

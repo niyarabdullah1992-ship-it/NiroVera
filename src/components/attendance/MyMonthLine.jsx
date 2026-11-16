@@ -9,7 +9,7 @@ import { DS_CONTROL_RADIUS } from "@/lib/designSystem";
 import RightHint from "@/components/shared/RightHint";
 import { ManualPunchRequestBox } from "@/components/attendance/CheckInOutCard";
 import { isoDay, monthTotals, myDutyDay, rowsByDateKey, useMyAttendanceRange } from "@/components/attendance/myDutyDays";
-import useDutyCareer from "@/components/attendance/dutyCareer";
+import useDutyCareer from "@/components/attendance/useDutyCareer";
 import { dutyLabel } from "@/components/schedules/dutyStatus";
 import { fileDutyHref } from "@/components/schedules/dutyLinks";
 

@@ -47,7 +47,8 @@ const toastVariants = cva(
   }
 );
 
-const Toast = React.forwardRef(({ className, variant, ...props }, ref) => {
+// open / onOpenChange belong to the toast store, not the DOM — passed through they warned on every toast
+const Toast = React.forwardRef(({ className, variant, open: _open, onOpenChange: _onOpenChange, ...props }, ref) => {
   return (
     <div
       ref={ref}

@@ -320,7 +320,7 @@ export const SUITE_APPS = [
     public: true,
     ar: "الرواتب",
     en: "Payroll",
-    blurbAr: "الحضور يُقفل في المسير قبل ملف مدى. مواد 90 و92 و93 و107.",
+    blurbAr: "الحضور يُقفل في المسير قبل ملف مدد. مواد 90 و92 و93 و107.",
     blurbEn: "Attendance closes into the run before the Mudad file. Art. 90, 92, 93 and 107.",
     icon: "wallet",
   },

@@ -6,7 +6,7 @@
 
 import { buildPeopleTree } from "./peopleTreeGraph.js";
 import { isCompanyRootStation, isManagerUnit } from "./stationTree.js";
-import { coordinateLine, hrManagerForStation, isHrDirector, isHrUnit, isRegionalHr, regionalSeatLine, servedStationIds } from "./hrTree.js";
+import { coordinateLine, hrManagerForStation, isHrDirector, isHrStaff, isHrUnit, isRegionalHr, regionalSeatLine, servedStationIds } from "./hrTree.js";
 import { productGradeIndex, productGradeLabel } from "./jobGradeTitles.js";
 
 function todayKey() {
@@ -377,6 +377,30 @@ export function buildWorkforceSeatChart(data, { ar = true, meId = "" } = {}) {
     byId.forEach((item) => detach(item.children));
     parent.children.push(node);
   });
+
+  // HR staff belong inside the HR unit: while the director seat is vacant they hang under it,
+  // not loose beside the field managers.
+  const directorSeat = flattenSeatChart(roots).find((node) => node.vacant && node.hrPost === "director");
+  if (directorSeat) {
+    const ownerOf = new Map();
+    const index = (list, parent) => (list || []).forEach((item) => { ownerOf.set(item, parent); index(item.children, item); });
+    index(roots, null);
+    flattenSeatChart(roots).forEach((node) => {
+      if (node.vacant || !node.employeeId) return;
+      const employee = byEmployee.get(String(node.employeeId));
+      if (!employee || isHrDirector(employee, data) || !isHrStaff(employee, data)) return;
+      const parent = ownerOf.get(node) || null;
+      if (parent === directorSeat) return;
+      const parentEmployee = parent?.employeeId ? byEmployee.get(String(parent.employeeId)) : null;
+      if (parentEmployee && isHrStaff(parentEmployee, data)) return;
+      const list = parent ? parent.children : roots;
+      const at = list.indexOf(node);
+      if (at < 0) return;
+      list.splice(at, 1);
+      directorSeat.children.push(node);
+      ownerOf.set(node, directorSeat);
+    });
+  }
 
   stations.forEach((station) => {
     if (!station?.id || station.managerId || isCompanyRootStation(station) || isHrStation(station)) return;

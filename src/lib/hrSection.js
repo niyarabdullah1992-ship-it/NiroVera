@@ -16,6 +16,7 @@
  */
 import { buildMinistrySection, ministryTotals, MINISTRY_SOURCE_ORDER, totalsTone } from "./ministrySections.js";
 import { foldOrgLookup } from "./orgLookup.js";
+import { sectionGrant } from "./manageSections.js";
 import { stationPlace, countryOf } from "./geoPlaces.js";
 import { isCompanyRootStation, isHrUnit, isManagerUnit, scopedStationIdsForUser } from "./stationTree.js";
 import { activePeople, seatState, todayKey } from "./orgDesign.js";
@@ -44,10 +45,12 @@ function isOwner(user, data) {
 
 /** Same write gate as the old /app/org admin view (OrgStructure canWrite). */
 export function canWriteOrgStructure(user, data) {
-  return Boolean(user && (
-    str(user.id) === str(data?.ownerId)
-    || ["owner", "director", "admin", "pgm", "hr_manager", "ops_manager"].includes(user.role)
-  ));
+  if (!user) return false;
+  if (str(user.id) === str(data?.ownerId) || user.role === "owner") return true;
+  // HR is run by whoever the owner gives «الموارد البشرية» — an explicit grant decides
+  const grant = sectionGrant(data, user.id, "hr");
+  if (grant) return grant === "manage";
+  return user.role === "hr_manager";
 }
 
 /** A smart position that hides the HR department closes the whole section, as it closed /app/hr and /app/org. */
@@ -75,19 +78,32 @@ export function isHrStationLead(user, data) {
  *        pre-merge route gate, plan gate included). Station leads reach the section without it.
  * @returns {{ panes: string[], full: boolean, orgWrite: boolean, stationLead: boolean, scopeIds: string[]|null }}
  */
+/** A branch HR officer: an active HR level that manages employee files on listed branches → those branch ids. */
+export function branchHrScope(user, data) {
+  if (!user?.hrLevelId) return null;
+  const level = (data?.hrLevels || []).find((l) => l.id === user.hrLevelId && l.active !== false);
+  if (!level || !(level.permissions || []).includes("manage_employees")) return null;
+  const ids = Array.isArray(level.stationIds) ? level.stationIds.map(String).filter(Boolean) : [];
+  return ids.length ? ids : null;
+}
+
 export function hrSectionAccess(user, data, { routeAllowed = false, planAllowed = true } = {}) {
   const none = { panes: [], full: false, orgWrite: false, stationLead: false, scopeIds: [] };
   if (!user || !planAllowed) return none;
-  const full = Boolean(routeAllowed);
+  // A branch HR officer's level names her branches: she works on those, even when the route is open to her.
+  const scopedHr = user.role === "owner" || user.role === "director" || (data?.ownerId && String(user.id) === String(data.ownerId)) ? null : branchHrScope(user, data);
+  const full = Boolean(routeAllowed) && !scopedHr;
   const orgWrite = full && canWriteOrgStructure(user, data);
   const stationLead = !full && isHrStationLead(user, data);
+  const branchHr = !full ? scopedHr : null;
   const panes = [];
   if (full) panes.push("overview", "people");
+  else if (branchHr) panes.push("people");
   if (full || stationLead) panes.push("org");
   if (orgWrite || stationLead || full) panes.push("branches");
   if (full) panes.push("compliance");
-  const scopeIds = full ? null : scopedStationIdsForUser(user, data).map(String);
-  return { panes, full, orgWrite, stationLead, scopeIds };
+  const scopeIds = full ? null : branchHr ? branchHr : scopedStationIdsForUser(user, data).map(String);
+  return { panes, full, orgWrite, stationLead, scopeIds, branchHr: Boolean(branchHr) };
 }
 
 /** The pane on screen: the asked one when allowed, else the first allowed (station leads open on their stations). */

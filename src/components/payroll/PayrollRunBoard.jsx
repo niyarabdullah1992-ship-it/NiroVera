@@ -183,9 +183,16 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
     }
     await runAction(
       { action: "approve" },
-      ar ? "اعتُمد المسير — انتقل إلى حماية الأجور لإنشاء ملف مدى." : "Run approved — open wage protection to build the Mudad file.",
+      ar ? "اعتُمد المسير — انتقل إلى حماية الأجور لإنشاء ملف مدد." : "Run approved — open wage protection to build the Mudad file.",
     );
   };
+
+  // «اعتمد المسير» in the section's header asks the board to approve — the same gate and call as its own button.
+  useEffect(() => {
+    const onAsk = () => { approve(); };
+    window.addEventListener("nv:payroll-approve", onAsk);
+    return () => window.removeEventListener("nv:payroll-approve", onAsk);
+  });
 
   if (!currentUser) return null;
 

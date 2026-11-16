@@ -99,11 +99,6 @@ function ProfessionalCard({ card, ar, self, companyName }) {
           <button type="button" onClick={printCard} style={{ ...btn, border: "1px solid var(--nv-line)", background: "transparent", color: "var(--nv-ink)" }}>
             {ar ? "طباعة" : "Print"}
           </button>
-          {self ? (
-            <button type="button" onClick={() => navigate("/app/requests?kind=doc&doc=exp")} style={{ ...btn, border: "1px solid var(--nv-ok-ink)", background: "var(--nv-ok-ink)", color: "#fff" }}>
-              {ar ? "طلب شهادة خدمة" : "Request service certificate"}
-            </button>
-          ) : null}
         </div>
       </div>
       <div className="nv-myfile-printonly" style={{ alignItems: "center", gap: 14, padding: "16px 20px 0" }}>
@@ -204,7 +199,7 @@ function Readiness({ readiness, ar, self, onOpenTab }) {
     <section style={paper}>
       <SectionHead
         title={title}
-        note={ar ? (self ? "ما ينقص الملف أو يقترب انتهاؤه، وعلى من الخطوة." : "What the file misses or is about to lose, and whose move it is.") : "What is missing or ending, and whose move it is."}
+        note={ar ? (self ? "ما ينقص ملفك أو يقترب انتهاؤه، وعلى من الخطوة." : "ما ينقص الملف أو يقترب انتهاؤه، وعلى من الخطوة.") : "What is missing or ending, and whose move it is."}
         end={(
           <div style={{ flex: "0 1 200px", minWidth: 150, display: "flex", flexDirection: "column", gap: 6 }}>
             <span style={{ fontSize: 12.5, color: "var(--nv-ink)", fontWeight: 600 }}>

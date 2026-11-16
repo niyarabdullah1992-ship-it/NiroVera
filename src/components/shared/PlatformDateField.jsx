@@ -456,7 +456,8 @@ export default function PlatformDateField({
             position: "fixed",
             top: coords?.top ?? -9999,
             left: coords?.left ?? 0,
-            zIndex: 220,
+            // above every drawer (hire/branch drawers sit at 480–490) — a field inside one must open its calendar on top
+            zIndex: 1100,
             width: coords?.w ?? 292,
             minWidth: 292,
             borderRadius: RADIUS,

@@ -5,7 +5,7 @@ import { toRiyadhDateKey } from "./riyadhDate.js";
 import { checkJuvenileHoursGate } from "./laborProtectionGates.js";
 import { isWeeklyRestDay } from "./laborHoursPolicy.js";
 import { isOfficialHoliday, officialHolidayLeaveLabel, officialHolidayOn } from "./ummAlQuraCalendar.js";
-import { ruleValue } from "./laborRules.js";
+import { lateBeyondGrace, ruleValue } from "./laborRules.js";
 
 export function parsePunchClock(value) {
   const match = String(value || "").trim().match(/^(\d{1,2}):(\d{2})$/);
@@ -233,7 +233,7 @@ export function manualPunchLateness({ clock, shiftStart, nursingStartMinutes = 0
   let late = toM(at) - toM(start);
   if (late < -720) late += 1440; // after midnight on a shift that began the evening before
   if (late > 720) late -= 1440;
-  const minutes = Math.max(0, late - Math.max(0, Number(graceMinutes) || 0) - Math.max(0, Number(nursingStartMinutes) || 0));
+  const minutes = lateBeyondGrace(late - Math.max(0, Number(nursingStartMinutes) || 0), graceMinutes);
   return minutes > 0 ? { status: "late", lateMinutes: minutes } : { status: "present", lateMinutes: 0 };
 }
 

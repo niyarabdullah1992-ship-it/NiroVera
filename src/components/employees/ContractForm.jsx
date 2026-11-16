@@ -45,6 +45,10 @@ export default function ContractForm({ employee, companyId, contract, ar, onDone
   const [secondFile, setSecondFile] = useState(employee?.profile?.probationSecondFile || null);
   const companyData = getCompanyData(companyId) || {};
   const station = (companyData.stations || []).find((row) => String(row.id) === String(employee?.stationId || employee?.station_id || ""));
+  // Declared before contractModelFields: the object literal below reads `fixed`, and `const` is not
+  // hoisted — reading it first threw on every render and the contract editor could not mount.
+  const nonSaudi = nationalityIsSaudi(employee?.nationality || employee?.profile?.nationality) === false;
+  const fixed = nonSaudi || workPatternForcesFixed(workPattern) || isFixedContractType(contractType);
   const modelFields = contractModelFields({
     employee,
     company: {
@@ -56,8 +60,6 @@ export default function ContractForm({ employee, companyId, contract, ar, onDone
     contract: { type: fixed ? "fixed" : contractType, startDate, endDate: fixed ? endDate : "", probation, probationDays: Number(probationDays) || 0 },
   });
   const missingContent = generate ? checkContractRequiredContent(modelFields, ar) : [];
-  const nonSaudi = nationalityIsSaudi(employee?.nationality || employee?.profile?.nationality) === false;
-  const fixed = nonSaudi || workPatternForcesFixed(workPattern) || isFixedContractType(contractType);
   const hasExisting = Boolean(contract?.fileUrl);
   const typeRuleId = nonSaudi ? "contract.nonSaudi.fixed.cite" : (fixed ? "contract.fixed.cite" : "contract.indefinite.cite");
   const liveTermGate = checkContractTermGate({

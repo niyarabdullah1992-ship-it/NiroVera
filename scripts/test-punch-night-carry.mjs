@@ -6,7 +6,7 @@
  *     day with no shift and no punch is a rest day — no broken link in «سلسلة البصمة»;
  *  3. a late return from a flex break surfaces in «تنبيهاتي» as a warn (the queue's reading), not a breach;
  *  4. the gates read the Riyadh clock (dutyClockMinutes), never the device's — even in another time zone;
- *  5. lateness uses the rule's grace: max(0, in − start − grace), as deriveActualDuty does.
+ *  5. lateness uses the rule's grace: 0 inside it, every minute from the start past it (lateBeyondGrace), as deriveActualDuty does.
  * Run: node scripts/test-punch-night-carry.mjs
  */
 process.env.TZ = "Europe/London"; // a device far from Riyadh: every reading below must still be Riyadh's
@@ -87,7 +87,7 @@ const D2 = "2026-10-19";
   assert.equal(checkEarlyCheckInGate(ci.shift, ci.nowMin, 60).ok, true, "not «too early» for last night's shift");
   assert.equal(checkLateCheckInGate(ci.shift, ci.nowMin).ok, true);
   const lateness = lateMinutesFromScheduledStart(ci.nowMin, ci.shift.start, GRACE);
-  assert.deepEqual(lateness, { lateMinutes: 100 - GRACE, status: "late" }, "00:40 on 23:00 = 100 min past the start, less the grace");
+  assert.deepEqual(lateness, { lateMinutes: 100, status: "late" }, "00:40 on 23:00 = 100 min past the start (past the grace, all count)");
   // At the end of the grace the self check-in closes (the manual request instead).
   assert.equal(checkLateCheckInGate(NIGHT, dutyClockMinutes(D1, at(D2, "08:05"))).ok, false);
   assert.equal(todaysShiftEnded(NIGHT, dutyClockMinutes(D1, at(D2, "07:30"))), false);
@@ -212,7 +212,7 @@ const D2 = "2026-10-19";
   const at0702 = lateMinutesFromScheduledStart(7 * 60 + 2, "07:00", GRACE);
   assert.deepEqual(at0702, { lateMinutes: 0, status: "present" }, "07:02 is inside the grace — not «متأخر 2 دقيقة»");
   const at0725 = lateMinutesFromScheduledStart(7 * 60 + 25, "07:00");
-  assert.equal(at0725.lateMinutes, 25 - GRACE, "the default grace is the rule's");
+  assert.equal(at0725.lateMinutes, 25 > GRACE ? 25 : 0, "the default grace is the rule's (past it, every minute counts)");
   for (const hm of ["07:02", "07:10", "07:11", "07:25", "08:00"]) {
     const [h, m] = hm.split(":").map(Number);
     const punch = lateMinutesFromScheduledStart(h * 60 + m, "07:00", GRACE).lateMinutes;

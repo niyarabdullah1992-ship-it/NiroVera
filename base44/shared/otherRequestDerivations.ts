@@ -377,7 +377,7 @@ export function checkApproveStudyConsentGate(request?: StudyConsentLike | null) 
 export const REJECT_REASON_REQUIRED_AR = "اكتب سبب الرفض — يُحفظ في سجل التدقيق.";
 export const REJECT_REASON_REQUIRED_EN = "Write why it is refused — it is stored on the audit trail.";
 export const REQUEST_REFUSE_REASON_MIN = 4;
-const NIGHT_FITNESS_TYPE = "night_fitness";
+export const NIGHT_FITNESS_TYPE = "night_fitness";
 
 export function namedRefuseReason(note?: string | null) {
   return String(note || "").trim();
@@ -896,4 +896,153 @@ export function checkRequestFilesGate(files: unknown) {
     }
   }
   return { ok: true as const, files: list };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// توأم اللياقة الليلية (القرار 18632) — منقول حرفيًّا عن src/lib/otherRequestDerivations.js.
+// كان submitOther/approveOther في الخادم يكتب طلب اللياقة الليلية ويعتمده بلا فرض
+// checkSubmitNightFitnessGate/checkApproveNightFitnessGate: فيُرفع التقرير من الإدارة
+// لا من الموظف، أو بلا تقرير طبي مرفق، أو بفترة مقلوبة، أو مع طلب معلّق قائم.
+// ───────────────────────────────────────────────────────────────────────────
+export const NIGHT_FITNESS_SUBTITLE_AR = "تقرير اللياقة الطبية للعمل الليلي — القرار 18632";
+export const NIGHT_FITNESS_FILE_REQUIRED_AR = "أرفق تقرير اللياقة الطبية للعمل الليلي.";
+export const NIGHT_FITNESS_FILE_REQUIRED_EN = "Attach the night-work medical fitness report.";
+export const NIGHT_FITNESS_PERMANENT_AR = "دائم";
+export const NIGHT_FITNESS_PERIOD_REQUIRED_AR = "حدد تاريخ البداية وتاريخ النهاية، أو اختر دائماً.";
+export const NIGHT_FITNESS_PERIOD_REQUIRED_EN = "Set the start and end dates, or choose permanent.";
+export const NIGHT_FITNESS_PERIOD_INVALID_AR = "تاريخ النهاية يسبق تاريخ البداية.";
+export const NIGHT_FITNESS_PERIOD_INVALID_EN = "The end date is before the start date.";
+export const NIGHT_FITNESS_EMPLOYEE_ONLY_AR = "الإدارة لا ترفع تقرير اللياقة — الموظف يقدّمه من ملفي.";
+export const NIGHT_FITNESS_EMPLOYEE_ONLY_EN = "Management does not file the fitness report — the worker submits it from My file.";
+function isoRequestDay(raw) {
+  const day = String(raw || "").trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : "";
+}
+export function nightFitnessEmployeeFileOf(request) {
+  if (!request) return null;
+  const file = request.file || (Array.isArray(request.files) ? request.files[0] : null) || request.senderFile;
+  return isStoredRequestFile(file) ? file : null;
+}
+export function isNightFitnessPermanent(input = {}) {
+  return input?.permanent === true || input?.permanent === "true" || input?.until === "permanent" || input?.to === "permanent";
+}
+export function resolveNightFitnessPeriod(input = {}) {
+  const permanent = isNightFitnessPermanent(input);
+  const from = isoRequestDay(input.from || input.examDate || input.issuedAt || input.date || input.startDate);
+  const to = isoRequestDay(input.to || input.until || input.endDate);
+  if (permanent) {
+    return {
+      ok: true,
+      permanent: true,
+      from: from || undefined,
+      to: "",
+      examDate: from || undefined,
+      until: "",
+    };
+  }
+  if (!from || !to) {
+    return {
+      ok: false,
+      error: "NIGHT_FITNESS_PERIOD_REQUIRED",
+      reason: NIGHT_FITNESS_PERIOD_REQUIRED_AR,
+      reasonEn: NIGHT_FITNESS_PERIOD_REQUIRED_EN,
+    };
+  }
+  if (from > to) {
+    return {
+      ok: false,
+      error: "NIGHT_FITNESS_PERIOD_INVALID",
+      reason: NIGHT_FITNESS_PERIOD_INVALID_AR,
+      reasonEn: NIGHT_FITNESS_PERIOD_INVALID_EN,
+    };
+  }
+  return {
+    ok: true,
+    permanent: false,
+    from,
+    to,
+    examDate: from,
+    until: to,
+  };
+}
+export function nightFitnessState(source, companyId) {
+  const rows = studyConsentRowsOf(source).filter((row) => row?.type === NIGHT_FITNESS_TYPE && studyConsentInCompany(row, source, companyId));
+  const pending = rows.find((row) => {
+    const status = otherRequestStatus(row);
+    return status === "pending" || status === "pending_manager";
+  }) || null;
+  if (pending) return { status: "pending", request: pending };
+  const approved = rows.find((row) => otherRequestStatus(row) === "approved") || null;
+  if (approved) return { status: "approved", request: approved };
+  const rejected = rows.find((row) => otherRequestStatus(row) === "rejected") || null;
+  if (rejected) return { status: "rejected", request: rejected };
+  return { status: "none", request: null };
+}
+export function composeNightFitnessReason(input = {}) {
+  const period = input.ok === true && input.permanent != null ? input : resolveNightFitnessPeriod(input);
+  const from = period.from || period.examDate || isoRequestDay(input.from || input.examDate || input.date);
+  const to = period.to || period.until || isoRequestDay(input.to || input.until);
+  const note = String(input.reason || input.note || "").trim();
+  const span = period.permanent
+    ? NIGHT_FITNESS_PERMANENT_AR
+    : (from && to ? `${from} → ${to}` : from);
+  return [NIGHT_FITNESS_SUBTITLE_AR, span, note].filter(Boolean).join(" — ");
+}
+function isNightFitnessManagerRaise(input = {}) {
+  if (input.lane === "manage" || input.manageFiled === true) return true;
+  if (String(input.status || "") === "approved") return true;
+  const actorId = String(input.actorId || input.requestedById || input.recordedById || "").trim();
+  const subjectId = String(input.employee?.id || input.employeeId || "").trim();
+  return !!(actorId && subjectId && actorId !== subjectId);
+}
+export function checkSubmitNightFitnessGate(input = {}) {
+  if (isNightFitnessManagerRaise(input)) {
+    return {
+      ok: false,
+      error: "NIGHT_FITNESS_EMPLOYEE_ONLY",
+      reason: NIGHT_FITNESS_EMPLOYEE_ONLY_AR,
+      reasonEn: NIGHT_FITNESS_EMPLOYEE_ONLY_EN,
+    };
+  }
+  const employeeFile = nightFitnessEmployeeFileOf(input);
+  if (!employeeFile) {
+    return {
+      ok: false,
+      error: "NIGHT_FITNESS_FILE_REQUIRED",
+      reason: NIGHT_FITNESS_FILE_REQUIRED_AR,
+      reasonEn: NIGHT_FITNESS_FILE_REQUIRED_EN,
+    };
+  }
+  const companyId = input.companyId || input.employee?.companyId;
+  const state = nightFitnessState(input.otherRequests || input.employee, companyId);
+  if (state.status === "pending") {
+    return {
+      ok: false,
+      error: "NIGHT_FITNESS_PENDING",
+      reason: "يوجد طلب لياقة ليلية معلّق بانتظار قرار المنشأة.",
+      reasonEn: "A night-fitness request is already pending the establishment's decision.",
+    };
+  }
+  const period = resolveNightFitnessPeriod(input);
+  if (!period.ok) return period;
+  return {
+    ok: true,
+    file: employeeFile,
+    from: period.from || "",
+    to: period.permanent ? "" : (period.to || ""),
+    examDate: period.examDate,
+    until: period.permanent ? "" : (period.until || period.to || ""),
+    permanent: period.permanent,
+    reason: composeNightFitnessReason({ ...input, ...period }),
+  };
+}
+export function checkApproveNightFitnessGate(request) {
+  if (request?.type !== NIGHT_FITNESS_TYPE) return { ok: true };
+  if (nightFitnessEmployeeFileOf(request)) return { ok: true };
+  return {
+    ok: false,
+    error: "NIGHT_FITNESS_FILE_REQUIRED",
+    reason: NIGHT_FITNESS_FILE_REQUIRED_AR,
+    reasonEn: NIGHT_FITNESS_FILE_REQUIRED_EN,
+  };
 }

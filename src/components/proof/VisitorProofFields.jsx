@@ -61,8 +61,10 @@ export default function VisitorProofFields({
   employees = [],
 }) {
   const set = (key) => (event) => setForm({ ...form, [key]: event.target.value });
-  const people = formPeople(form);
-  const vehicles = formVehicles(form);
+  // The rows as typed: formPeople / formVehicles trim every field, and a field re-read through them on each
+  // keystroke lost the space after a first word («أحمد علي» → «أحمدعلي»). Trimming is the save's job.
+  const people = Array.isArray(form.people) && form.people.length ? form.people.map((row) => ({ ...formPeople({ people: [row] })[0], ...row })) : formPeople(form);
+  const vehicles = Array.isArray(form.vehicles) && form.vehicles.length ? form.vehicles.map((row) => ({ ...formVehicles({ vehicles: [row] })[0], ...row })) : formVehicles(form);
   const setPeople = (next) => setForm({ ...form, people: next });
   const setVehicles = (next) => setForm({ ...form, vehicles: next });
   const patchPerson = (index, key) => (event) => {

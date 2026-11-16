@@ -1,10 +1,28 @@
 /**
  * Client-side mirrors of base44/shared/attendanceGate + leave punch gate.
  */
-import { isOnApprovedLeave, type EmployeeLeaveProfile } from "@/lib/leaveTypes";
+import { isOnApprovedLeave } from "@/lib/leaveTypes";
 import { officialHolidayLeaveLabel, officialHolidayOn } from "@/lib/ummAlQuraCalendar";
 import { isJuvenile } from "@/lib/laborHoursPolicy.js";
 import type { AttendanceRowLike, GateResult } from "@/types/proofCycle";
+
+/**
+ * ما تقرأه بوابة الإجازة من الموظف — لا أكثر.
+ * كان يُعرَّف في src/lib/leaveTypes.d.ts، وكان ذاك الملف يحجب 51 تصديرًا حقيقيًا عن TypeScript
+ * ويولّد أخطاء وهمية تُغرق الأخطاء الصحيحة. النوع هنا لأن مستهلكه هنا وحده.
+ * المصدر: approvedLeaveOnDay في src/lib/leaveTypes.js تقرأ employee?.leaveRequests فقط.
+ */
+type EmployeeLeaveProfile = {
+  leaveRequests?: Array<{
+    status?: string;
+    type?: string;
+    startDate?: string;
+    endDate?: string;
+    activeStartDate?: string;
+    activeEndDate?: string;
+    days?: number;
+  }>;
+};
 
 export function riyadhDateKey(date: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", {

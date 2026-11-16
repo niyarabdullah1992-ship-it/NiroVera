@@ -43,7 +43,7 @@ function Row({ title, cite, children }) {
  * leave paid in advance (Art. 109), the company minimum (Art. 89) and the combined wage sheet
  * (implementing regulations Art. 5(2)).
  */
-export default function PayrollLawPanel({ companyId, data, month, items = [], employeeForItem, canManage, ar }) {
+export default function PayrollLawPanel({ companyId, data, month, items = [], employeeForItem, canManage, ar, embedded = false }) {
   const [payday, setPayday] = useState(data?.settings?.payrollPayday ?? "");
   const [minimum, setMinimum] = useState(data?.settings?.minimumWage ?? "");
   const today = todayIso();
@@ -96,9 +96,9 @@ export default function PayrollLawPanel({ companyId, data, month, items = [], em
   };
 
   return (
-    <div style={{ ...cardShell, background: CARD, padding: "16px 18px" }} data-payroll-law="1">
+    <div style={embedded ? { padding: "4px 18px 16px" } : { ...cardShell, background: CARD, padding: "16px 18px" }} data-payroll-law="1">
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: NAVY }}>{ar ? "مواعيد الأجر وحمايته" : "Wage timing and protection"}</span>
+        {embedded ? <span /> : <span style={{ fontSize: 14, fontWeight: 700, color: NAVY }}>{ar ? "مواعيد الأجر وحمايته" : "Wage timing and protection"}</span>}
         <button type="button" onClick={exportSheet} style={{ ...ui.btnSecondary, display: "inline-flex", alignItems: "center", gap: 6 }}>
           <Download style={{ width: 14, height: 14 }} /> {ar ? "كشف الأجور الموحّد (CSV)" : "Combined wage sheet (CSV)"}
         </button>

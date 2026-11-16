@@ -13,6 +13,9 @@ import { citeRule } from "@/lib/laborRules";
 import { MUTED, NAVY, field, ui, CARD, BORDER } from "@/lib/platformStyles";
 import NvIcon, { NvMark } from "@/components/shared/NvIcon";
 
+// Arabic count of days: 1 يوم واحد · 2 يومان · 3–10 أيام · 11+ يوماً (a bare «3 يوماً» read wrong).
+const daysAr = (n) => { const v = Math.abs(Number(n) || 0); return v === 1 ? "يوم واحد" : v === 2 ? "يومان" : v >= 3 && v <= 10 ? `${v} أيام` : `${v} يوماً`; };
+
 const TONE = {
   ok: { mark: "check", labelAr: "مستقر", labelEn: "Steady", color: "#2F6B43", background: "#E6F2EA" },
   warn: { mark: "warning", labelAr: "تنبيه", labelEn: "Alert", color: "#8A5A12", background: "#FBF3E1" },
@@ -198,7 +201,7 @@ export function slipRows(item, employee, parts, ar, month) {
   if ((Number(parts.unpaidLeaveCut) || 0) > 0) {
     rows.push({
       id: "unpaidLeave",
-      label: ar ? `إجازة بلا أجر — ${Number(item?.unpaidLeaveDays) || 0} يوماً` : `Unpaid leave — ${Number(item?.unpaidLeaveDays) || 0} days`,
+      label: ar ? `إجازة بلا أجر — ${daysAr(item?.unpaidLeaveDays)}` : `Unpaid leave — ${Number(item?.unpaidLeaveDays) || 0} days`,
       amount: Number(parts.unpaidLeaveCut) || 0,
       minus: true,
       source: ar ? "أجر غير مستحق لا حسماً" : "Wage not due, not a deduction",
@@ -214,11 +217,21 @@ export function slipRows(item, employee, parts, ar, month) {
       source: ar ? "أجر وقت لم يُعمل — لا جزاء" : "Wage for time not worked — not a penalty",
     });
   }
+  // Early leave — the same reading: wage not due for the minutes left before the published end.
+  if ((Number(parts.earlyLeaveCut) || 0) > 0) {
+    rows.push({
+      id: "early",
+      label: ar ? `انصراف مبكر — ${Number(item?.earlyLeaveMinutes) || 0} دقيقة في ${Number(item?.earlyLeaveDays) || 0} يوم` : `Early leave — ${Number(item?.earlyLeaveMinutes) || 0} min over ${Number(item?.earlyLeaveDays) || 0} days`,
+      amount: Number(parts.earlyLeaveCut) || 0,
+      minus: true,
+      source: ar ? "أجر وقت لم يُعمل — لا جزاء" : "Wage for time not worked — not a penalty",
+    });
+  }
   // Art. 97 — detained in a work-related case: half the wage up to 180 days.
   if ((Number(parts.detentionCut) || 0) > 0) {
     rows.push({
       id: "detention",
-      label: ar ? `توقيف في قضية تتصل بالعمل — ${Number(item?.detentionDays) || 0} يوماً` : `Work-related detention — ${Number(item?.detentionDays) || 0} days`,
+      label: ar ? `توقيف في قضية تتصل بالعمل — ${daysAr(item?.detentionDays)}` : `Work-related detention — ${Number(item?.detentionDays) || 0} days`,
       amount: Number(parts.detentionCut) || 0,
       minus: true,
       source: ar ? "نصف الأجر مدة التوقيف" : "Half the wage while detained",
@@ -259,7 +272,7 @@ export function slipRows(item, employee, parts, ar, month) {
     } else if ((Number(item?.injuryWageStop) || 0) > 0) {
       rows.push({
         id: "injuryGosiStop",
-        label: ar ? `إصابة عمل — الأجر موقوف ${injuryDays} يوماً` : `Work injury — wage stopped ${injuryDays} days`,
+        label: ar ? `إصابة عمل — الأجر موقوف ${daysAr(injuryDays)}` : `Work injury — wage stopped ${injuryDays} days`,
         amount: Number(item.injuryWageStop) || 0,
         minus: true,
         source: ar
@@ -568,7 +581,7 @@ export default function PayrollSlipBoard({
   const live = facedForGosi(item, employee, month);
   const parts = lineComponents(live);
   const gross = parts.base + parts.allowances + parts.bonus + (Number(parts.overtimePay) || 0) + (Number(parts.refunds) || 0);
-  const withheld = (Number(parts.deductions) || 0) + (Number(parts.gosiEmployee) || 0) + (Number(parts.injuryCut) || 0) + (Number(parts.sickCut) || 0) + (Number(parts.unpaidLeaveCut) || 0) + (Number(parts.detentionCut) || 0) + (Number(parts.lateCut) || 0);
+  const withheld = (Number(parts.deductions) || 0) + (Number(parts.gosiEmployee) || 0) + (Number(parts.injuryCut) || 0) + (Number(parts.sickCut) || 0) + (Number(parts.unpaidLeaveCut) || 0) + (Number(parts.detentionCut) || 0) + (Number(parts.lateCut) || 0) + (Number(parts.earlyLeaveCut) || 0);
   const rows = slipRows(live, employee, parts, ar, month);
   // «حقك» on قسيمتي, «التزامك» on the HR payslip board — one hint per row, from this line's figures.
   const hintCtx = {

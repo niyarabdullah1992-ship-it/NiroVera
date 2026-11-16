@@ -60,9 +60,9 @@ const MAN = { id: "e_omar", name: "عمر", stationId: "st", profile: { gender: 
   const late = deriveActualDuty({ checkIn: "08:00", checkOut: "16:00", shift: SHIFT, onDate: D, employee: START });
   assert.equal(late.lateMinutes, 0, "arriving 60 min after start inside a start nursing hour is not late");
   const grace = ruleValue("hours.grace.minutes", D) || 0;
-  assert.equal(deriveActualDuty({ checkIn: "08:30", checkOut: "16:00", shift: SHIFT, onDate: D, employee: START }).lateMinutes, Math.max(0, 30 - grace), "past the hour the rest is late (after the grace)");
-  assert.equal(deriveActualDuty({ checkIn: "08:00", checkOut: "16:00", shift: SHIFT, onDate: D, employee: END }).lateMinutes, 60 - grace, "an end placement does not excuse the start");
-  assert.equal(deriveActualDuty({ checkIn: "08:00", checkOut: "16:00", shift: SHIFT, onDate: D, employee: MAN }).lateMinutes, 60 - grace);
+  assert.equal(deriveActualDuty({ checkIn: "08:30", checkOut: "16:00", shift: SHIFT, onDate: D, employee: START }).lateMinutes, 30 > grace ? 30 : 0, "past the hour the rest is late (all of it once past the grace)");
+  assert.equal(deriveActualDuty({ checkIn: "08:00", checkOut: "16:00", shift: SHIFT, onDate: D, employee: END }).lateMinutes, 60, "an end placement does not excuse the start");
+  assert.equal(deriveActualDuty({ checkIn: "08:00", checkOut: "16:00", shift: SHIFT, onDate: D, employee: MAN }).lateMinutes, 60);
   assert.equal(deriveDayStatus({ checkIn: "08:00", checkOut: "16:00", date: D }, { shiftStart: "07:00", shiftMinutes: 480, employee: START }).late, false, "deriveDayStatus — not late");
   assert.equal(deriveTimesheetDay({ date: D, checkIn: "08:00", checkOut: "16:00" }, { shift: SHIFT, employee: START }).late, false, "timesheet — not late");
   assert.deepEqual(excusedStartMinutes(START, D, "07:00"), { minutes: MINS, reason: "nursing" });
@@ -99,7 +99,7 @@ const MAN = { id: "e_omar", name: "عمر", stationId: "st", profile: { gender: 
   assert.equal(day.lateMinutes, 0, "30 min after start — inside the start half");
   assert.equal(day.nursingCreditMinutes, 60, "both halves credited");
   const grace = ruleValue("hours.grace.minutes", D) || 0;
-  assert.equal(deriveActualDuty({ checkIn: "08:00", checkOut: "15:30", shift: SHIFT, onDate: D, employee: SPLIT }).lateMinutes, Math.max(0, 30 - grace), "past the start half is late");
+  assert.equal(deriveActualDuty({ checkIn: "08:00", checkOut: "15:30", shift: SHIFT, onDate: D, employee: SPLIT }).lateMinutes, 30 > grace ? 30 : 0, "past the start half is late (all of it once past the grace)");
   assert.equal(deriveTimesheetDay({ date: D, checkIn: "07:30", checkOut: "15:20" }, { shift: SHIFT, employee: SPLIT }).earlyMinutes, 10, "past the end half is early");
   // A total over the catalog figure is cut to it (start first, then end, then middle).
   const over = nursingHourOn(nurse({ start: 45, mid: 30, end: 45 }), D);
@@ -161,7 +161,7 @@ const MAN = { id: "e_omar", name: "عمر", stationId: "st", profile: { gender: 
   assert.equal(nursingHourOn(END, "2027-05-31")?.minutes, MINS, "the last day is covered");
   assert.equal(nursingHourOn(END, "2027-06-01"), null, "the day after — no right");
   assert.equal(nursingHourOn(END, "2025-08-31"), null, "before it starts — no right");
-  assert.equal(deriveActualDuty({ checkIn: "08:00", checkOut: "16:00", shift: SHIFT, onDate: "2027-06-01", employee: START }).lateMinutes, 60 - (ruleValue("hours.grace.minutes", D) || 0), "after the right ends, late is late");
+  assert.equal(deriveActualDuty({ checkIn: "08:00", checkOut: "16:00", shift: SHIFT, onDate: "2027-06-01", employee: START }).lateMinutes, 60, "after the right ends, late is late (all 60, past the grace)");
   assert.equal(nursingRightUntil("2025-06-01"), "2027-05-31", "Regs Art. 31(1): 24 months from birth");
   const open = nurse({ start: 0, mid: 0, end: MINS }, { until: "" });
   assert.equal(nursingHourOn(open, "2027-05-31")?.until, "2027-05-31", "no «until» → 24 months from birth");

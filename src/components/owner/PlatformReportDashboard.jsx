@@ -11,7 +11,12 @@ const metricLabels = (ar) => [
 
 export default function PlatformReportDashboard({ ar }) {
   const [rows, setRows] = useState(null);
-  useEffect(() => { base44.functions.invoke("subscriptionOverview", { action: "platformReport" }).then((res) => setRows(res.data.companies || [])); }, []);
+  const [error, setError] = useState(false);
+  // بلا catch كان فشل النداء يترك rows على null فيدور المؤشّر إلى ما لا نهاية بلا خبر —
+  // وكذا لو عاد الردّ بلا data. بقية لوحات المالك تمسك الفشل: SaasAnalyticsDashboard
+  // و AuditLogDashboard و SubscribersDashboard، وهذه كانت الاستثناء.
+  useEffect(() => { base44.functions.invoke("subscriptionOverview", { action: "platformReport" }).then((res) => setRows(res.data.companies || [])).catch(() => setError(true)); }, []);
+  if (error) return <p className="py-16 text-center text-sm text-muted-foreground">{ar ? "تعذر تحميل البيانات." : "Failed to load data."}</p>;
   if (!rows) return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-[#1E9E63]" /></div>;
   const totals = rows.reduce((sum, row) => ({ employees: sum.employees + row.employees, signed: sum.signed + row.signedDocuments, logins: sum.logins + (row.loginSessions || 0) }), { employees: 0, signed: 0, logins: 0 });
   const reportHeaders = [ar ? "الشركة" : "Company", ar ? "الباقة" : "Plan", ...metricLabels(ar).map(([, label]) => label), ar ? "متوسط التقييم" : "Average rating"];

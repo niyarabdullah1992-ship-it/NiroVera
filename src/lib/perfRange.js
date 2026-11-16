@@ -3,8 +3,9 @@
 import { formatDayMonthYear, formatMonthYear } from "./dateFormat.js";
 import { employeeScheduledOn, hasPublishedScheduleOn } from "./attendanceCalendar.js";
 import { countPersonalHseDuty, deriveFairHseRates, PERF_WEIGHTS } from "./perfDerivations.js";
-import { taskBelongsTo, taskIsProven } from "./hcmDerivations.js";
+import { provenTaskWeight, taskBelongsTo, taskIsProven } from "./hcmDerivations.js";
 import { taskQualitySummary } from "./taskQuality.js";
+import { toRiyadhDateKey } from "./riyadhDate.js";
 
 export const MIN_PROOF = 5;
 
@@ -165,7 +166,11 @@ function leaveCovers(request, day) {
 }
 
 function punchedOn(employee, day, data) {
+  // `personalAttendance` is the canonical home (facts/attendance.js). `data.attendance` and
+  // `data.attendanceRows` never exist on the company blob, so coverage read nothing at all.
   const rows = [
+    ...(Array.isArray(data?.personalAttendance) ? data.personalAttendance : []),
+    ...(Array.isArray(data?.attendanceLedger) ? data.attendanceLedger : []),
     ...(Array.isArray(data?.attendance) ? data.attendance : []),
     ...(Array.isArray(data?.attendanceRows) ? data.attendanceRows : []),
     ...(Array.isArray(employee?.attendance) ? employee.attendance : []),
@@ -201,18 +206,30 @@ function daysOfMonth(monthKey, from, to) {
 
 function attendanceRowsOf(data) {
   return [
+    ...(Array.isArray(data?.personalAttendance) ? data.personalAttendance : []),
+    ...(Array.isArray(data?.attendanceLedger) ? data.attendanceLedger : []),
     ...(Array.isArray(data?.attendance) ? data.attendance : []),
     ...(Array.isArray(data?.attendanceRows) ? data.attendanceRows : []),
     ...(Array.isArray(data?.employees) ? data.employees.flatMap((person) => Array.isArray(person.attendance) ? person.attendance : []) : []),
   ];
 }
 
-function punchesInRange(data, from, to) {
-  return attendanceRowsOf(data).some((row) => {
+/**
+ * هل لهذا الشخص أثر حضور في المدة؟ بصمة، أو حضور/تأخّر مسجَّل، أو إجازة معتمدة.
+ * كان السؤال يُطرح على بصمات الجميع (punchesInRange)، فيتوقف رقم شخص على زملائه.
+ * ويُطرح لأن غياب الأثر كله يعني «لا بيانات»، لا «لم يحضر»: والتغطية صفرٌ في الحالة
+ * الثانية فقط. من ينقصه الأثر لا يُحاسب على نقص سجلٍّ ليس من فعله.
+ */
+function hasAttendanceEvidence(employee, from, to, data) {
+  const id = String(employee?.id ?? "");
+  const own = attendanceRowsOf(data).some((row) => {
+    if (String(row?.employeeId ?? row?.employee_id ?? "") !== id) return false;
     const day = punchDay(row);
     if (!day || day < from || day > to) return false;
     return Boolean(row.check_in_at || row.checkInAt || row.status === "present" || row.status === "late");
   });
+  if (own) return true;
+  return (employee?.leaveRequests || []).some((req) => String(req?.status || "") === "approved");
 }
 
 export function coverPctFor(employee, from, to, data) {
@@ -227,11 +244,13 @@ export function coverPctFor(employee, from, to, data) {
       if (punchedOn(employee, day, data) || onLeaveOn(employee, day)) covered += 1;
     }
   }
-  const pts = Number(employee?.coverPoints) || 0;
-  const max = Math.max(1, ...(data?.employees || []).map((row) => Number(row.coverPoints) || 0), 1);
-  const fromPoints = pts > 0 ? Math.min(100, Math.round((pts / max) * 100)) : 100;
-  if (scheduled > 0 && punchesInRange(data, from, to)) return Math.round((covered / scheduled) * 100);
-  return fromPoints;
+  // لا يوم مجدول في المدة = لا شيء يُغطّى: درجة كاملة، لا تخمين.
+  // و`coverPoints` كان يُقرأ في أربعة مواضع ولا يُكتب في موضع، فكان البديل القديم يمنح
+  // الجميع 100% ثابتة. أُزيل. ويبقى الفرق بين «لا بيانات» و«لم يحضر»: بلا أثر حضور لهذا
+  // الشخص لا نحكم بصفر، فالصفر عقوبة على سجلٍّ ناقص لا على غياب.
+  if (scheduled <= 0) return 100;
+  if (!hasAttendanceEvidence(employee, from, to, data)) return 100;
+  return Math.round((covered / scheduled) * 100);
 }
 
 function safePctFor(employee, data) {
@@ -261,11 +280,21 @@ export function personFacts(employee, from, to, data) {
   });
   const assigned = inRange.length;
   const proof = proven.length + proofs.length;
-  const done = assigned > 0 ? Math.round((proven.length / assigned) * 100) : (proof ? 100 : 0);
+  // Achievement by EARNED WEIGHT, not by headcount: the approver is made to pick a quality level
+  // and the toast promises «تظهر في الأداء», but a count ratio ignored `pointsAwarded` entirely, so
+  // the level moved nothing. Each task's share is its own awarded points over what it could award.
+  const earned = proven.reduce((sum, task) => sum + (Number(provenTaskWeight(task, employee.id)) || 0), 0);
+  const possible = inRange.reduce((sum, task) => sum + (Number(provenTaskWeight({ ...task, pointsAwarded: 0 }, "")) || 0), 0);
+  const done = possible > 0
+    ? Math.min(100, Math.round((earned / possible) * 100))
+    : (assigned > 0 ? Math.round((proven.length / assigned) * 100) : (proof ? 100 : 0));
+  // A task closed but never approved is not «on time» — nobody ruled on it yet. And the comparison
+  // is made on Riyadh day keys, so an approval at 00:30 Riyadh is not read as the previous day.
   const ontime = proven.length
     ? Math.round((proven.filter((task) => {
-      if (!task.dueAt || !task.approvedAt) return true;
-      return String(task.approvedAt).slice(0, 10) <= String(task.dueAt).slice(0, 10);
+      if (!task.dueAt) return true;
+      if (!task.approvedAt) return false;
+      return toRiyadhDateKey(task.approvedAt) <= String(task.dueAt).slice(0, 10);
     }).length / proven.length) * 100)
     : (proof ? 100 : 0);
   return {

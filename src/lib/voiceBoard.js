@@ -322,7 +322,9 @@ export function decorateVoiceItem(item, {
   const steps = (enriched.steps || []).map((step, index) => ({
     name: ar ? (step.labelAr || step.labelEn) : (step.labelEn || step.labelAr),
     when: index < skipped
-      ? (ar ? "تخطّاه — صاحب الصوت" : "Skipped — the author")
+      ? (step.vacant
+        ? (ar ? "مقعد شاغر — تخطّاه" : "Vacant — skipped")
+        : (ar ? "تخطّاه — صاحب الصوت" : "Skipped — the author"))
       : step.state === "done"
       ? (ar ? "مضت مهلته" : "Window passed")
       : step.state === "current"

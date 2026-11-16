@@ -23,7 +23,6 @@ import MyMonthLine, { myCellMark, useMyMonthDays } from "@/components/attendance
 import {
   BROKE,
   CHAIN,
-  CMP_KEYS,
   OC,
   dayHeadPhrase,
   deriveDayRecord,
@@ -46,6 +45,7 @@ import { minutesPhrase } from "@/lib/calendarDayFlags";
 import { KindIcon, NameLetter, shiftKindOf } from "@/components/schedules/rosterTile";
 import { getShiftOnDate } from "@/lib/attendanceDerivations";
 import { approvedLeaveOnDay } from "@/lib/leaveTypes";
+import { toRiyadhDateKey } from "@/lib/riyadhDate";
 
 /** One joined control — the selected part filled dark green; the platform's formal toggle. */
 function Segmented({ items, value, onChange }) {
@@ -134,7 +134,8 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
   const months = monthsOf(ar);
   const weekdays = weekdaysOf(ar);
   const now = new Date();
-  const todayKey = calendarDateKey(now);
+  // Riyadh's today, not the device's — the rows this screen reads are keyed with toRiyadhDateKey.
+  const todayKey = toRiyadhDateKey(now);
   // «?day=yyyy-mm-dd» (old «سجلي» links, search hits) opens that month with the day picked.
   const [searchParams] = useSearchParams();
   const askedDay = searchParams.get("day") || "";

@@ -6,14 +6,12 @@ import { canEditOrgDesign, deriveOrgHealth, deriveSeatRegister, orgDesignOf } fr
 import { changeSeedFromParams } from "@/lib/orgChartActions";
 import { HR_ORG_PANES } from "@/lib/hrSection";
 import { chipButton, mono } from "@/components/schedules/scheduleChrome";
-import OrgWorkforceHero, { OrgBranchTools } from "@/components/hr/OrgWorkforceHero";
+import OrgChangesBoard from "@/components/hr/orgdesign/OrgChangesBoard";
 import OrgWorkforceAdminPanels from "@/components/hr/OrgWorkforceAdminPanels";
 import OrgTemplateBoard, { OrgChartUpkeep } from "@/components/hr/OrgTemplateBoard";
 import OrgFormerFilesBoard from "@/components/hr/OrgFormerFilesBoard";
 import OrgSeatRegister from "@/components/hr/orgdesign/OrgSeatRegister";
 import OrgHealthBoard from "@/components/hr/orgdesign/OrgHealthBoard";
-import OrgDoaBoard from "@/components/hr/orgdesign/OrgDoaBoard";
-import OrgChangesBoard from "@/components/hr/orgdesign/OrgChangesBoard";
 import OrgChartEntry from "@/components/hr/orgdesign/OrgChartEntry";
 import PageErrorBoundary from "@/components/PageErrorBoundary";
 import { MUTED } from "@/lib/platformStyles";
@@ -22,14 +20,15 @@ const sub = (on) => chipButton(on, { height: 30, padding: "0 12px", fontSize: 12
 
 /**
  * «الهيكل» inside «الموارد البشرية» — what /app/org carried for HR: the org tree (people / branches
- * views, management tree, «⋯» action panel), «المناصب», «صحة الهيكل», «الصلاحيات» and «التغييرات».
+ * views, management tree, «⋯» action panel), «المناصب», «الصلاحيات» and «التغييرات».
  * The seat stays and the person changes; reporting, authority and the approval path derive from it.
  * Read-only viewers (HR readers, station leads) get their place in the structure and the chart.
  */
-export default function HrStructurePane({ ar = true, lang = "ar", data, currentUser, company, canWrite = false, onHire }) {
+export default function HrStructurePane({ ar = true, lang = "ar", data, currentUser, company, canWrite = false, onHire, branches = null }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedPane = searchParams.get("pane");
-  const pane = canWrite && HR_ORG_PANES.includes(requestedPane) ? requestedPane : "chart";
+  const pane = (requestedPane === "branches" && branches) ? "branches"
+    : (canWrite && (HR_ORG_PANES.includes(requestedPane) || requestedPane === "files" || requestedPane === "former") ? requestedPane : "chart");
   // «الهيكل» stays inside الموارد البشرية: the chart pane is the embedded tree, and its «شاشة كاملة»
   // button opens /app/org/chart?lane=manage, whose «خروج» returns here. Nothing redirects out on entry.
   const chartMode = searchParams.get("chart") === "entry" ? "entry" : "tree";
@@ -43,7 +42,18 @@ export default function HrStructurePane({ ar = true, lang = "ar", data, currentU
   const [openLog, setOpenLog] = useState(false);
   const [openGrades, setOpenGrades] = useState(false);
   const [changeSeed, setChangeSeed] = useState(null);
+  const [permSeed, setPermSeed] = useState("");
   const [seatFocus, setSeatFocus] = useState("");
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef(null);
+  useEffect(() => {
+    if (!moreOpen) return undefined;
+    const close = (event) => { if (!moreRef.current?.contains(event.target)) setMoreOpen(false); };
+    const esc = (event) => { if (event.key === "Escape") setMoreOpen(false); };
+    document.addEventListener("mousedown", close);
+    window.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", close); window.removeEventListener("keydown", esc); };
+  }, [moreOpen]);
   const escRef = useRef(null);
   const permRef = useRef(null);
   const logRef = useRef(null);
@@ -78,16 +88,27 @@ export default function HrStructurePane({ ar = true, lang = "ar", data, currentU
     if (next === "entry") p.set("chart", "entry");
     else p.delete("chart");
   });
+  const goChart = (mode = "tree") => setParams((p) => {
+    p.delete("pane");
+    if (mode === "entry") p.set("chart", "entry"); else p.delete("chart");
+  });
+
+  // «＋ فرع جديد» from the page head lands here: open the tree and its add-branch form at once
+  useEffect(() => {
+    if (searchParams.get("add") !== "branch") return;
+    setAddBranchSignal((n) => n + 1);
+    setParams((p) => { p.delete("add"); p.delete("pane"); p.delete("chart"); });
+  }, [searchParams, setParams]);
 
   // a redirected /app/org?tab=escalation|lists opens its fold once (?open=esc|perm), then drops it
   useEffect(() => {
     const open = searchParams.get("open");
     if (!open) return;
     if (open === "esc") setOpenEsc(true);
-    if (open === "perm") setOpenPerm(true);
+    if (open === "perm") { setOpenPerm(true); if (searchParams.get("emp")) setPermSeed(searchParams.get("emp")); }
     if (open === "log") setOpenLog(true);
     if (open === "grades") setOpenGrades(true);
-    setParams((p) => p.delete("open"));
+    setParams((p) => { p.delete("open"); p.delete("emp"); });
   }, [searchParams, setParams]);
 
   // the chart's «⋯» actions land here: ?pane=seats&seat= opens the seat card,
@@ -103,6 +124,14 @@ export default function HrStructurePane({ ar = true, lang = "ar", data, currentU
     }
     setParams((p) => { p.delete("seat"); p.delete("op"); p.delete("to"); p.delete("unit"); });
   }, [pane, searchParams, setParams]);
+
+  // a bare ?pane=changes (old links) has nothing to edit: back to the tree
+  useEffect(() => {
+    if (pane === "health") { goChart("tree"); return; }
+    if (pane !== "changes" || changeSeed || searchParams.get("op")) return;
+    const id = setTimeout(() => { if (!searchParams.get("op")) goChart("tree"); }, 50);
+    return () => clearTimeout(id);
+  }, [pane, changeSeed, searchParams]);
 
   const scrollPanel = (ref) => setTimeout(() => ref.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" }), 60);
   const goAuthority = (setOpen, ref) => {
@@ -133,44 +162,47 @@ export default function HrStructurePane({ ar = true, lang = "ar", data, currentU
     );
   }
 
+  // three everyday views; the rarely used settings live behind «المزيد»
   const tabs = [
     { value: "chart", label: ar ? "المخطط" : "Chart" },
     { value: "seats", label: ar ? "المناصب" : "Seats", count: paneCounts.seats },
-    { value: "health", label: ar ? "صحة الهيكل" : "Health", count: paneCounts.health },
-    { value: "authority", label: ar ? "الصلاحيات" : "Authority" },
-    { value: "changes", label: ar ? "التغييرات" : "Changes", count: paneCounts.changes },
+    ...(branches ? [{ value: "branches", label: ar ? "الفروع" : "Branches" }] : []),
+    { value: "authority", label: ar ? "إدارة الهيكل" : "Structure admin" },
   ];
+  const more = [
+    { id: "authority", label: ar ? "الصلاحيات واعتماد القرارات" : "Authority", run: () => setPane("authority") },
+    { id: "changes", label: ar ? "تعديل الهيكل (قرار مباشر)" : "Edit the structure", run: () => setPane("changes") },
+    { id: "esc", label: ar ? "سلسلة التصعيد" : "Escalation", run: () => goAuthority(setOpenEsc, escRef) },
+    { id: "perm", label: ar ? "صلاحيات الإدارة" : "Permissions", run: () => goAuthority(setOpenPerm, permRef) },
+    { id: "grades", label: ar ? "سلّم الدرجات" : "Grade ladder", run: () => goAuthority(setOpenGrades, gradesRef) },
+    { id: "log", label: ar ? "سجل الأحداث" : "Event log", run: () => goAuthority(setOpenLog, logRef) },
+    { id: "chain", label: ar ? "عرض السلسلة الإدارية" : "Chain view", run: () => goChart("entry") },
+    { id: "hr", label: ar ? "إظهار وحدة الموارد البشرية" : "Show the HR unit", run: () => { goChart("tree"); setHrSignal((n) => n + 1); } },
+  ];
+  const moreActive = pane === "authority" || pane === "changes" || pane === "health";
 
   return (
-    <div className="nv-org-page" data-hr-structure="admin" data-org-pane={pane} style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-      <OrgWorkforceHero
-        ar={ar}
-        data={data}
-        health={health}
-        onGoEsc={() => goAuthority(setOpenEsc, escRef)}
-        onGoPerm={() => goAuthority(setOpenPerm, permRef)}
-        onGoGrades={() => goAuthority(setOpenGrades, gradesRef)}
-        onGoLog={() => goAuthority(setOpenLog, logRef)}
-        onGoFormer={() => { if (pane !== "chart") setPane("chart"); scrollPanel(formerRef); }}
-        formerCount={formerCount}
-      />
-      <div role="tablist" aria-label={ar ? "أقسام الهيكل" : "Structure panes"} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {tabs.map((t) => (
-          <button key={t.value} type="button" role="tab" aria-selected={pane === t.value} onClick={() => setPane(t.value)} style={sub(pane === t.value)}>
-            {t.label}
-            {t.count ? <span dir="ltr" style={{ ...mono, fontSize: 10.5, opacity: 0.8 }}>{t.count}</span> : null}
-          </button>
-        ))}
+    <div className="nv-org-page" data-hr-structure="admin" data-org-pane={pane} style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <div role="tablist" aria-label={ar ? "أقسام الهيكل" : "Structure panes"} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {tabs.map((t) => (
+            <button key={t.value} type="button" role="tab" aria-selected={pane === t.value || (t.value === "chart" && pane === "changes")} onClick={() => { if (t.value === "chart") goChart("tree"); else setPane(t.value); }} style={sub(pane === t.value || (t.value === "chart" && pane === "changes"))}>
+              {t.label}
+              {t.count ? <span dir="ltr" style={{ ...mono, fontSize: 10.5, opacity: 0.8 }}>{t.count}</span> : null}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div role="tabpanel" aria-label={tabs.find((t) => t.value === pane)?.label} style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div role="tabpanel" aria-label={tabs.find((t) => t.value === pane)?.label || pane} style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
         <PageErrorBoundary resetKey={`hr-structure:${pane}:${chartMode}`}>
+          {pane === "branches" ? branches : null}
+          {pane === "files" ? (
+            <OrgTemplateBoard lang={lang} onHire={onHire} embedded fixedView="files" />
+          ) : null}
+          {pane === "former" ? <OrgFormerFilesBoard data={data} ar={ar} boardRef={formerRef} /> : null}
           {pane === "chart" ? (
             <>
-              <div role="group" aria-label={ar ? "طريقة العرض" : "Chart mode"} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                <button type="button" aria-pressed={chartMode === "tree"} onClick={() => setChartMode("tree")} style={sub(chartMode === "tree")}>{ar ? "الشجرة والدليل" : "Tree & directory"}</button>
-                <button type="button" aria-pressed={chartMode === "entry"} onClick={() => setChartMode("entry")} style={sub(chartMode === "entry")}>{ar ? "السلسلة" : "Chain"}</button>
-              </div>
               {chartMode === "entry" ? (
                 <>
                   <OrgChartUpkeep lang={lang} />
@@ -178,21 +210,6 @@ export default function HrStructurePane({ ar = true, lang = "ar", data, currentU
                 </>
               ) : (
                 <>
-                  <OrgBranchTools
-                    ar={ar}
-                    query={query}
-                    onQueryChange={setQuery}
-                    searchHits={searchHits}
-                    onPickHit={(hit) => { setPickHit(hit); setQuery(""); setSearchHits([]); }}
-                    renderHit={(hit) => (
-                      <>
-                        {hit.name || hit.label}
-                        <span style={{ color: MUTED }}>{" · "}{hit.managerName || hit.job || hit.branch || ""}</span>
-                      </>
-                    )}
-                    onFocusHr={() => setHrSignal((n) => n + 1)}
-                    onAddBranch={() => setAddBranchSignal((n) => n + 1)}
-                  />
                   <OrgTemplateBoard
                     lang={lang}
                     onHire={onHire}
@@ -204,10 +221,10 @@ export default function HrStructurePane({ ar = true, lang = "ar", data, currentU
                     onPickHitConsumed={() => setPickHit(null)}
                     hrSignal={hrSignal}
                     onSearchHits={handleSearchHits}
+                    fixedView="people"
                   />
                 </>
               )}
-              <OrgFormerFilesBoard data={data} ar={ar} boardRef={formerRef} />
             </>
           ) : null}
           {pane === "seats" ? (
@@ -222,7 +239,7 @@ export default function HrStructurePane({ ar = true, lang = "ar", data, currentU
               onOpenChanges={(seed) => { setChangeSeed(seed); setPane("changes"); }}
             />
           ) : null}
-          {pane === "health" ? (
+          {false ? (
             <OrgHealthBoard
               ar={ar}
               data={data}
@@ -234,7 +251,7 @@ export default function HrStructurePane({ ar = true, lang = "ar", data, currentU
           ) : null}
           {pane === "authority" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <OrgDoaBoard ar={ar} data={data} actor={currentUser} companyId={company.id} canEdit={canEditDesign} />
+              {/* permissions and escalation; moves and acting live on the tree and the direct button */}
               <OrgWorkforceAdminPanels
                 ar={ar}
                 data={data}
@@ -244,6 +261,7 @@ export default function HrStructurePane({ ar = true, lang = "ar", data, currentU
                 onHire={onHire}
                 openEsc={openEsc}
                 openPerm={openPerm}
+                permSeed={permSeed}
                 openLog={openLog}
                 openGrades={openGrades}
                 onToggleGrades={() => setOpenGrades((v) => !v)}
@@ -258,15 +276,20 @@ export default function HrStructurePane({ ar = true, lang = "ar", data, currentU
             </div>
           ) : null}
           {pane === "changes" ? (
-            <OrgChangesBoard
-              ar={ar}
-              data={data}
-              actor={currentUser}
-              companyId={company.id}
-              canEdit={canEditDesign}
-              seed={changeSeed}
-              onSeedConsumed={() => setChangeSeed(null)}
-            />
+            /* a move / freeze / dotted line picked on the tree opens here as a direct edit, then returns to the tree */
+            changeSeed ? (
+              <OrgChangesBoard
+                ar={ar}
+                data={data}
+                actor={currentUser}
+                companyId={company.id}
+                canEdit={canEditDesign}
+                seed={changeSeed}
+                onSeedConsumed={() => {}}
+                quick
+                onDone={() => { setChangeSeed(null); goChart("tree"); }}
+              />
+            ) : null
           ) : null}
         </PageErrorBoundary>
       </div>

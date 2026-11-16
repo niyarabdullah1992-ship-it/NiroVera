@@ -12,6 +12,9 @@
 import { ruleValue } from "./laborRules.js";
 import { chargeableSickDays, sickStatutoryYearWindow } from "./leaveTypes.js";
 
+// Arabic count of days: 1 يوم واحد · 2 يومان · 3–10 أيام · 11+ يوماً (a bare «3 يوماً» read wrong).
+const daysAr = (n) => { const v = Math.abs(Number(n) || 0); return v === 1 ? "يوم واحد" : v === 2 ? "يومان" : v >= 3 && v <= 10 ? `${v} أيام` : `${v} يوماً`; };
+
 const DAY = 86400000;
 
 function dateOnly(v) {
@@ -48,6 +51,18 @@ function requestDays(r) {
   const a = dateOnly(r.startDate);
   const b = dateOnly(r.endDate) || (a ? iso(new Date(parse(a).getTime() + (Math.max(1, Number(r.days) || 1) - 1) * DAY)) : "");
   return eachDay(a, b);
+}
+
+/**
+ * The days an annual leave actually takes from the balance. The approval locks each day as
+ * «charge» / «dutyOnRest» (counted) or a rest day — «company», «cycle», a holiday (not counted,
+ * Art. 104 / 112) — and the balance reads that map; payroll counted every calendar day, so a leave
+ * over two rest days read «2 أيام» here and 0 in «رصيد إجازاتي». Unlocked rows keep the calendar span.
+ */
+function chargedLeaveDays(r) {
+  const locked = r?.lockedDays && typeof r.lockedDays === "object" ? r.lockedDays : null;
+  if (!locked || !Object.keys(locked).length) return requestDays(r);
+  return requestDays(r).filter((d) => locked[d] === "charge" || locked[d] === "dutyOnRest");
 }
 
 /**
@@ -95,7 +110,8 @@ function daysOfType(employee, month, type) {
   let days = 0;
   const starts = [];
   for (const r of rows) {
-    const inside = requestDays(r).filter((d) => d >= range.start && d <= range.end);
+    const days_ = type === "annual" ? chargedLeaveDays(r) : requestDays(r);
+    const inside = days_.filter((d) => d >= range.start && d <= range.end);
     days += inside.length;
     if (inside.length && dateOnly(r.startDate) >= range.start) starts.push(dateOnly(r.startDate));
   }
@@ -112,7 +128,7 @@ export function leaveEffects({ employee, month, line = {}, monthlyWage = 0, cale
   if (sick.days) {
     rows.push({
       id: "sick", cite: "117", days: sick.days,
-      title: ar ? `إجازة مرضية · ${sick.days} يوماً` : `Sick leave · ${sick.days} days`,
+      title: ar ? `إجازة مرضية · ${daysAr(sick.days)}` : `Sick leave · ${sick.days} days`,
       detail: ar
         ? [sick.fullDays ? `${sick.fullDays} بأجر كامل` : "", sick.quarterDays ? `${sick.quarterDays} بثلاثة أرباع` : "", sick.unpaidDays + sick.beyondDays ? `${sick.unpaidDays + sick.beyondDays} بلا أجر` : ""].filter(Boolean).join(" · ")
         : [sick.fullDays ? `${sick.fullDays} full pay` : "", sick.quarterDays ? `${sick.quarterDays} at three-quarters` : "", sick.unpaidDays + sick.beyondDays ? `${sick.unpaidDays + sick.beyondDays} unpaid` : ""].filter(Boolean).join(" · "),
@@ -125,7 +141,7 @@ export function leaveEffects({ employee, month, line = {}, monthlyWage = 0, cale
   if (annual.days) {
     rows.push({
       id: "annual", cite: "109", days: annual.days, startDate: annual.starts[0] || "",
-      title: ar ? `إجازة سنوية · ${annual.days} يوماً` : `Annual leave · ${annual.days} days`,
+      title: ar ? `إجازة سنوية · ${daysAr(annual.days)}` : `Annual leave · ${annual.days} days`,
       detail: annual.starts.length
         ? (ar ? `تبدأ ${annual.starts.join("، ")} — أجرها يُدفع مقدّماً قبل بدئها` : `Starts ${annual.starts.join(", ")} — its pay goes out before it starts`)
         : (ar ? "بأجر كامل — لا أثر على الصافي" : "Full pay — no effect on the net"),
@@ -138,7 +154,7 @@ export function leaveEffects({ employee, month, line = {}, monthlyWage = 0, cale
     const cut = Number(line.unpaidLeaveCut) || 0;
     rows.push({
       id: "unpaid", cite: "116", days: unpaid.days,
-      title: ar ? `إجازة بلا أجر · ${unpaid.days} يوماً` : `Unpaid leave · ${unpaid.days} days`,
+      title: ar ? `إجازة بلا أجر · ${daysAr(unpaid.days)}` : `Unpaid leave · ${unpaid.days} days`,
       detail: ar ? "أجر غير مستحق عن أيامها — ليس حسماً من المادة 92 ولا يدخل في سقف نصف الأجر (المادة 93)" : "Wage not due for its days — not an Art. 92 deduction and outside the Art. 93 half-wage cap",
       amount: -cut,
       tone: cut > 0 ? "warn" : "mute",

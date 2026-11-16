@@ -35,6 +35,8 @@ import {
   taskAssigneeId,
   taskPoints,
   checkTaskRecurrenceGate,
+  clipIsoDatesToWindow,
+  normalizeWeekdays,
   checkTaskHeatBanGate,
   checkTaskModeGate,
   deriveTaskHeatBanNotice,
@@ -550,8 +552,11 @@ Deno.serve(async (req) => {
           createdBy: auth.userId,
           createdByName: auth.name || "",
           seriesId,
-          paceWeekdays: Array.isArray(body.paceWeekdays) ? body.paceWeekdays : [],
-          paceDates: Array.isArray(body.paceDates) ? body.paceDates : [],
+          // كان الفحص Array.isArray وحده: فتُحفظ تواريخ خارج فترة المهمة، وسلاسل ليست
+          // تواريخ، وبلا سقف — ثم يحسب deriveDailyTaskPace الحصة اليومية و derivePaceBlocker
+          // المانع على هذا. العميل يقصّهما بنفس الدالتين في كل موضع كتابة، فالخادم يتبعه.
+          paceWeekdays: normalizeWeekdays(body.paceWeekdays),
+          paceDates: clipIsoDatesToWindow(body.paceDates, startAt, dueAt),
           recurrence: windows.length > 1
             ? {
               ...recGate.recurrence,

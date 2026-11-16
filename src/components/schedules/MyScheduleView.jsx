@@ -141,7 +141,7 @@ export default function MyScheduleView({
   /** Next (or current) shift — from yesterday's night forward, two weeks out, by the clock. */
   const next = useMemo(
     () => findNextShift({ me, schedule, ar, laborCalendar, now }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [me, schedule, ar, laborCalendar, todayKey],
   );
 

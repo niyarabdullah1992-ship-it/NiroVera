@@ -1,4 +1,5 @@
 import { isPastArchiveDue } from "@/lib/archiveRule";
+import { checkFieldAttendanceGate, isCheckedInToday, riyadhDateKey } from "@/lib/attendanceGate";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -266,9 +267,18 @@ export default function Operations() {
     if (isLocalPreviewActive()) {
       setCheckedIn(true);
       setAttendanceGate(null);
+    } else {
+      // Local (no server): today's punch is in the company blob — read it there, as بصمتي wrote it.
+      // Nothing set the gate here, so a worker who had punched still read «موقوف حتى بصمة اليوم».
+      const me = String(currentUser?.id || currentUser?.employeeId || "");
+      const today = riyadhDateKey();
+      const row = (data?.personalAttendance || []).find((r) => String(r?.employeeId || r?.employee_id || "") === me && String(r?.dateKey || r?.date || "").slice(0, 10) === today) || null;
+      const gate = checkFieldAttendanceGate(row);
+      setCheckedIn(isCheckedInToday(row));
+      setAttendanceGate(gate.ok ? null : gate);
     }
     return board;
-  }, [data?.tasks, scope]);
+  }, [data?.tasks, data?.personalAttendance, scope, currentUser?.id, currentUser?.employeeId]);
 
   const reload = useCallback(async () => {
     if (!company?.id) return;
@@ -2321,7 +2331,8 @@ export default function Operations() {
         />
       </div>
 
-      {!checkedIn && (
+      {/* the manager's lane reviews and assigns — his own punch gates nothing there */}
+      {!checkedIn && (employeeRail || !isOpsManager) && (
       <div style={warnBanner}>
         {attendanceGate?.reason || (ar
             ? "تسجيل الإنجاز الميداني موقوف حتى بصمة اليوم — سجّل حضورك من شاشة الحضور، أو اطلب تحويل المهمة إلى عن بُعد."

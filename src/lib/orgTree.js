@@ -654,3 +654,20 @@ export function deleteOrgNode(companyId, nodeId) {
     if (removed.type === "employee") data.complaintEscalationChain = (data.complaintEscalationChain || []).filter((id) => id !== removed.refId);
   });
 }
+
+
+/** «سلسلة التصعيد»: the HR levels of one route (tasks · complaint · voice), in order, each with its window. */
+export function setEscalationRoute(companyId, route, levels) {
+  if (!companyId || !["tasks", "complaint", "voice"].includes(route)) return;
+  const seen = new Set();
+  const clean = [];
+  for (const row of levels || []) {
+    const id = String(row?.employeeId || "").trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    clean.push({ employeeId: id, hours: Math.max(1, Number(row?.hours) || 24) });
+  }
+  updateCompany(companyId, (data) => {
+    data.escalationRoutes = { ...(data.escalationRoutes || {}), [route]: { hr: clean } };
+  });
+}

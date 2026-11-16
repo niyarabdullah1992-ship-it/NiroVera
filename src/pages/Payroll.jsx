@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { reconcileAdvanceInstallments } from "@/lib/deductionGenerators";
 import { useSearchParams } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
@@ -36,7 +37,7 @@ import PayrollEosBoard from "@/components/payroll/PayrollEosBoard";
 import { AllowanceLedgerCard, PayslipEstimateCard, SiteConditionsCard } from "@/components/payroll/PayslipLedger";
 import { requestSelfEmployee } from "@/lib/employeeFileView";
 import { derivePayrollMonthAttendance } from "@/lib/payrollMonthAttendance";
-import PayrollCycleReview from "@/components/payroll/PayrollCycleReview";
+import PayrollCycleReview, { Fold } from "@/components/payroll/PayrollCycleReview";
 import { stationWithSite } from "@/lib/siteRemoteness";
 import { previousMonth } from "@/lib/payrollReview";
 import MyPayslipArchive from "@/components/payroll/MyPayslipArchive";
@@ -58,10 +59,9 @@ import PayrollMinistryPanel from "@/components/payroll/PayrollMinistryPanel";
 import PayrollMineDeductions from "@/components/payroll/PayrollMineDeductions";
 import { notifyMoney } from "@/lib/moneyNotifications";
 import useStationScope from "@/hooks/useStationScope";
-import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
-import { pageKicker } from "@/lib/moduleMeta";
+import OpsFrame, { HeroSwitch } from "@/components/tasks/OpsFrame";
 import { article90MaxDeduction, lineComponents } from "@/lib/payrollDerivations";
-import { BORDER, MUTED, WARN, ui, SURFACE, tableShell } from "@/lib/platformStyles";
+import { BORDER, MUTED, SURFACE, tableShell } from "@/lib/platformStyles";
 import { brandReportColor } from "@/lib/pdfTheme";
 import FinanceViewSwitch from "@/components/shared/FinanceViewSwitch";
 import { MANAGE, SELF, canManageSurface, resolveFinanceView } from "@/lib/financeRights";
@@ -72,6 +72,27 @@ const MANAGE_LAYERS = ["run", "att", "lines", "deduct", "gosi", "eos", "slip", "
 // An employee is not "management minus buttons" here: the whole run is somebody
 // else's business. What is theirs is the one line charged to their own name.
 const SELF_LAYERS = ["slip", "deduct", "archive"];
+
+// Four sections for management, like the other sections: each holds its tabs; the rest open from the cycle's steps.
+const MANAGE_GROUPS = [
+  { id: "run", ar: "المسير", en: "Run", tabs: ["run", "att", "eos", "files"] },
+  { id: "lines", ar: "البنود والخصومات", en: "Lines and deductions", tabs: ["lines", "deduct"] },
+  { id: "wps", ar: "حماية الأجور والتأمينات", en: "Wage protection and GOSI", tabs: ["wps", "gosi"] },
+  { id: "archive", ar: "الأرشيف والقسائم", en: "Archive and payslips", tabs: ["archive", "slip"] },
+];
+const SUB_LABELS = {
+  lines: ["البنود", "Lines"], deduct: ["بنود الخصم", "Deductions"],
+  wps: ["حماية الأجور", "Wage protection"], gosi: ["التأمينات", "GOSI"],
+  archive: ["الأرشيف", "Archive"], slip: ["قسيمة الراتب", "Payslip"],
+  att: ["الحضور المقفل", "Locked attendance"], eos: ["نهاية الخدمة", "End of service"], files: ["القالب", "Template"],
+};
+const quickBtn = (primary, disabled = false) => ({
+  fontFamily: "inherit", height: 34, padding: "0 14px", borderRadius: 8, cursor: disabled ? "default" : "pointer", fontSize: 12.5, fontWeight: 700,
+  display: "inline-flex", alignItems: "center", gap: 6, opacity: disabled ? 0.5 : 1,
+  border: primary ? "1px solid var(--nv-accent, #1E9E63)" : "1px solid var(--nv-line, #D5DCD8)",
+  background: primary ? "var(--nv-accent, #1E9E63)" : "var(--nv-card, #fff)",
+  color: primary ? "#fff" : "var(--nv-ink, #111418)",
+});
 
 export default function Payroll() {
   const { lang, dir } = useI18n();
@@ -94,6 +115,7 @@ export default function Payroll() {
   const requested = requestedRaw === "payslip" ? "slip" : requestedRaw;
   const tab = layers.includes(requested) ? requested : homeTab;
   const month = liveMonth;
+  const group = view === MANAGE ? MANAGE_GROUPS.find((g) => g.tabs.includes(tab)) || MANAGE_GROUPS[0] : null;
 
   const setTab = (value) => {
     const next = new URLSearchParams(searchParams);
@@ -119,6 +141,8 @@ export default function Payroll() {
       ensurePayrollRun(company.id, liveMonth);
       // Art. 91: accepted damage objections are refunded on the open line.
       if (canManage) reconcileDamageObjections(company.id, liveMonth);
+      // Art. 92(1): each approved advance still owed takes this month's instalment (≤ 10% of the wage).
+      if (canManage) reconcileAdvanceInstallments(company.id, liveMonth, currentUser);
     }
     if (company && view === SELF) refreshOwnPayrollDerivation(company.id, liveMonth);
   }, [company?.id, liveMonth, canView, includeOwner, view]);
@@ -288,77 +312,78 @@ export default function Payroll() {
       };
     });
 
+  const approvedRun = ["approved", "sent"].includes(serverMeta.status || run?.status || "");
+
   return (
-    <SuiteWorkspaceFrame
+    <OpsFrame
       ar={ar}
-      kicker={pageKicker("/app/payroll", lang)}
-      title={view === SELF ? (ar ? "قسيمتي" : "My payslip") : (ar ? "مسير الأجور" : "Wage run")}
-      hint={view === SELF
-        ? (ar
-          ? "البصمة تغذّي المسير، والمسير يغذّي قسيمتك. العهدة تُطلب من طلباتي وتُسلَّم عند انتهاء الخدمة."
-          : "The punch feeds the run, and the run feeds your payslip. Custody is requested in My Requests and returned at exit.")
-        : (ar
-          ? "الحضور يغذّي المسير، والمسير يُقفل قبل ملف مدد. العهدة غير المسلّمة تُحسم في التصفية النهائية وحدها (المادة 91)."
-          : "Attendance feeds the run, and the run closes before the Mudad file. Unreturned custody is set off only in the final settlement (Art. 91).")}
-      viewNote={view === SELF ? "" : hints[tab]}
-      legal={view === SELF && tab === "slip" ? "" : (ar
-        ? "دورة نظامية: تجهيز البنود · المواد 90 و92 و93 و107 · الاعتماد · حماية الأجور خلال 30 يوماً من الاستحقاق."
-        : "Statutory cycle: prepare lines · Art. 90, 92, 93 and 107 · approve · wage protection within 30 days of entitlement.")}
-      tabs={view === MANAGE ? [
-        { value: "run", label: ar ? "المسير" : "Run" },
-        { value: "att", label: ar ? "الحضور المقفل" : "Locked attendance", count: issueCount },
-        { value: "lines", label: ar ? "البنود" : "Lines" },
-        { value: "deduct", label: ar ? "بنود الخصم" : "Deductions" },
-        { value: "gosi", label: ar ? "التأمينات" : "GOSI" },
-        { value: "eos", label: ar ? "نهاية الخدمة" : "End of service" },
-        { value: "slip", label: ar ? "قسيمة الراتب" : "Payslip" },
-        { value: "wps", label: ar ? "حماية الأجور" : "Wage protection" },
-        { value: "files", label: ar ? "القالب" : "Template" },
-        { value: "archive", label: ar ? "الأرشيف" : "Archive", count: (data?.payrollRuns || []).filter((entry) => entry.month < liveMonth).length },
-      ] : [
-        { value: "slip", label: ar ? "قسيمتي" : "My payslip" },
-        { value: "deduct", label: ar ? "خصوماتي" : "My deductions" },
-        { value: "archive", label: ar ? "أرشيف قسيمتي" : "My payslip archive" },
-      ]}
-      tool={tab}
-      onTool={setTab}
-      meta={view === SELF && railSide ? null : (
-        <>
-          <FinanceViewSwitch ar={ar} view={view} canManage={canManage} showSwitch={!railSide} onChange={setView} />
-          {view === SELF ? null : tab !== "archive" ? (
-            <>
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
-                <span style={{ fontSize: 10, color: MUTED }}>{ar ? "الموظفون في النطاق" : "People in scope"}</span>
-                <span style={{ fontSize: 15, fontWeight: 700 }}>{visible.length}</span>
-              </div>
-              <span style={{ width: 1, height: 30, background: BORDER }} />
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
-                <span style={{ fontSize: 10, color: MUTED }}>{ar ? "مدفوع" : "Paid"}</span>
-                <span style={{ fontSize: 15, fontWeight: 700, color: paidCount === visible.length && visible.length ? "var(--nv-ok-ink)" : MUTED }}>{paidCount}/{visible.length}</span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
-                <span style={{ fontSize: 10, color: MUTED }}>{ar ? "دورة هذا الشهر" : "This month’s cycle"}</span>
-                <span style={{ fontSize: 15, fontWeight: 700 }}>{monthLabel}</span>
-              </div>
-            </>
+      lane={view === SELF ? "mine" : "manage"}
+      section={ar ? "المال" : "Money"}
+      title={view === SELF ? (ar ? "قسيمتي" : "My payslip") : (ar ? "المال والرواتب" : "Money and payroll")}
+      hint={null}
+      meta={(
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", width: "100%" }}>
+          {view === MANAGE ? (
+            <HeroSwitch
+              options={MANAGE_GROUPS.map((g) => ({ value: g.id, label: ar ? g.ar : g.en }))}
+              value={group?.id}
+              onChange={(id) => setTab(MANAGE_GROUPS.find((g) => g.id === id).tabs[0])}
+              label={ar ? "أقسام المال والرواتب" : "Payroll sections"}
+            />
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
-              <span style={{ fontSize: 10, color: MUTED }}>{ar ? "مسيرات مؤرشفة" : "Archived runs"}</span>
-              <span style={{ fontSize: 15, fontWeight: 700 }}>{archiveRows.length}</span>
-            </div>
+            <HeroSwitch
+              options={[
+                { value: "slip", label: ar ? "قسيمتي" : "My payslip" },
+                { value: "deduct", label: ar ? "خصوماتي" : "My deductions" },
+                { value: "archive", label: ar ? "أرشيف قسيمتي" : "My payslip archive" },
+              ]}
+              value={tab}
+              onChange={setTab}
+              label={ar ? "قسيمتي" : "My payslip"}
+            />
           )}
-          {view === MANAGE && tab !== "wps" && tab !== "archive" && (serverMeta.status || serverMeta.heads > 0) ? (
-            <>
-              {issueCount > 0 ? <span style={WARN}>{issueCount} {ar ? "بندًا يحتاج تصحيحًا" : "lines need a fix"}</span> : null}
-              <button type="button" onClick={() => setShowSyncConfirm(true)} style={{ ...ui.btnSecondary, height: 34, display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <RefreshCw style={{ width: 13, height: 13 }} />
-                {ar ? "تحديث من الملفات" : "Refresh from profiles"}
-              </button>
-            </>
-          ) : null}
-        </>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginInlineStart: "auto", flexWrap: "wrap" }}>
+            {railSide && view === SELF ? null : <FinanceViewSwitch ar={ar} view={view} canManage={canManage} showSwitch={!railSide} onChange={setView} />}
+            {view === MANAGE ? (
+              <>
+                <button type="button" onClick={() => setShowSyncConfirm(true)} style={quickBtn(false)}>
+                  <RefreshCw style={{ width: 13, height: 13 }} />
+                  {ar ? "تحديث من الملفات" : "Refresh from profiles"}
+                </button>
+                <button
+                  type="button"
+                  disabled={approvedRun}
+                  onClick={() => {
+                    if (tab !== "run") setTab("run");
+                    window.setTimeout(() => window.dispatchEvent(new Event("nv:payroll-approve")), tab === "run" ? 0 : 400);
+                  }}
+                  style={quickBtn(true, approvedRun)}
+                >
+                  {approvedRun ? (ar ? "✓ المسير معتمد" : "✓ Run approved") : (ar ? "✓ اعتمد المسير" : "✓ Approve run")}
+                </button>
+              </>
+            ) : null}
+          </div>
+        </div>
       )}
     >
+      {view === MANAGE && group && group.tabs.length > 1 && group.id !== "run" ? (
+        <div style={{ marginBottom: 12 }}>
+          <HeroSwitch
+            options={group.tabs.map((t) => ({ value: t, label: ar ? SUB_LABELS[t][0] : SUB_LABELS[t][1] }))}
+            value={tab}
+            onChange={setTab}
+            label={ar ? (group.ar) : group.en}
+          />
+        </div>
+      ) : null}
+      {view === MANAGE && group?.id === "run" && tab !== "run" ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+          <button type="button" onClick={() => setTab("run")} style={quickBtn(false)}>{ar ? "→ العودة إلى دورة المسير" : "← Back to the run cycle"}</button>
+          <strong style={{ fontSize: 14, color: "var(--nv-ink)" }}>{ar ? SUB_LABELS[tab][0] : SUB_LABELS[tab][1]}</strong>
+          <span style={{ fontSize: 12, color: MUTED }}>{hints[tab]}</span>
+        </div>
+      ) : null}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {tab === "run" && view === MANAGE && (() => {
         const faced = managedVisible.map(faceOf);
@@ -392,20 +417,37 @@ export default function Payroll() {
             deductionGaps={deductionGaps}
             gosiOpen={gosiOpen}
             onGo={setTab}
+            middle={(
+              <PayrollRunBoard
+                month={month}
+                lang={lang}
+                stationScope={headerScope}
+                onEditLines={() => setTab("lines")}
+                onOpenWps={() => setTab("wps")}
+                onMeta={setServerMeta}
+              />
+            )}
           />
         );
       })()}
 
       {tab === "run" && view === MANAGE && (
-        <PayrollLawPanel
-          companyId={company?.id}
-          data={data}
-          month={month}
-          items={managedVisible.map(faceOf)}
-          employeeForItem={employeeForItem}
-          canManage={canManage}
-          ar={ar}
-        />
+        <Fold
+          id="payroll-law"
+          title={ar ? "مواعيد الأجر وحمايته" : "Wage timing and protection"}
+          note={ar ? "يوم الصرف، والأجر الأسبوعي، وأجر الإجازة مقدّماً، والحد الأدنى الداخلي، وكشف الأجور." : "Payday, weekly pay, leave pay ahead, the internal minimum and the wage sheet."}
+        >
+          <PayrollLawPanel
+            companyId={company?.id}
+            data={data}
+            month={month}
+            items={managedVisible.map(faceOf)}
+            employeeForItem={employeeForItem}
+            canManage={canManage}
+            ar={ar}
+            embedded
+          />
+        </Fold>
       )}
 
       {tab === "run" && view === MANAGE && (
@@ -418,16 +460,6 @@ export default function Payroll() {
         />
       )}
 
-      {tab === "run" && view === MANAGE && (
-        <PayrollRunBoard
-          month={month}
-          lang={lang}
-          stationScope={headerScope}
-          onEditLines={() => setTab("lines")}
-          onOpenWps={() => setTab("wps")}
-          onMeta={setServerMeta}
-        />
-      )}
 
       {tab === "att" && view === MANAGE && (
         <PayrollAttendanceBoard
@@ -552,6 +584,11 @@ export default function Payroll() {
         />
       )}
 
+      {(tab === "lines" || tab === "deduct") && view === MANAGE && !approvedRun && visible.length ? (
+        <p data-pay-locked="1" style={{ margin: 0, padding: "10px 14px", borderRadius: 10, background: "var(--nv-warn-soft, #FBF3E2)", color: "var(--nv-warn-ink, #7A5A12)", fontSize: 12.5, lineHeight: 1.7 }}>
+          {ar ? "المسير لم يُعتمد بعد — يُعدَّل هنا ما يلزم، ولا يُحدَّد «مدفوع» إلا بعد الاعتماد." : "The run is not approved yet — edit what is needed here; «Paid» opens after approval."}
+        </p>
+      ) : null}
       {(tab === "lines" || tab === "deduct") && view === MANAGE && (
         <div style={{ ...tableShell, overflowX: "auto" }}>
             {visible.length === 0 ? (
@@ -575,8 +612,13 @@ export default function Payroll() {
                     employeeForItem={employeeForItem}
                     ar={ar}
                     payday={companyPayday(data?.settings, month)}
+                    payLocked={!approvedRun}
                     onChange={(itemId, field, value) => refused(updatePayrollItem(company.id, month, itemId, { [field]: value }))}
                     onTogglePaid={(item, paid) => {
+                      if (paid && !approvedRun) {
+                        toast({ description: ar ? "يُصرف الأجر بعد اعتماد المسير — اعتمده أولاً من «المسير»." : "Wages are paid after the run is approved — approve it first.", variant: "destructive" });
+                        return;
+                      }
                       if (paid && payrollItemIssues(item).length) {
                         const issues = payrollItemIssues(item);
                         const msg = (issues.includes("ARTICLE_93_EXCEEDED") || issues.includes("ARTICLE_90_EXCEEDED"))
@@ -651,6 +693,6 @@ export default function Payroll() {
         onDispute={(lineId, note) => disputeLine(lineId, note, deductionItem)}
       />
       </div>
-    </SuiteWorkspaceFrame>
+    </OpsFrame>
   );
 }

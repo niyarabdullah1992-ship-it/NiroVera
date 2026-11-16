@@ -189,7 +189,10 @@ export function deriveDutyAlerts({
 
   let nowM = riyadhMinutesOf(now);
   if (nowM == null) return empty;
-  if (nowM < inM) nowM += 1440;
+  // A screen clock a tick behind the punch (in 06:20, «now» still 06:19) is the punch minute, not
+  // tomorrow — wrapping it read as 24 h on site («تجاوز 12 ساعة» the moment she clocked in).
+  // Only a real midnight crossing (a gap of more than half a day) moves to the next day's clock.
+  if (nowM < inM) nowM = inM - nowM < 720 ? inM : nowM + 1440;
   if (nowM < inM) return empty;
 
   const consecMax = (limits?.consecutiveHours || ruleValue("hours.rest.maxConsecutiveHours", onDate)) * 60;

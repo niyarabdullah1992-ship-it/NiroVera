@@ -18,7 +18,7 @@ function monthLabel(key, ar) {
 }
 
 function runStatus(run, ar) {
-  if (run?.status === "sent") return ar ? "أُرسل مدى" : "Mudad sent";
+  if (run?.status === "sent") return ar ? "أُرسل إلى مدد" : "Mudad sent";
   if (run?.status === "approved") return ar ? "معتمد" : "Approved";
   if (run) return ar ? "لم يُغلق" : "Still open";
   return ar ? "لا مسير" : "No run";
@@ -78,7 +78,7 @@ export default function PayrollArchiveBoard({
         <span style={{ display: "flex", alignItems: "flex-end", gap: 16, flexShrink: 0 }}>
           {[
             { v: rows.length, l: ar ? "شهر" : "months" },
-            { v: sent, l: ar ? "أُرسل مدى" : "Mudad sent", gold: true },
+            { v: sent, l: ar ? "أُرسل إلى مدد" : "Mudad sent", gold: true },
             ...(open ? [{ v: open, l: ar ? "لم يُغلق" : "still open" }] : []),
           ].map((f) => (
             <span key={f.l} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>

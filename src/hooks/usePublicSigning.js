@@ -5,6 +5,7 @@ import { sha256HexOfBuffer } from "@/lib/fileHash";
 import { clampStampScale } from "@/lib/signatureStampGeometry";
 import { isMarkField } from "@/lib/signPdf";
 import { invokeLocalMultiSign, shouldUseLocalMultiSign } from "@/lib/localMultiSignFallback";
+import { isServiceOutage } from "@/lib/serviceErrors";
 import { createGateMessage } from "@/lib/multiSignDerivations";
 import { DEFAULT_STAMP_CONFIG, normalizeStampConfig, stampConfigFromSigner } from "@/lib/stampStudio";
 import { persistPersonalSeal } from "@/lib/personalSeal";
@@ -48,18 +49,27 @@ export default function usePublicSigning(explicitToken, options = {}) {
   const [textValues, setTextValues] = useState({});
   const [retractDays, setRetractDays] = useState(1);
 
+  // The server first; when it is unreachable (a local build with no backend), the company blob holds the
+  // envelope — SigningHome already falls back this way, the signer's page did not, so a local signer read
+  // «رابط التوقيع غير صالح» for a live envelope.
+  const callSigning = async (payload) => {
+    if (shouldUseLocalMultiSign()) return invokeLocalMultiSign(payload);
+    try {
+      return (await base44.functions.invoke("multiSign", payload)).data;
+    } catch (err) {
+      if (!isServiceOutage(err)) throw err;
+      const local = invokeLocalMultiSign(payload);
+      if (local?.error) throw err;
+      return local;
+    }
+  };
+
   const load = async () => {
     setLoading(true); setFailure(null);
     if (!token) { setFailure({ type: "invalid" }); setLoading(false); return; }
     try {
-      const local = () => invokeLocalMultiSign({ action: "getByToken", token });
-      let info;
-      if (shouldUseLocalMultiSign()) {
-        info = local();
-        if (info?.error) throw new Error(info.reason || info.error);
-      } else {
-        info = (await base44.functions.invoke("multiSign", { action: "getByToken", token })).data;
-      }
+      const info = await callSigning({ action: "getByToken", token });
+      if (info?.error) throw new Error(info.reason || info.error);
       setInfo(info);
       setStampTheme(info?.signer?.stampTheme || options.profile?.stampConfig?.design || "heritage");
       const profileConfig = options.profile?.stampConfig;
@@ -119,9 +129,8 @@ export default function usePublicSigning(explicitToken, options = {}) {
     try {
       const locationPromise = captureLocation();
       setStage(ar ? "جارٍ تجهيز أحدث نسخة…" : "Fetching the latest version…");
-      const fresh = shouldUseLocalMultiSign()
-        ? invokeLocalMultiSign({ action: "getByToken", token })
-        : (await base44.functions.invoke("multiSign", { action: "getByToken", token })).data;
+      const fresh = await callSigning({ action: "getByToken", token });
+      if (fresh?.error) throw new Error(fresh.reason || fresh.error);
       if (fresh.expiresAt && new Date(fresh.expiresAt).getTime() <= Date.now()) throw new Error(ar ? "انتهت صلاحية طلب التوقيع." : "This signature request has expired.");
       if (fresh.signer.status === "signed") throw new Error(ar ? "وقّعت هذا المستند مسبقًا." : "You already signed this document.");
       setStage(ar ? "جارٍ ختم توقيعك على المستند…" : "Stamping your signature…");
@@ -142,16 +151,14 @@ export default function usePublicSigning(explicitToken, options = {}) {
       const fields = fresh.signer.spots || (fresh.signer.spot ? [{ ...fresh.signer.spot, id: "signature", type: "signature" }] : []);
       const signatureField = fields.find((field) => field.type === "signature") || fresh.signer.spot;
       // The preview ledger has no file store: the stamped copy travels inline instead of uploading.
-      const localLedger = shouldUseLocalMultiSign();
+      const localLedger = shouldUseLocalMultiSign() || fresh?.local === true;
       const stamped = await stampOnPdf(fresh.docUrl, stamp, fresh.signedCount, null, signatureField, (signatureField?.scale || 100) / 100, !localLedger, fields, textValues);
       if (!stamped.url && localLedger) stamped.url = await bytesToPdfDataUrl(stamped.bytes);
       setStage(ar ? "جارٍ حفظ الحقول والتوقيع…" : "Saving fields and signature…");
       const fileHash = await sha256HexOfBuffer(stamped.bytes);
       const location = await locationPromise;
       const payload = { action: "submitSignature", token, newDocUrl: stamped.url, fileHash, textValues, location, retractDays, lang: ar ? "ar" : "en" };
-      const body = shouldUseLocalMultiSign()
-        ? invokeLocalMultiSign(payload)
-        : (await base44.functions.invoke("multiSign", payload)).data;
+      const body = localLedger ? invokeLocalMultiSign(payload) : await callSigning(payload);
       if (body?.error) throw new Error(body.reason || body.error);
       if (!sealLocked && options.persist?.companyId && options.persist?.userId) {
         persistPersonalSeal({

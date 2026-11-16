@@ -7,10 +7,11 @@ import {
   sendPresenceHeartbeat,
 } from "./store";
 import { keepLocalOverEmptyServer } from "./syncLaw";
+import { setOrgLogActor } from "./orgStructureLog";
 import { flushDisciplineOutbox } from "./disciplineServer";
 import { base44 } from "@/api/base44Client";
 import { DEFAULT_SUBSCRIPTION_PLANS, planConfigForName } from "@/lib/subscriptionPlans";
-import { isLocalPreviewActive, LOCAL_PREVIEW_COMPANY_ID } from "@/lib/localPreview";
+import { isBase44BackendConfigured, isLocalPreviewActive, LOCAL_PREVIEW_COMPANY_ID } from "@/lib/localPreview";
 
 // Skip merging in cloud data if this browser wrote locally very recently —
 // gives the in-flight edit a moment to finish syncing before a poll/refresh
@@ -78,11 +79,14 @@ export function AuthProvider({ children }) {
       .finally(() => { if (active) setPlanLoading(false); });
     setPlanLoading(true); loadPlan();
     let unsubscribe = null;
-    try {
-      unsubscribe = base44.entities.SubscriptionPlan.subscribe(() => loadPlan());
-    } catch {
-      applyLocalPlan();
-      setPlanLoading(false);
+    // Realtime opens a socket; with no backend (local preview) it only times out.
+    if (isBase44BackendConfigured()) {
+      try {
+        unsubscribe = base44.entities.SubscriptionPlan.subscribe(() => loadPlan());
+      } catch {
+        applyLocalPlan();
+        setPlanLoading(false);
+      }
     }
     return () => { active = false; if (typeof unsubscribe === "function") unsubscribe(); };
   }, [company?.plan, company?.id]);
@@ -282,12 +286,16 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!session?.companyId) return;
     let unsubscribe = null;
-    try {
-      unsubscribe = base44.entities.SyncSignal.subscribe((event) => {
-        if (event?.data?.companyId === session.companyId) companyAccountExists(session.companyId).finally(refresh);
-      });
-    } catch {
-      // realtime unavailable — the 10s poll above remains the fallback
+    // Realtime opens a socket; with no backend (local preview) it only times out.
+    // The 30s poll above stays the fallback.
+    if (isBase44BackendConfigured()) {
+      try {
+        unsubscribe = base44.entities.SyncSignal.subscribe((event) => {
+          if (event?.data?.companyId === session.companyId) companyAccountExists(session.companyId).finally(refresh);
+        });
+      } catch {
+        // realtime unavailable — the poll above remains the fallback
+      }
     }
     const onVisible = () => { if (document.visibilityState !== "hidden") refresh(); };
     window.addEventListener("focus", onVisible);
@@ -332,6 +340,7 @@ export function AuthProvider({ children }) {
   const currentUser = data && session?.userId
     ? (data.employees || []).find((e) => e.id === session.userId || e.employeeId === session.userId)
     : null;
+  setOrgLogActor(currentUser);
   const companyWithPlan = useMemo(() => company ? { ...company, planConfig } : company, [company, planConfig]);
 
   return (

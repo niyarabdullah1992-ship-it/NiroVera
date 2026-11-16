@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { base44 } from "@/api/base44Client";
+import { submitProductFeedback } from "@/api/platformEntities";
 import { buildAssistantContext } from "@/lib/assistantContext";
 import { getCompanyToken } from "@/lib/store";
 import AssistantMessage from "@/components/assistant/AssistantMessage";
@@ -380,7 +381,7 @@ Answer the last user question.`,
 
   const rateMessage = (index, value) => {
     setMessages((previous) => previous.map((message, messageIndex) => messageIndex === index ? { ...message, feedback: value } : message));
-    base44.entities.ProductFeedback.create({ companyId: company.id, role: currentUser.role, rating: value === "up" ? 5 : 1, message: "Niro assistant response rating", page: "/app/assistant" }).catch(() => {});
+    submitProductFeedback({ companyId: company.id, role: currentUser.role, rating: value === "up" ? 5 : 1, message: "Niro assistant response rating", page: "/app/assistant" }).catch(() => {});
   };
 
   const deleteMessage = (index) => {

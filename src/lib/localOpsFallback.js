@@ -50,7 +50,7 @@ import {
   taskRecipientIds,
 } from "@/lib/taskQuality";
 import { canCreateTasks } from "@/lib/permissions";
-import { getCompanyData, updateCompany } from "@/lib/store";
+import { addNotification, getCompanyData, updateCompany } from "@/lib/store";
 import { stationInHeaderScope } from "@/lib/stationTree";
 
 function uid(prefix) {
@@ -178,6 +178,20 @@ export function buildLocalOpsBoard({ tasks, scope = "all", stations = [] } = {})
   };
 }
 
+/**
+ * The in-app notice a work order owes its people. Only an email went out (and only to a worker with an
+ * address on file), so an assigned, approved or returned order reached nobody inside the platform.
+ */
+function noticeTaskPeople(companyId, task, data, text, { except = [] } = {}) {
+  if (!task) return;
+  const skip = new Set(except.map(String).filter(Boolean));
+  const ids = taskRecipientIds(task, data?.employees || [], (e) => e?.id || e?.employeeId).map(String);
+  for (const id of new Set(ids)) {
+    if (!id || skip.has(id)) continue;
+    addNotification(companyId, id, text, { to: "/app/tasks", key: `task-${task.id}-${text.slice(0, 24)}-${Date.now()}` });
+  }
+}
+
 export function createLocalOpsTask(companyId, input, { employees = [], actor = null, data: rights = null } = {}) {
   if (!canCreateTasks(actor, rights || { employees })) {
     return refuse("FORBIDDEN", "إنشاء المهام مقصور على المشرفين.", "Only managers can create tasks");
@@ -196,6 +210,7 @@ export function createLocalOpsTask(companyId, input, { employees = [], actor = n
   const windows = recGate.windows;
   const seriesId = windows.length > 1 ? uid("series") : null;
   let heatNotice = null;
+  let createdRows = [];
   const data = updateCompany(companyId, (d) => {
     const list = Array.isArray(d.tasks) ? d.tasks : [];
     const owner = (employees || []).find((e) => {
@@ -275,7 +290,14 @@ export function createLocalOpsTask(companyId, input, { employees = [], actor = n
     }, list.length + index));
     d.tasks = [...created, ...list];
     heatNotice = created.map((t) => deriveTaskHeatBanNotice(t)).find(Boolean) || null;
+    createdRows = created;
   }, { sync: "tasks" });
+  const actorId = actor?.id || actor?.employeeId || "";
+  for (const t of createdRows) {
+    const due = t.dueAt ? ` — تُستحق ${String(t.dueAt).slice(0, 10)}` : "";
+    const count = Number(t.targetCount) > 0 ? ` · العدد ${t.targetCount}` : "";
+    noticeTaskPeople(companyId, t, data, `أُسند إليك أمر عمل: ${t.title}${count}${due}.`, { except: [actorId] });
+  }
   return { ...buildLocalOpsBoard({ tasks: data?.tasks || [], scope: "all" }), heatNotice };
 }
 
@@ -450,6 +472,8 @@ export function approveLocalTask(companyId, taskId, { reviewer = null, data = nu
       completedCount: Math.max(t.completedCount, t.targetCount),
     };
   });
+  const done = findLocalTask(companyId, taskId);
+  noticeTaskPeople(companyId, done, data || getCompanyData(companyId), `اعتُمد أمر العمل «${done?.title || ""}» — ${awarded === 1 ? "نقطة واحدة" : awarded === 2 ? "نقطتان" : awarded >= 3 && awarded <= 10 ? `${awarded} نقاط` : `${awarded} نقطة`} في أدائك.`, { except: [reviewer?.id || reviewer?.employeeId] });
   return { ...board, awarded: { points: awarded, level: gate.level } };
 }
 
@@ -868,6 +892,8 @@ export function rejectLocalTask(companyId, taskId, reason, { reviewer, data } = 
     reviewerId: reviewer?.id || reviewer?.employeeId || null,
     reviewerName: reviewer?.name || "",
   }));
+  const back = findLocalTask(companyId, taskId);
+  noticeTaskPeople(companyId, back, data || getCompanyData(companyId), `أُعيد أمر العمل «${back?.title || ""}» — ${why}`, { except: [reviewer?.id || reviewer?.employeeId] });
   return { ...board, escalation: { escalate: false, atTop: true, nextLevel: 0 } };
 }
 

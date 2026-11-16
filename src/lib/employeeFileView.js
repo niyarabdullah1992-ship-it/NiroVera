@@ -288,6 +288,8 @@ export function serviceLabel(hireIso, ar, today) {
   if (!hireIso) return "—";
   const { whole, months } = serviceParts(hireIso, today);
   if (!ar) return `${whole}y ${months}m`;
+  // under a year the months are the whole length — «أقل من سنة وشهر» read as "13 months or less"
+  if (whole === 0) return months ? countAr(months, "شهر", "شهران", "أشهر", "شهراً") : "أقل من شهر";
   return `${countAr(whole, "سنة", "سنتان", "سنوات", "سنة", "أقل من سنة")}${months ? ` و${countAr(months, "شهر", "شهران", "أشهر", "شهراً")}` : ""}`;
 }
 

@@ -3,6 +3,7 @@ import { religionOnFile } from "./laborRules.js";
 import { isOnLeaveToday, remainingLeaveDays, serviceYearsFromHire } from "@/lib/leaveTypes";
 import { collectEmployeeValidityDocs, EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
 import { payableNightAllowance } from "@/lib/shiftWeek";
+import { wageAllowanceTotal } from "./facts/people.js";
 
 function daysTo(iso) {
   if (!iso) return null;
@@ -154,7 +155,7 @@ export function deriveEmployeeFileBoard({ employee, stationName, roleLabel, case
   const annualLeft = remainingLeaveDays(profile, employee?.leaveRequests || [], "annual");
   const annualLabel = annualLeft == null ? "—" : String(annualLeft);
   const base = Number(profile.baseSalary) || 0;
-  const allow = Number(profile.allowances) || 0;
+  const allow = wageAllowanceTotal(profile);
   const wage = base + allow + payableNightAllowance(employee);
   const gosi = String(profileFieldValue(profile, "gosiNumber", employee) || "").trim();
   const iban = String(profileFieldValue(profile, "iban", employee) || "").trim();

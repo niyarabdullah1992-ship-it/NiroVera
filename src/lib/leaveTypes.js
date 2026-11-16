@@ -210,9 +210,12 @@ export function statutoryLeaveFloor(key, profile, onDate, requests) {
   const k = String(key || "").trim().toLowerCase();
   if (k === "annual") {
     const years = effectiveServiceYears(profile, requests, onDate);
-    return years >= 5
+    const law = years >= 5
       ? ruleValue("leave.annual.afterFiveYearsDays", onDate)
       : ruleValue("leave.annual.days", onDate);
+    // the contract may give more than the law (never less): what was written on hiring is the entitlement
+    const contract = Number(profile?.contractAnnualLeaveDays) || 0;
+    return Math.max(law, contract);
   }
   // Art. 151(1): twelve weeks. The sick/disabled-child month (151(2)) is its own leave type, never added here.
   if (k === "maternity") return ruleValue("leave.maternity.days", onDate);
@@ -643,7 +646,13 @@ export function annualBalanceBuckets(profile, requests, onDate, company, employe
     windows.forEach((win, idx) => {
       const span = overlapRange(start, end, win.start, win.end);
       if (!span) return;
-      chunks.push({ start: span.start, idx, days: chargeableAnnualDays(span.start, span.end, undefined, company, emp) });
+      // The days frozen at approval decide (as usedLeaveDays reads them) — re-reading today's roster counted
+      // the rest days of an approved leave once a later week was published over them.
+      const locked = r.lockedDays && typeof r.lockedDays === "object" && Object.keys(r.lockedDays).length ? r.lockedDays : null;
+      const days = locked
+        ? Object.entries(locked).filter(([day, kind]) => day >= span.start && day <= span.end && (kind === "charge" || kind === "dutyOnRest")).length
+        : chargeableAnnualDays(span.start, span.end, undefined, company, emp);
+      chunks.push({ start: span.start, idx, days });
     });
   }
   chunks.sort((a, b) => a.start.localeCompare(b.start));

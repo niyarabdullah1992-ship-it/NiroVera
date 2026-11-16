@@ -99,6 +99,8 @@ export default function MinistryPersonalPanel({
   /** "all" — every check that applies, satisfied ones included; "open" — only مانع / تنبيه. */
   // Same as the management panel: open items first, satisfied checks folded under «عرض المستوفى».
   const [view, setView] = useState("open");
+  // Folded like the other «أنظمة الوزارة» panels: the head and counters show, the rules open on demand.
+  const [unfolded, setUnfolded] = useState(false);
   void showAllDefault;
   const empId = employee?.id;
   const days = useMemo(() => weekDays(weekStart), [weekStart]);
@@ -470,6 +472,18 @@ export default function MinistryPersonalPanel({
           </div>
         )}
       />
+      <button
+        type="button"
+        className="nv-fold-toggle"
+        data-ministry-personal-fold="1"
+        aria-expanded={unfolded}
+        onClick={() => setUnfolded((open) => !open)}
+      >
+        <span>{unfolded ? (ar ? "اطوِ القواعد" : "Fold the rules") : (ar ? `اعرض القواعد (${model.rows.length})` : `Show the rules (${model.rows.length})`)}</span>
+        <span aria-hidden className="nv-fold-toggle__chev" data-open={unfolded ? "true" : "false"}>⌄</span>
+      </button>
+      {unfolded ? (
+      <>
       <div style={{ padding: "14px 18px 12px", display: "flex", flexDirection: "column", gap: 12, borderBottom: "1px solid var(--nv-line2, #EEF2F7)" }}>
         <MinistrySourceCards cards={cards} active={source} onPick={setSource} ar={ar} />
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "space-between" }}>
@@ -567,6 +581,8 @@ export default function MinistryPersonalPanel({
         ) : null}
       </div>
       <RegsSourceLine ar={ar} />
+      </>
+      ) : null}
     </section>
   );
 }

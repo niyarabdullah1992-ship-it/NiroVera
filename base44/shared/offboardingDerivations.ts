@@ -110,7 +110,11 @@ export function serviceYears(hireDate: string | null | undefined, nowMs = Date.n
 export function eosEndMs(caseRow: any = {}, nowMs = Date.now()) {
   const exit = caseRow?.contractExit || caseRow?.profile?.contractExit || {};
   const d = parseLocalDate(exit.effectiveDate || exit.lastDay || caseRow?.lastWorkDate || caseRow?.lastDay);
-  return d ? d.getTime() : nowMs;
+  if (d) return d.getTime();
+  // Service is counted in days (Art. 84): the running estimate ends at the start of today, as the
+  // employee file reads it — counting to this minute put the payroll figure 3 SAR above the file's.
+  const now = new Date(nowMs);
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 }
 
 export const WORKER_FORCE_MAJEURE = "worker_force_majeure";
@@ -127,7 +131,7 @@ export function eosWageBase(caseRow: any = {}) {
   const excluded = truthy(profile.eosExcludeCommissions ?? contract.eosExcludeCommissions ?? caseRow.eosExcludeCommissions);
   const bonusAgreed = truthy(profile.eosAllWageElements || caseRow.eosAllWageElements);
   const base = Math.max(0, Number(caseRow.base ?? profile.base) || 0);
-  const allowances = Math.max(0, Number(caseRow.allowances ?? profile.allowances) || 0);
+  const allowances = exitAllowances(caseRow, profile);
   const bonus = Math.max(0, Number(caseRow.bonus ?? profile.bonus) || 0);
   const commission = Math.max(0, Number(caseRow.commissionAmount ?? profile.commissionAmount) || 0)
     + Math.max(0, Number(caseRow.commission ?? profile.commission) || 0);
@@ -142,6 +146,15 @@ export function isPreStart(hireDate: string | null | undefined, nowMs = Date.now
   const d = parseLocalDate(hireDate);
   if (!d) return false;
   return d.getTime() > nowMs;
+}
+
+/** Twin of src/lib/laborProtectionGates.js exitAllowances: case figure, else named housing + transport + other, else the lump. */
+export function exitAllowances(caseRow: any = {}, profile: any = caseRow?.profile || {}): number {
+  const n = (v: unknown) => Math.max(0, Number(v) || 0);
+  const own = n(caseRow?.allowances);
+  if (own > 0) return own;
+  const named = n(profile?.housingAllowance) + n(profile?.transportAllowance) + n(profile?.otherAllowances);
+  return named > 0 ? named : n(profile?.allowances);
 }
 
 export function finalWage(base: number, allowances: number) {
@@ -297,7 +310,7 @@ export function deriveArt77Compensation(caseRow: OffboardingCaseLike, nowMs = Da
   const preStart = isPreStart(hireDate, endMs);
   const suspended = preStart ? 0 : suspendedDaysFromUnpaidLeave((caseRow as any).leaveRequests || (caseRow.profile as any)?.leaveRequests || [], hireDate, onDate);
   const years = preStart ? 0 : serviceYears(hireDate, endMs, suspended);
-  const wage = finalWage(Number(caseRow.base ?? (caseRow.profile as any)?.baseSalary ?? (caseRow.profile as any)?.base) || 0, Number(caseRow.allowances ?? (caseRow.profile as any)?.allowances) || 0);
+  const wage = finalWage(Number(caseRow.base ?? (caseRow.profile as any)?.baseSalary ?? (caseRow.profile as any)?.base) || 0, exitAllowances(caseRow, (caseRow.profile as any) || {}));
   const cite = citeRule("eos.unlawful.cite", onDate);
   const perYearDays = ruleValue("eos.unlawful.perYearDays", onDate);
   const minMonths = ruleValue("eos.unlawful.minMonths", onDate);

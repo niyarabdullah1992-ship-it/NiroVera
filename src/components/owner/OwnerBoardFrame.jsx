@@ -19,6 +19,7 @@ export default function OwnerBoardFrame({
   onTab,
   companies,
   refreshing,
+  refreshKey,
   onRefresh,
   onLogout,
   onOpenApp,
@@ -34,7 +35,11 @@ export default function OwnerBoardFrame({
       .then((response) => { if (live) setSummary(response.data?.summary || null); })
       .catch(() => { if (live) setSummary(null); });
     return () => { live = false; };
-  }, [refreshing, companies.length]);
+    // refreshKey يُبصم على كل تحديث: اليدوي والتلقائي كل 30 ثانية وعند العودة إلى النافذة.
+    // كان الاعتماد على refreshing وعدد الشركات، فلا يتحرك التحديث التلقائي شيئاً منهما —
+    // فتجمد أرقام الشريط (الإيراد والنشط والمنتهي) بينما محتوى التبويب بجانبها يتجدد،
+    // ويختلف الرقمان على شاشة واحدة. وrefreshing كان يجلب مرتين في الضغطة الواحدة.
+  }, [refreshKey]);
 
   const mrr = summary?.mrr == null ? "—" : String(summary.mrr);
   const active = summary?.activeSubscriptions ?? companies.length;

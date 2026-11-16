@@ -3,7 +3,7 @@
  *  Daily station board lives in dailyReport — do not duplicate StationDailyBoard here.
  */
 
-import { citeRule, ruleValue } from "./laborRules.ts";
+import { citeRule, lateBeyondGrace, ruleValue } from "./laborRules.ts";
 import { checkConsecutiveWorkGate, minutesBetween, resolveFlexDayBreaks, riyadhClockOf, shiftRestMinutes } from "./shiftDerivations.ts";
 import { isOfficialHolidayDay } from "./leaveDerivations.ts";
 import { nursingCreditOf, nursingHourOn } from "./nursingHour.ts";
@@ -306,7 +306,7 @@ export function deriveActualDutyCore(input: {
   // Twin of the client: Art. 154 nursing minutes — not lateness at the start, credited as work, never overtime.
   const nursing = shift && !holiday && !offDay ? nursingHourOn(employee, onDate) : null;
   const credit = nursingCreditOf(nursing, { inMinutes: effIn, outMinutes: outM, shiftStart, shiftEnd, workedMinutes: worked, rosteredMinutes });
-  const lateMinutes = shiftStart == null ? 0 : Math.max(0, inM - shiftStart - grace - (nursing?.startMinutes || 0));
+  const lateMinutes = shiftStart == null ? 0 : lateBeyondGrace(inM - shiftStart - (nursing?.startMinutes || 0), grace);
 
   const limits = art108Limits(employee, onDate, laborCalendar);
   const policy = hoursPolicyOf(company, employee);
@@ -433,7 +433,7 @@ export function deriveTimesheetDay(
   const win = rosterWindow(shift);
   // Art. 154: her nursing minutes at the start are not lateness, at the end not an early checkout.
   const nursingDay = win ? nursingHourOn(opts.employee, punch.date) : null;
-  const lateMinutes = win ? Math.max(0, inM - win.start - grace - (nursingDay?.startMinutes || 0)) : 0;
+  const lateMinutes = win ? lateBeyondGrace(inM - win.start - (nursingDay?.startMinutes || 0), grace) : 0;
   const late = lateMinutes > 0;
   const openCheckout = outM == null;
   const base = {

@@ -8,6 +8,7 @@ import {
 } from "./otherRequestDerivations.js";
 import { checkGroundedRefusalGate, refusalGroundsFor, refusalText } from "./statutoryRefusal.js";
 import { setOtherRequestStatus } from "./store.js";
+import { postAdvanceInstallment } from "./deductionGenerators.js";
 
 /**
  * One management decision on an «other» request (approve / return / refuse) — the same gates طلباتي
@@ -69,5 +70,10 @@ export function decideOtherRequest({ companyId, row, status, note = "", ground =
     rejectVerified: verified,
   });
   if (result && result.ok === false) return result;
+  // An approved «سلفة» starts its recovery on this month's open payroll line (Art. 92(1), ≤ 10% a month).
+  if (status === "approved" && row.type === "advance" && row.moneyKind !== "allowance") {
+    const installment = postAdvanceInstallment(companyId, row.employee.id, { ...row, status: "approved" }, actor);
+    return { ok: true, installment };
+  }
   return { ok: true };
 }

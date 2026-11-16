@@ -625,7 +625,7 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
     sides.push({
       id: "employee",
       label: ar ? "الموظف" : "Employee",
-      subtitle: ar ? "ما يخصّك: بصمتك ومهامك وطلباتك وتوقيعاتك." : "Yours: your punch, tasks, requests, and signatures.",
+      subtitle: "",
       groups: employeeGroups,
     });
   }
@@ -633,7 +633,7 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
     sides.push({
       id: "manage",
       label: ar ? "الإدارة" : "Manage",
-      subtitle: ar ? "التشغيل والقرار والامتثال لكل الفروع." : "Operations, decisions, and compliance for every branch.",
+      subtitle: "",
       groups: manageGroups,
     });
   }

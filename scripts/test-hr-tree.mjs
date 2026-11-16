@@ -124,3 +124,51 @@ assert.equal(parentOf("law")?.id, "hrd");
 assert.equal(parentOf("reg")?.id, "hrd");
 
 console.log("hr tree ok");
+
+// HR staff a branch manager hired under him stay under him; branch HR appointees are «مدير موارد بشرية».
+{
+  const d = {
+    ownerId: "ceo",
+    employees: [
+      { id: "ceo", name: "ن", stationId: "hq", profile: { position: "الرئيس التنفيذي" } },
+      { id: "hrd", name: "ل", stationId: "hq", profile: { position: "مديرة الموارد البشرية" } },
+      { id: "bm", name: "م", stationId: "jed", profile: { position: "مدير الفرع" } },
+      { id: "rec", name: "س", stationId: "jed", profile: { position: "أخصائي توظيف" } },
+      { id: "fin", name: "ع", stationId: "hq", profile: { position: "مسؤول مالية" } },
+    ],
+    orgSeats: [{ id: "s1", employeeId: "rec", stationId: "jed", title: "أخصائي توظيف", reportsToEmployeeId: "bm" }],
+    stations: [
+      { id: "hq", name: "المقر", isCompanyRoot: true, managerId: "ceo" },
+      { id: "jed", name: "جدة", parentStationId: "hq", managerId: "bm", unitKind: "branch" },
+    ],
+  };
+  applyWorkplaceManagerRule(d);
+  applyWorkplaceManagerRule(d);
+  assert.equal(workplaceReportsToId(d.employees.find((e) => e.id === "rec"), d), "bm");
+  assert.equal(linkBranchHr(d, "jed", "fin").ok, true);
+  assert.equal(d.employees.find((e) => e.id === "fin").profile.position, "مدير موارد بشرية");
+  assert.equal(workplaceReportsToId(d.employees.find((e) => e.id === "fin"), d), "hrd");
+}
+
+// A new HR director replaces the old one; the old one stays in HR as «مدير موارد بشرية», and it holds.
+{
+  const d = {
+    ownerId: "ceo",
+    employees: [
+      { id: "ceo", name: "ن", stationId: "hq", profile: { position: "الرئيس التنفيذي" } },
+      { id: "hrd", name: "ل", stationId: "hq", profile: { position: "مديرة الموارد البشرية" } },
+      { id: "x", name: "خ", stationId: "hq", profile: { position: "مشرف تشغيل" } },
+    ],
+    orgSeats: [],
+    stations: [{ id: "hq", name: "المقر", isCompanyRoot: true, managerId: "ceo" }],
+  };
+  applyWorkplaceManagerRule(d);
+  const hrUnit = d.stations.find((s) => s.fixedUnit === "hr");
+  assert.equal(hrUnit.managerId, "hrd");
+  hrUnit.managerId = "x";
+  applyWorkplaceManagerRule(d);
+  assert.equal(applyWorkplaceManagerRule(d), false);
+  assert.equal(hrUnit.managerId, "x");
+  assert.equal(d.employees.find((e) => e.id === "hrd").profile.position, "مدير موارد بشرية");
+  assert.equal(d.employees.find((e) => e.id === "x").profile.position, "مدير الموارد البشرية");
+}

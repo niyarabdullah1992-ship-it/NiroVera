@@ -107,6 +107,7 @@ export default function RecordSmartArchive({
   renderOpen,
   exportName,
   printRecord,
+  hideListActions = false,
 }) {
   const ar = lang === "ar";
   const [innerQuery, setInnerQuery] = useState("");
@@ -434,6 +435,8 @@ export default function RecordSmartArchive({
               </button>
             ))}
           </span>
+          {hideListActions ? null : (
+          <>
           <button
             type="button"
             data-archive-print="1"
@@ -456,6 +459,8 @@ export default function RecordSmartArchive({
             <Download size={14} strokeWidth={2} aria-hidden />
             {ar ? "تصدير" : "Export"}
           </button>
+          </>
+          )}
         </div>
         {chips.length ? (
           <div data-archive-chips="1" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>

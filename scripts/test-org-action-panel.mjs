@@ -52,7 +52,7 @@ const pgm = data.employees.find((e) => e.id === "pg");
 
 /* rights: the old tree's set (pgm included) or the org-design right; ops_manager views only */
 assert.equal(structureRights(owner, data).canManage, true);
-assert.equal(structureRights(pgm, data).canManage, true, "pgm managed the old tree");
+assert.equal(structureRights(pgm, data).canManage, false, "the structure is HR's — a program manager views it");
 assert.equal(structureRights(pgm, data).canEditSeats, false, "but seat design stays with HR");
 assert.equal(structureRights(ops, data).canManage, false);
 assert.match(structureRights(ops, data).reason.ar, /اطلاع فقط/);
@@ -66,7 +66,7 @@ const item = (groups, id) => groups.flatMap((g) => g.items).find((i) => i.id ===
 /* a filled person: the five groups, each action names the existing function */
 const bj = panelActions({ ...people.nodes.get(keyOf("bj")), kind: "person" }, { data, user: owner });
 assert.deepEqual(bj.map((g) => g.id), PANEL_GROUPS.map((g) => g.id), "إضافة · تكليف · نقل · تعديل · إزالة");
-assert.deepEqual(ids(bj), ["addSeatUnder", "hireHere", "addUnit", "acting", "deputy", "moveManager", "moveBranch", "changeHolder", "seatEdit", "grade", "vacate", "freeze", "freezeDecision"]);
+assert.deepEqual(ids(bj), ["addSeatUnder", "hireHere", "addUnit", "acting", "moveBranch", "changeHolder", "seatEdit", "grade", "vacate", "freeze"]);
 assert.equal(item(bj, "addSeatUnder").fn, "createVacantSeatsUnderManager");
 assert.equal(item(bj, "moveBranch").fn, "transferEmployeeBetweenStations");
 assert.equal(item(bj, "vacate").fn, "endSeatTenure");
@@ -75,9 +75,9 @@ assert.ok(bj.flatMap((g) => g.items).every((i) => i.fn), "every action names its
 assert.match(item(bj, "freeze").blocked.ar, /مشغول/, "a filled seat is not frozen");
 assert.equal(item(bj, "vacate").destructive, true);
 
-/* an open seat: hire, acting, move by decision, freeze */
+/* an open seat: hire, move by decision, remove or freeze */
 const vac = panelActions({ ...vacant, kind: "person" }, { data, user: owner });
-assert.deepEqual(ids(vac), ["hire", "hireHere", "acting", "deputy", "moveManager", "moveBranch", "seatEdit", "freeze", "freezeDecision"]);
+assert.deepEqual(ids(vac), ["hire", "hireHere", "moveBranch", "seatEdit", "removeSeat", "freeze"]);
 assert.equal(item(vac, "moveBranch").form, "seatToBranch", "a seat moves to a branch through «التغييرات»");
 assert.equal(item(vac, "freeze").blocked, null);
 
@@ -85,14 +85,14 @@ assert.equal(item(vac, "freeze").blocked, null);
 const asOps = panelActions({ ...people.nodes.get(keyOf("bj")), kind: "person" }, { data, user: ops });
 assert.ok(asOps.flatMap((g) => g.items).every((i) => i.blocked), "ops_manager: everything shown, all blocked");
 const asPgm = panelActions({ ...people.nodes.get(keyOf("bj")), kind: "person" }, { data, user: pgm });
-assert.equal(item(asPgm, "addSeatUnder").blocked, null, "pgm keeps the old tree's adds");
+assert.ok(item(asPgm, "addSeatUnder").blocked, "pgm views the structure only");
 assert.match(item(asPgm, "seatEdit").blocked.ar, /والموارد البشرية/, "seat design blocked with the existing reason");
 
 /* branches */
 const branches = buildBranchTree(data, { scope: "all" });
 const B = (id) => branches.nodes.get(branchKey(id));
 const jed = panelActions(B("jed"), { data, user: owner });
-assert.deepEqual(ids(jed), ["addUnit", "hireHere", "branchManagers", "moveParent", "rename", "location", "unitKind", "closeUnit", "deleteBranch"]);
+assert.deepEqual(ids(jed), ["addUnit", "hireHere", "branchManagers", "moveParent", "rename", "location", "unitKind", "deleteBranch"]);
 assert.equal(item(jed, "location").fn, "setStationLocation");
 const hq = panelActions(B("hq"), { data, user: owner });
 assert.match(item(hq, "moveParent").blocked.ar, /ثابت/, "HQ is fixed");

@@ -6,7 +6,7 @@ import RightHint from "@/components/shared/RightHint";
 import { registrationForPayroll } from "@/lib/facts";
 import { deductionLines } from "@/lib/payrollDeductions";
 import DeductionDisputeForm from "@/components/payroll/DeductionDisputeForm";
-import { BORDER, CARD, MUTED, NAVY, ui } from "@/lib/platformStyles";
+import { BORDER, CARD, MUTED, NAVY } from "@/lib/platformStyles";
 import NvIcon from "@/components/shared/NvIcon";
 
 function sarBefore(n, minus) {
@@ -133,7 +133,7 @@ export function mineDeductionRows(item, ar, employee) {
   return rows;
 }
 
-export default function PayrollMineDeductions({ ar, item, employee, onDispute, onExport }) {
+export default function PayrollMineDeductions({ ar, item, employee, onDispute }) {
   const [picked, setPicked] = useState(() => new Set());
   const rows = mineDeductionRows(item, ar, employee);
   const disputable = rows.filter((row) => row.canDispute);
@@ -172,9 +172,6 @@ export default function PayrollMineDeductions({ ar, item, employee, onDispute, o
             <span style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>
               {ar ? `البند (${rows.length})` : `Lines (${rows.length})`}
             </span>
-            <button type="button" onClick={() => onExport?.(rows)} style={{ ...ui.btnSecondary, height: 34, borderRadius: 8 }}>
-              {ar ? "حفظ PDF" : "Save PDF"}
-            </button>
           </div>
           <div style={{ overflow: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>

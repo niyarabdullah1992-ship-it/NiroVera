@@ -101,7 +101,8 @@ export default function AppTopBar({
   const employee = railSide === "employee";
   const home = ar ? "الرئيسية" : "Home";
   const facePages = (employee
-    ? sectionPages.filter((page) => page.appId !== "escalation" && !String(page.to || "").startsWith("/app/escalation"))
+    // الموظف: no management pages here — «الموارد البشرية» (/app/hr) belongs to الإدارة only.
+    ? sectionPages.filter((page) => page.appId !== "escalation" && !String(page.to || "").startsWith("/app/escalation") && !String(page.to || "").startsWith("/app/hr"))
     : suiteSectionPagesForSide(sectionPages, railSide)
   ).map((page) => faceSectionTarget(page, employee ? "employee" : railSide));
   const { search } = useLocation();

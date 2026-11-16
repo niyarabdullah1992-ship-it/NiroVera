@@ -3,16 +3,17 @@ import { applyContractLeave } from "@/lib/contractLeave";
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import { Briefcase, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
-import { setEmployeePassword, setStationManager } from "@/lib/store";
+import { appendEmployeeFileLog, setEmployeePassword, setStationManager } from "@/lib/store";
 import {
   annualLeaveFromHireDate,
   CONTRACT_TYPES,
   formatSalaryRange,
   hireContractId,
   hireFromSeat,
-  HIRE_SESSION_SUGGEST_AT,
+  assignBranchHrManager,
+  placeExistingEmployee,
   inviteUrl,
   isBranchManagerTitle,
   seatReadout,
@@ -20,9 +21,8 @@ import {
   todayKey,
   vacantSeats,
 } from "@/lib/orgHire";
-import { downloadHireTemplate } from "@/lib/hireTemplate";
 import { gradesForList, gradesForTitle, jobGradeLabel } from "@/lib/jobGrades";
-import { companyLists, listPositions, templateLabel } from "@/lib/permissionTemplates";
+import { BUILT_IN_TEMPLATES, companyLists, listPositions, templateLabel } from "@/lib/permissionTemplates";
 import {
   PROFILE_GROUPS,
   isProfileFieldVisible,
@@ -34,7 +34,8 @@ import { checkSaudiIdentityGate, checkContractTermGate, nationalityIsSaudi } fro
 import { checkProbationGate } from "@/lib/contractLawDerivations";
 import { checkHiringAgeGate } from "@/lib/employerDuties";
 import { BORDER, CARD, INK, MUTED, NAVY, SURFACE, field, labelMuted, ui } from "@/lib/platformStyles";
-import { isManagerUnit, workplaceStations } from "@/lib/stationTree";
+import { BRANCH_HR_TITLE } from "@/lib/hrTree";
+import { isHrUnit, isManagerUnit, workplaceStations } from "@/lib/stationTree";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 
@@ -61,21 +62,29 @@ const emptyProfile = () => {
   return next;
 };
 
+/** A numbered step block: «١ مكان العمل», «٢ المنصب», «٣ الصفة الإدارية». */
+function Section({ n, title, hint, children }) {
+  return (
+    <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span aria-hidden style={{ width: 24, height: 24, borderRadius: 999, background: "var(--nv-accent-soft, #EEF5F0)", border: "1px solid var(--nv-ok-line, #BFE6D2)", color: "var(--nv-ok-ink, #1F5A3D)", fontSize: 12, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{n}</span>
+        <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+          <strong style={{ fontSize: 13, color: INK }}>{title}</strong>
+          {hint ? <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>{hint}</span> : null}
+        </span>
+        <span aria-hidden style={{ flex: 1, height: 1, background: BORDER, marginInlineStart: 4 }} />
+      </div>
+      {children}
+    </section>
+  );
+}
+
 function Field({ label, children }) {
   return (
     <label style={{ display: "block" }}>
       <span style={labelMuted}>{label}</span>
       {children}
     </label>
-  );
-}
-
-function ReadRow({ label, value }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12, lineHeight: 1.5 }}>
-      <span style={{ color: MUTED }}>{label}</span>
-      <span style={{ color: NAVY, fontWeight: 600, textAlign: "end" }}>{value || "—"}</span>
-    </div>
   );
 }
 
@@ -93,10 +102,12 @@ export default function HireSeatDrawer({
   seatId = "",
   listId = "",
   listName = "",
+  hrBranchId = "",
   onClose,
-  onNeedAccess,
+  onNeedAccess: _onNeedAccess,
 }) {
   const [step, setStep] = useState(1);
+  const hrBranchName = hrBranchId ? ((data?.stations || []).find((item) => String(item.id) === String(hrBranchId))?.name || "") : "";
   const [person, setPerson] = useState(emptyPerson);
   const [profile, setProfile] = useState(emptyProfile);
   const [chosenSeatId, setChosenSeatId] = useState(seatId || "");
@@ -106,10 +117,15 @@ export default function HireSeatDrawer({
   const [busy, setBusy] = useState(false);
   const [extraStationIds, setExtraStationIds] = useState([]);
   const [makeManager, setMakeManager] = useState(false);
+  // «توظيف جديد» or «نقل موظف من المنشأة» into the chosen seat
+  const [source, setSource] = useState("new");
+  const [existingId, setExistingId] = useState("");
   const [leaveTerms, setLeaveTerms] = useState({ annual: 21, restCount: 1, restDows: [5] });
 
   const packs = useMemo(() => companyLists(data), [data]);
-  const hasLists = packs.length > 0;
+  // company lists first, then the ready templates — hiring never waits for a list to be built
+  const accessOptions = useMemo(() => [...packs, ...BUILT_IN_TEMPLATES.filter((tpl) => !packs.some((p) => p.id === tpl.id))], [packs]);
+  const [accessId, setAccessId] = useState("");
   const resolvedListId = useMemo(() => {
     if (listId) return listId;
     if (!listName) return "";
@@ -140,6 +156,11 @@ export default function HireSeatDrawer({
   const homeId = stationId || newSeat.stationId || activeSeat?.stationId || "";
   const homeStation = (data?.stations || []).find((item) => item.id === homeId);
   const hasManager = stationHasManager(homeStation);
+  const currentManager = hasManager ? (data?.employees || []).find((item) => String(item.id) === String(homeStation?.managerId || "")) || null : null;
+  const movable = useMemo(() => (data?.employees || [])
+    .filter((item) => item?.name && item.role !== "system" && item.active !== false && item.profile?.employmentStatus !== "terminated")
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), "ar")), [data?.employees]);
+  const transferring = source === "existing";
   const catalogTitles = listPositions(listPack).filter((item) => !hasManager || !isBranchManagerTitle(item.title));
   const openSeats = pool
     .filter((seat) => !hasManager || !isBranchManagerTitle(seat.title))
@@ -147,6 +168,10 @@ export default function HireSeatDrawer({
   const adminHome = Boolean(homeId && isManagerUnit(homeStation));
   const stationName = homeStation?.name || "";
   const extraStations = stations.filter((item) => item.id !== homeId);
+  const hrHome = isHrUnit(homeStation);
+  const hrPackId = packs.find((pack) => /موارد\s*(?:ال)?بشر/.test(`${pack.ar || ""} ${pack.name || ""}`))?.id || "";
+  const accessDefault = hrBranchId ? (hrPackId || "hr_officer") : activeSeat?.listId || newSeat.listId || resolvedListId || packs[0]?.id || (hrHome ? "hr_officer" : "field");
+  const accessValue = accessId || accessDefault;
   const hirePreview = useMemo(() => {
     const title = creating
       ? String(newSeat.title || "").trim()
@@ -172,7 +197,9 @@ export default function HireSeatDrawer({
     if (!open) return;
     const packsNow = companyLists(data);
     const matching = vacantSeats(data, stationId || undefined, listId || listName || undefined);
-    const defaultList = listId
+    const intoHr = Boolean(hrBranchId) || isHrUnit((data?.stations || []).find((item) => String(item.id) === String(stationId || "")));
+    const defaultList = (intoHr && packsNow.find((pack) => /موارد\s*(?:ال)?بشر/.test(`${pack.ar || ""} ${pack.name || ""}`))?.id)
+      || listId
       || packsNow.find((item) => item.ar === listName || item.en === listName || templateLabel(item, true) === listName)?.id
       || (packsNow.length === 1 ? packsNow[0].id : "");
     const defaultGrades = gradesForList(data, defaultList);
@@ -181,16 +208,26 @@ export default function HireSeatDrawer({
     setProfile(emptyProfile());
     setChosenSeatId(seatId || "");
     // From files board: branch-first create. From tree (stationId/seatId): keep seat/vacancy flow.
-    setCreating(!seatId && (!stationId || matching.length === 0));
+    setCreating(Boolean(hrBranchId) || (!seatId && (!stationId || matching.length === 0)));
     setNewSeat({
-      title: "",
+      title: hrBranchId ? BRANCH_HR_TITLE : "",
       listId: defaultList,
-      gradeId: defaultGrades.length === 1 ? defaultGrades[0].id : "",
+      gradeId: (hrBranchId && defaultGrades.find((grade) => /مدير/.test(`${grade.title || ""} ${jobGradeLabel(grade)}`))?.id)
+        || (defaultGrades.length === 1 ? defaultGrades[0].id : ""),
       stationId: stationId || "",
     });
     setExtraStationIds([]);
     setMakeManager(false);
-  }, [open, seatId, stationId, listId, listName]);
+    setSource("new");
+    setExistingId("");
+  }, [open, seatId, stationId, listId, listName, hrBranchId]);
+
+  // a branch HR manager takes the list's manager grade unless one was picked
+  useEffect(() => {
+    if (!open || !hrBranchId || newSeat.gradeId || !offerGrades.length) return;
+    const pick = offerGrades.find((grade) => /مدير/.test(`${grade.title || ""} ${jobGradeLabel(grade)}`)) || (offerGrades.length === 1 ? offerGrades[0] : null);
+    if (pick) setNewSeat((current) => (current.gradeId ? current : { ...current, gradeId: pick.id }));
+  }, [open, hrBranchId, newSeat.gradeId, offerGrades]);
 
   useEffect(() => {
     if (!open || creating || lockedSeat || !chosenSeatId) return;
@@ -248,16 +285,6 @@ export default function HireSeatDrawer({
   };
 
   const save = async (mode) => {
-    if (!hasLists) {
-      toast({
-        description: ar
-          ? "أنشئ صلاحية أولاً حتى يوزّع الموارد البشرية المناصب."
-          : "Create an access pack first so HR can distribute titles.",
-        variant: "destructive",
-      });
-      onNeedAccess?.();
-      return;
-    }
     const draft = mode === "draft";
     const requireComplete = mode === "complete" || mode === "complete-another";
     const email = String(person.email || "").trim();
@@ -357,6 +384,7 @@ export default function HireSeatDrawer({
         contractEndDate: contractType === "fixed" ? contractEndDate : "",
         draft,
         seatId: creating ? "" : chosenSeatId,
+        listId: accessValue,
         ar,
         reportsToId: "",
         managedStationIds: extraStationIds,
@@ -415,7 +443,12 @@ export default function HireSeatDrawer({
       return;
     }
     if (result.employeeId) applyContractLeave(companyId, result.employeeId, leaveTerms);
-    if (makeManager && !hasManager && seatHomeId && result.employeeId) {
+    const hrBranch = hrBranchId ? (data?.stations || []).find((item) => String(item.id) === String(hrBranchId)) : null;
+    if (hrBranch && result.employeeId) {
+      const linked = assignBranchHrManager(companyId, hrBranch.id, result.employeeId);
+      if (!linked.ok) toast({ description: ar ? "وُظّف، لكن لم يُربط بالفرع. اربطه من بطاقة وحدة الموارد البشرية." : "Hired, but not linked to the branch.", variant: "destructive" });
+    }
+    if (makeManager && seatHomeId && result.employeeId) {
       setStationManager(companyId, seatHomeId, result.employeeId);
     }
     if (email && password && result.employeeId) {
@@ -429,6 +462,7 @@ export default function HireSeatDrawer({
     if (result.warnings?.includes("SALARY_RANGE")) notes.push(ar ? "الراتب خارج النطاق — حُفظ مع توثيق." : "Salary outside range — saved with a note.");
     if (result.warnings?.includes("DOCS")) notes.push(ar ? "الوثائق الناقصة أُدرجت في تقويم الامتثال." : "Missing documents were queued on the compliance calendar.");
     if (makeManager) notes.push(ar ? "عُيّن مديرًا لهذا الفرع." : "Appointed manager of this branch.");
+    if (hrBranch) notes.push(ar ? `عُيّن مدير الموارد البشرية لـ${hrBranch.name}.` : `Set as HR manager for ${hrBranch.name}.`);
     if (email && password) notes.push(ar ? "كلمة المرور جاهزة للدخول." : "Password is ready for sign-in.");
     if (result.draft) {
       const url = inviteUrl(result.employeeId, result.inviteToken);
@@ -467,6 +501,74 @@ export default function HireSeatDrawer({
       setStep(1);
       return;
     }
+    onClose?.();
+  };
+
+  const transfer = () => {
+    const mover = movable.find((item) => String(item.id) === String(existingId));
+    if (!mover) {
+      toast({ description: ar ? "اختر الموظف المنقول." : "Pick the employee to move.", variant: "destructive" });
+      return;
+    }
+    if (!placementReady()) {
+      toast({ description: ar ? "أكمل الفرع والقائمة والمنصب والدرجة." : "Finish the branch, list, title, and grade.", variant: "destructive" });
+      return;
+    }
+    if (!chosenSeatId && !creating) {
+      toast({ description: ar ? "اختر منصبًا شاغرًا أو أنشئ واحدًا." : "Pick a vacant seat or create one.", variant: "destructive" });
+      return;
+    }
+    const seatHomeId = stationId || newSeat.stationId;
+    setBusy(true);
+    const result = placeExistingEmployee(companyId, mover.id, {
+      name: mover.name,
+      hireDate: mover.profile?.hireDate,
+      seatId: creating ? "" : chosenSeatId,
+      listId: accessValue,
+      ar,
+      reportsTo: "",
+      reportsToId: "",
+      managedStationIds: extraStationIds,
+      newSeat: creating
+        ? { title: newSeat.title.trim(), stationId: seatHomeId, listId: newSeat.listId || resolvedListId, list: listName, gradeId: newSeat.gradeId }
+        : null,
+    });
+    if (!result?.ok) {
+      setBusy(false);
+      const map = {
+        SEAT: ar ? "اختر منصبًا." : "Pick a seat.",
+        SEAT_TAKEN: ar ? "هذا المنصب لم يعد شاغرًا." : "That seat is no longer vacant.",
+        SEAT_FIELDS: ar ? "أكمل الفرع والقائمة واسم المنصب." : "Finish the branch, list, and job title.",
+        MANAGER_TAKEN: ar ? "هذا الفرع له مدير. فعّل «تغييره» أو اختر منصباً آخر." : "This branch already has a manager.",
+        ADMIN_NO_HIRE: ar ? ADMIN_HIRE.ar : ADMIN_HIRE.en,
+      };
+      toast({ description: map[result?.error] || (ar ? `تعذّر النقل (${result?.error || "unknown"}).` : `Could not move (${result?.error || "unknown"}).`), variant: "destructive" });
+      return;
+    }
+    if (makeManager && seatHomeId) setStationManager(companyId, seatHomeId, mover.id);
+    {
+      const fromSeat = (data?.orgSeats || []).find((row) => String(row.employeeId || "") === String(mover.id));
+      const fromTitle = fromSeat?.title || mover.profile?.position || "";
+      const fromPlace = (data?.stations || []).find((row) => String(row.id) === String(mover.stationId || ""))?.name || "";
+      const toTitle = creating ? newSeat.title.trim() : (activeSeat?.title || "");
+      const toPlace = (data?.stations || []).find((row) => String(row.id) === String(seatHomeId))?.name || stationName;
+      appendEmployeeFileLog(companyId, mover.id, {
+        text: ar ? `نقل إلى ${toTitle || "منصب"} — ${toPlace}` : `Moved to ${toTitle || "a seat"} — ${toPlace}`,
+        kind: ar ? "المنصب" : "Seat",
+        changes: [
+          { label: ar ? "المنصب" : "Seat", from: fromTitle, to: toTitle },
+          { label: ar ? "مكان العمل" : "Workplace", from: fromPlace, to: toPlace },
+          ...(makeManager ? [{ label: ar ? "الصفة الإدارية" : "Role", from: "", to: hrHome ? (ar ? "مدير الموارد البشرية" : "HR director") : (ar ? `مدير ${toPlace}` : `Manager of ${toPlace}`) }] : []),
+        ],
+      });
+    }
+    const hrBranch = hrBranchId ? (data?.stations || []).find((item) => String(item.id) === String(hrBranchId)) : null;
+    if (hrBranch) assignBranchHrManager(companyId, hrBranch.id, mover.id);
+    setBusy(false);
+    const notes = [ar ? `نُقل ${mover.name} إلى المنصب` : `${mover.name} moved to the seat`];
+    if (makeManager) notes.push(hrHome ? (ar ? "وعُيّن مدير الموارد البشرية" : "and appointed HR director") : (ar ? `وعُيّن مدير ${stationName}` : `and appointed manager of ${stationName}`));
+    if (hrBranch) notes.push(ar ? `ومدير الموارد البشرية لـ${hrBranch.name}` : `and HR manager for ${hrBranch.name}`);
+    toast({ description: notes.join(" ") + "." });
     onClose?.();
   };
 
@@ -725,15 +827,19 @@ export default function HireSeatDrawer({
         <header style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "16px 18px", borderBottom: `1px solid ${BORDER}`, background: "var(--nv-hover)" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: 10, letterSpacing: "0.14em", fontWeight: 600, color: MUTED }}>
-              {ar ? "إغلاق السلسلة" : "Close the chain"}
+              {ar ? "تعيين · سجلّ الموظفين" : "Hiring · Employee register"}
             </p>
             <h2 style={{ margin: "4px 0 0", fontSize: 16, fontWeight: 600, color: INK }}>
-              {stationName ? (ar ? `أضف موظفًا على «${stationName}»` : `Add employee on “${stationName}”`) : (ar ? "أضف موظفًا" : "Add employee")}
+              {hrBranchName
+                ? (ar ? `تعيين مدير موارد بشرية لـ«${hrBranchName}»` : `Hire the HR manager for “${hrBranchName}”`)
+                : stationName ? (ar ? `تعيين على «${stationName}»` : `Add employee on “${stationName}”`) : (ar ? "تعيين موظف" : "Assign an employee")}
             </h2>
             <p style={{ margin: "4px 0 0", fontSize: 12, color: MUTED, lineHeight: 1.55 }}>
-              {freeBranchPick
-                ? (ar ? "حدّد الفرع من القائمة، ثم الحزمة والمنصب. الإضافة من الشجرة تبقى في الهيكل." : "Pick the branch from the list, then the pack and title. Hire-from-tree stays on the org chart.")
-                : (ar ? "فرع + حزمة صلاحية. ثم يُملأ الملف. الناس يُشتقّون بعد الحفظ." : "Workplace + access pack. Then the file is filled. People are derived after save.")}
+              {transferring
+                ? (ar ? "اختر الموظف من المنشأة والمنصب الذي يُنقل إليه. ملفه وبياناته تبقى كما هي، ويُسجَّل الإجراء باسمك." : "Pick the employee and the seat they move to. Their file stays as it is; the action is logged in your name.")
+                : freeBranchPick
+                ? (ar ? "حدّد مكان العمل والمنصب، ثم أكمل الملف وبيانات الدخول. يُسجَّل الإجراء باسمك." : "Set the workplace and seat, then complete the file and sign-in. The action is logged in your name.")
+                : (ar ? "المنصب محدّد من الهيكل. أكمل الملف وبيانات الدخول؛ يُسجَّل الإجراء باسمك." : "The seat comes from the structure. Complete the file and sign-in; the action is logged in your name.")}
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label={ar ? "إغلاق" : "Close"} style={{ ...ui.btnGhost, padding: 8 }}>
@@ -742,7 +848,7 @@ export default function HireSeatDrawer({
         </header>
 
         <div style={{ display: "flex", gap: 6, padding: "10px 16px", borderBottom: `1px solid ${BORDER}`, background: SURFACE }}>
-          {[1, 2, 3].map((n) => (
+          {(transferring ? [1] : [1, 2, 3]).map((n) => (
             <button
               key={n}
               type="button"
@@ -772,59 +878,38 @@ export default function HireSeatDrawer({
                 ? `«${stationName}» مدير وليس مكان توظيف. حوّله إلى فرع من الشجرة، ثم وظّف عليه.`
                 : `“${stationName}” is a manager, not a hire workplace. Convert it to a branch on the tree, then hire there.`}
             </p>
-          ) : !hasLists ? (
-            <div style={{ padding: "12px 14px", borderRadius: 12, border: `1px solid ${BORDER}`, background: SURFACE, display: "flex", flexDirection: "column", gap: 10 }}>
-              <p style={{ margin: 0, fontSize: 13, color: NAVY, lineHeight: 1.7, fontWeight: 600 }}>
-                {ar
-                  ? "يجب إنشاء صلاحية أولاً حتى يوزّع موظف الموارد البشرية المناصب بسهولة."
-                  : "Create an access pack first so HR can distribute titles."}
-              </p>
-              <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.65 }}>
-                {ar
-                  ? "القائمة تحمل المسمّيات والصلاحيات. بلا قائمة يبقى الفرع مكاناً فارغاً في الشجرة وقالب الإكسل."
-                  : "The pack carries titles and access. Without it the branch stays an empty place on the tree and in the Excel template."}
-              </p>
-              <button
-                type="button"
-                onClick={() => { onClose?.(); onNeedAccess?.(); }}
-                style={ui.btnPrimary}
-              >
-                {ar ? "إنشاء صلاحية" : "Create access"}
-              </button>
-            </div>
           ) : (
             <>
               {step === 1 && (
                 <>
-                  <div style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${BORDER}`, background: SURFACE }}>
-                    <p style={{ margin: 0, fontSize: 12, color: NAVY, lineHeight: 1.65, fontWeight: 600 }}>
-                      {ar
-                        ? "قالب فارغ: عمود الفرع قائمة من فروع المنصة، تختار أين يوضع كل موظف. أو نزّل الملفات الحالية لمعرفة الناقص ثم طبّق على ملف الموظف."
-                        : "Blank template: the branch column lists platform branches — pick where each person sits. Or download current files to see gaps, then apply to the employee file."}
-                    </p>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-                      <button type="button" onClick={() => downloadHireTemplate(data, ar, { mode: "blank", focusStationId: stationId })} style={{ ...ui.btnGhost, height: 32 }}>
-                        {ar ? "قالب فارغ" : "Blank template"}
+                  <div role="tablist" data-hire-source="1" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, padding: 4, borderRadius: 12, background: "var(--nv-hover)", border: `1px solid ${BORDER}` }}>
+                    {[["new", ar ? "توظيف جديد" : "New hire"], ["existing", ar ? "نقل موظف من المنشأة" : "Move someone in"]].map(([id, label]) => (
+                      <button key={id} type="button" role="tab" aria-selected={source === id} onClick={() => setSource(id)} style={{ height: 36, borderRadius: 9, border: `1px solid ${source === id ? BORDER : "transparent"}`, background: source === id ? CARD : "transparent", color: source === id ? INK : MUTED, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                        {label}
                       </button>
-                      <button type="button" onClick={() => downloadHireTemplate(data, ar, { mode: "files", focusStationId: stationId })} style={{ ...ui.btnGhost, height: 32 }}>
-                        {ar ? "الملفات والنواقص" : "Files and gaps"}
-                      </button>
-                    </div>
+                    ))}
                   </div>
-                  {added >= HIRE_SESSION_SUGGEST_AT && (
-                    <p style={{ margin: 0, fontSize: 11, color: MUTED, lineHeight: 1.55 }}>
-                      {ar ? "القالب أسرع من الإضافة واحدًا تلو الآخر." : "The template is faster than adding one by one."}
-                    </p>
-                  )}
-                  {lockedSeat && readout ? (
-                    <p style={{ margin: 0, fontSize: 12, color: MUTED }}>{ar ? "المنصب مأخوذ من «عيّن»." : "Seat taken from Assign."}</p>
-                  ) : (
+                  {transferring ? (
+                    <Section n="•" title={ar ? "الموظف" : "Employee"} hint={ar ? "موظف حالي في المنشأة يُنقل إلى المنصب المختار أدناه، ويبقى ملفه كما هو." : "A current employee moves to the seat chosen below; their file stays as it is."}>
+                      <select aria-label={ar ? "الموظف المنقول" : "Employee to move"} value={existingId} onChange={(e) => setExistingId(e.target.value)} style={{ ...field, appearance: "auto" }}>
+                        <option value="">{ar ? "اختر موظفاً من المنشأة" : "Pick an employee"}</option>
+                        {movable.map((item) => {
+                          const seat = (data?.orgSeats || []).find((row) => String(row.employeeId || "") === String(item.id));
+                          const where = (data?.stations || []).find((row) => String(row.id) === String(item.stationId || ""))?.name || "";
+                          const title = seat?.title || item.profile?.position || "";
+                          return <option key={item.id} value={item.id}>{[item.name, [title, where].filter(Boolean).join(" · ")].filter(Boolean).join(" — ")}</option>;
+                        })}
+                      </select>
+                    </Section>
+                  ) : null}
+                  {lockedSeat && readout ? null : (
                     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                       {freeBranchPick ? (
                         <>
-                          <Field label={ar ? "الفرع — بدون الشجرة" : "Branch — without the tree"}>
+                          <Section n={ar ? "١" : "1"} title={ar ? "مكان العمل" : "Workplace"} hint={ar ? "الفرع أو الوحدة التي سيعمل فيها." : "The branch or unit they will work in."}>
                             <select
-                              value={newSeat.stationId}
+                              aria-label={ar ? "الفرع أو الوحدة" : "Branch or unit"}
+                              value={newSeat.stationId || (stations.some((item) => item.id === activeSeat?.stationId) ? activeSeat.stationId : "")}
                               onChange={(e) => {
                                 const next = e.target.value;
                                 setNewSeat((current) => ({ ...current, stationId: next }));
@@ -832,17 +917,13 @@ export default function HireSeatDrawer({
                               }}
                               style={{ ...field, appearance: "auto" }}
                             >
-                              <option value="">{ar ? "اختر فرعًا" : "Pick a branch"}</option>
+                              <option value="">{ar ? "جميع الفروع" : "All branches"}</option>
                               {stations.map((station) => (
                                 <option key={station.id} value={station.id}>{station.name}</option>
                               ))}
                             </select>
-                          </Field>
-                          <p style={{ margin: 0, fontSize: 11, color: MUTED, lineHeight: 1.55 }}>
-                            {ar
-                              ? "تختار الفرع من القائمة مباشرة. الإضافة من الشجرة تبقى متاحة من الهيكل التنظيمي."
-                              : "Pick the branch from the list directly. Hire-from-tree stays available on the org chart."}
-                          </p>
+                          </Section>
+                          <Section n={ar ? "٢" : "2"} title={ar ? "المنصب" : "Seat"} hint={ar ? "منصب شاغر قائم في الهيكل، أو منصب جديد يُنشأ الآن." : "An existing vacant seat, or a new one created now."}>
                           <div style={{ display: "inline-flex", gap: 2, padding: 3, borderRadius: 10, background: SURFACE, border: `1px solid ${BORDER}`, alignSelf: "start", flexWrap: "wrap" }}>
                             <button
                               type="button"
@@ -862,7 +943,7 @@ export default function HireSeatDrawer({
                                 boxShadow: creating ? `inset 0 0 0 1px ${BORDER}` : "none",
                               }}
                             >
-                              {ar ? "فرع ومنصب جديد" : "Branch + new seat"}
+                              {ar ? "منصب جديد" : "New seat"}
                             </button>
                             <button
                               type="button"
@@ -882,9 +963,10 @@ export default function HireSeatDrawer({
                                 boxShadow: !creating ? `inset 0 0 0 1px ${BORDER}` : "none",
                               }}
                             >
-                              {ar ? "منصب شاغر" : "Vacant seat"}
+                              {ar ? "منصب شاغر قائم" : "Existing vacant seat"}
                             </button>
                           </div>
+                          </Section>
                         </>
                       ) : null}
 
@@ -897,7 +979,7 @@ export default function HireSeatDrawer({
                               style={{ ...field, appearance: "auto" }}
                             >
                               <option value="">{ar ? "اختر قائمة" : "Pick a list"}</option>
-                              {packs.map((pack) => (
+                              {accessOptions.map((pack) => (
                                 <option key={pack.id} value={pack.id}>{templateLabel(pack, ar)}</option>
                               ))}
                             </select>
@@ -994,45 +1076,123 @@ export default function HireSeatDrawer({
                   )}
 
                   {readout && !creating && (
-                    <div style={{ padding: 12, borderRadius: 12, border: `1px solid ${BORDER}`, background: SURFACE, display: "flex", flexDirection: "column", gap: 8 }}>
-                      <ReadRow label={ar ? "الفرع" : "Branch"} value={readout.branch} />
-                      <ReadRow label={ar ? "القائمة" : "List"} value={readout.list} />
-                      <ReadRow label={ar ? "الدرجة" : "Grade"} value={readout.grade} />
-                      <ReadRow label={ar ? "نطاق الراتب" : "Salary range"} value={formatSalaryRange(readout.salaryMin, readout.salaryMax, ar)} />
-                      <ReadRow label={ar ? "رصيد الإجازة" : "Leave balance"} value={ar ? `${leaveDays} يومًا من تاريخ التعيين` : `${leaveDays} days from hire date`} />
-                    </div>
-                  )}
-
-                  {hasManager ? (
-                    <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
-                      {ar
-                        ? "هذا الفرع له مدير. خيار مدير الفرع لا يظهر حتى يُزال المدير من الشجرة."
-                        : "This branch already has a manager. The branch-manager option stays hidden until that manager is cleared on the tree."}
-                    </p>
-                  ) : (
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: INK, cursor: "pointer" }}>
-                      <input type="checkbox" checked={makeManager} onChange={(e) => setMakeManager(e.target.checked)} />
-                      {ar ? "اجعله مدير هذا الفرع" : "Make them manager of this branch"}
-                    </label>
-                  )}
-
-                  {homeId && extraStations.length > 0 && (
-                    <div>
-                      <span style={labelMuted}>{ar ? "فروع إضافية (اختياري)" : "Extra branches (optional)"}</span>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
-                        {extraStations.map((station) => (
-                          <label key={station.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: INK, cursor: "pointer" }}>
-                            <input
-                              type="checkbox"
-                              checked={extraStationIds.includes(station.id)}
-                              onChange={() => toggleExtra(station.id)}
-                            />
-                            {station.name}
-                          </label>
+                    <div data-hire-seat-card="1" style={{ borderRadius: 14, border: `1px solid ${BORDER}`, background: CARD, overflow: "hidden" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: "var(--nv-accent-soft, #EEF5F0)", borderBottom: `1px solid ${BORDER}` }}>
+                        <span aria-hidden style={{ width: 42, height: 42, borderRadius: 12, background: "var(--nv-card)", border: "1px solid var(--nv-ok-line, #BFE6D2)", color: "var(--nv-ok-ink, #1F5A3D)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <Briefcase style={{ width: 20, height: 20 }} strokeWidth={1.8} />
+                        </span>
+                        <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                          <span style={{ fontSize: 11, color: MUTED }}>{ar ? "المنصب الذي سيُعيَّن عليه" : "The seat being filled"}</span>
+                          <strong style={{ fontSize: 15, color: INK, lineHeight: 1.4 }}>{readout.title || (ar ? "منصب شاغر" : "Vacant seat")}</strong>
+                          <span style={{ fontSize: 12, color: NAVY, fontWeight: 600 }}>{readout.branch || "—"}</span>
+                        </span>
+                        <span style={{ marginInlineStart: "auto", alignSelf: "flex-start", fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: "var(--nv-warn-soft, #FFF6E5)", color: "var(--nv-warn-ink, #8A5A00)", border: "1px solid var(--nv-warn-line, #F1D9A6)", whiteSpace: "nowrap" }}>
+                          {ar ? "شاغر" : "Vacant"}
+                        </span>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: BORDER }}>
+                        {[
+                          [ar ? "القائمة" : "List", readout.list],
+                          [ar ? "الدرجة" : "Grade", readout.grade],
+                          [ar ? "نطاق الراتب" : "Salary range", (readout.salaryMin || readout.salaryMax) ? formatSalaryRange(readout.salaryMin, readout.salaryMax, ar) : ""],
+                          [ar ? "الإجازة السنوية" : "Annual leave", ar ? `يكتسب ${leaveDays} يوماً حتى نهاية السنة` : `${leaveDays} days earned by year end`],
+                        ].map(([label, value]) => (
+                          <div key={label} style={{ background: CARD, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                            <span style={{ fontSize: 11, color: MUTED }}>{label}</span>
+                            <span style={{ fontSize: 12.5, fontWeight: 600, color: value ? INK : MUTED }}>{value || (ar ? "يُحدَّد في الملف" : "Set in the file")}</span>
+                          </div>
                         ))}
                       </div>
                     </div>
                   )}
+
+                  <Section n={freeBranchPick ? (ar ? "٣" : "3") : (ar ? "٢" : "2")} title={ar ? "الصلاحية والصفة الإدارية" : "Access and role"} hint={ar ? "تُعطى الصلاحية هنا، وتُعدَّل لاحقاً من «الصلاحيات» أو الهيكل." : "Access is given here and changed later from Access or the structure."}>
+                  <label data-hire-access="1" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: INK }}>{ar ? "الصلاحية" : "Access"}</span>
+                    <select value={accessValue} onChange={(e) => setAccessId(e.target.value)} style={{ ...field, appearance: "auto" }}>
+                      {packs.length ? (
+                        <optgroup label={ar ? "قوائم المنشأة" : "Company lists"}>
+                          {packs.map((pack) => <option key={pack.id} value={pack.id}>{templateLabel(pack, ar)}</option>)}
+                        </optgroup>
+                      ) : null}
+                      <optgroup label={ar ? "قوالب جاهزة" : "Ready templates"}>
+                        {BUILT_IN_TEMPLATES.filter((tpl) => !packs.some((p) => p.id === tpl.id)).map((tpl) => <option key={tpl.id} value={tpl.id}>{templateLabel(tpl, ar)}</option>)}
+                      </optgroup>
+                    </select>
+                  </label>
+                  {hrBranchId ? (
+                    <p data-hire-hr-branch="1" style={{ margin: 0, fontSize: 12, color: INK, lineHeight: 1.7, padding: "10px 12px", borderRadius: 10, background: "var(--nv-accent-soft, #EEF5F0)", border: `1px solid ${BORDER}` }}>
+                      {ar
+                        ? `يُعيَّن مدير الموارد البشرية لـ«${hrBranchName}»، ويتبع مدير وحدة الموارد البشرية.`
+                        : `Becomes the HR manager for “${hrBranchName}”, reporting to the HR unit director.`}
+                    </p>
+                  ) : hrHome && activeSeat && activeSeat.hrPost !== "director" ? null : hasManager ? (
+                    <div data-hire-replace-manager="1" style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 14px", borderRadius: 12, border: `1px solid ${makeManager ? "var(--nv-warn-line, #E8C98A)" : BORDER}`, background: makeManager ? "var(--nv-warn-soft, #FFF8EA)" : CARD }}>
+                      <span style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: INK, lineHeight: 1.7 }}>
+                        <span aria-hidden style={{ color: "var(--nv-warn-ink, #8a5a00)", fontWeight: 800 }}>!</span>
+                        <span>
+                          {hrHome
+                            ? (ar ? "يوجد حالياً مدير للموارد البشرية: " : "There is already an HR director: ")
+                            : (ar ? `يوجد حالياً مدير لـ«${stationName}»: ` : `“${stationName}” already has a manager: `)}
+                          <strong>{currentManager?.name || (ar ? "غير معروف" : "unknown")}</strong>
+                          {ar ? ". هل تريد تغييره؟" : ". Replace them?"}
+                        </span>
+                      </span>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontWeight: 700, color: INK }}>
+                        <input type="checkbox" checked={makeManager} onChange={(e) => setMakeManager(e.target.checked)} />
+                        {hrHome
+                          ? (ar ? "نعم، اجعله مدير الموارد البشرية بدلاً منه" : "Yes, make them the HR director instead")
+                          : (ar ? "نعم، اجعله مدير الفرع بدلاً منه" : "Yes, make them the branch manager instead")}
+                      </label>
+                      {makeManager ? (
+                        <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
+                          {hrHome
+                            ? (ar ? `يبقى ${currentManager?.name || "المدير الحالي"} في الموارد البشرية بمسمّى «مدير موارد بشرية».` : "The current director stays in HR as an HR manager.")
+                            : (ar ? `يبقى ${currentManager?.name || "المدير الحالي"} في منصبه موظفاً، ويُرفع عنه إدارة الفرع.` : "The current manager stays as staff; the branch moves to the new manager.")}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <label data-hire-make-manager="1" style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "12px 14px", borderRadius: 12, cursor: "pointer", border: `1px solid ${makeManager ? NAVY : BORDER}`, background: makeManager ? "var(--nv-accent-soft, #EEF5F0)" : CARD }}>
+                      <input type="checkbox" checked={makeManager} onChange={(e) => setMakeManager(e.target.checked)} style={{ marginTop: 3 }} />
+                      <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        <strong style={{ fontSize: 12.5, color: INK }}>
+                          {hrHome ? (ar ? "اجعله مدير الموارد البشرية" : "Make them the HR director") : (ar ? `اجعله مدير ${stationName || "هذا الفرع"}` : "Make them manager of this branch")}
+                        </strong>
+                        <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
+                          {hrHome
+                            ? (ar ? "يتبعه مدراء موارد الفروع وموظفو القسم." : "Branch HR managers and the HR staff report to them.")
+                            : (ar ? "يتبعه موظفو الفرع، ويظهر اسمه في ملفاتهم." : "The branch staff report to them; the name shows on their files.")}
+                        </span>
+                      </span>
+                    </label>
+                  )}
+
+                  {homeId && !hrHome && extraStations.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>{ar ? "يعمل أيضاً في (اختياري)" : "Also works at (optional)"}</span>
+                        <span style={{ fontSize: 11, color: MUTED }}>{ar ? "فروع أخرى يُسمح له بالبصمة فيها." : "Other branches where they may punch."}</span>
+                      </span>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {extraStations.map((station) => {
+                          const on = extraStationIds.includes(station.id);
+                          return (
+                            <button
+                              key={station.id}
+                              type="button"
+                              aria-pressed={on}
+                              onClick={() => toggleExtra(station.id)}
+                              style={{ fontFamily: "inherit", height: 30, padding: "0 12px", borderRadius: 999, fontSize: 12, fontWeight: on ? 700 : 500, cursor: "pointer", border: `1px solid ${on ? NAVY : BORDER}`, background: on ? NAVY : CARD, color: on ? "#fff" : INK }}
+                            >
+                              {on ? "✓ " : ""}{station.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  </Section>
                 </>
               )}
 
@@ -1127,16 +1287,14 @@ export default function HireSeatDrawer({
             <button type="button" onClick={onClose} style={{ ...ui.btnPrimary, width: "100%" }}>
               {ar ? "حسنًا" : "OK"}
             </button>
-          ) : !hasLists ? (
-            <button
-              type="button"
-              onClick={() => { onClose?.(); onNeedAccess?.(); }}
-              style={{ ...ui.btnPrimary, width: "100%" }}
-            >
-              {ar ? "إنشاء صلاحية" : "Create access"}
-            </button>
           ) : (
             <>
+              {transferring ? (
+                <button type="button" disabled={busy || !existingId} onClick={transfer} style={{ ...ui.btnPrimary, width: "100%", opacity: existingId ? 1 : 0.6 }}>
+                  {ar ? "نقل إلى المنصب" : "Move to the seat"}
+                </button>
+              ) : (
+              <>
               <p style={{ margin: 0, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
                 {ar
                   ? "المسوّدة للنقص. «حفظ ملف مكتمل» يطلب الحقول الإلزامية. الوثائق الناقصة تذهب للامتثال."
@@ -1179,6 +1337,8 @@ export default function HireSeatDrawer({
               <Link to="/app/hr" onClick={onClose} style={{ fontSize: 11, color: MUTED, textDecoration: "none" }}>
                 {ar ? "تقويم الامتثال في الموارد البشرية" : "Compliance calendar in HR"}
               </Link>
+              </>
+              )}
             </>
           )}
         </footer>

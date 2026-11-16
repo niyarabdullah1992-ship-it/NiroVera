@@ -39,7 +39,7 @@ const doc = { name: "عقد.pdf", size: 1000 };
 
   const self = checkEnvelopeSetupGate({ docs: [doc], meSigns: true, me, sealReady: false });
   assert.equal(self.mode, "self");
-  assert.ok(self.gaps.some((gap) => gap.includes("ختمك")), "signing alone needs the seal");
+  assert.ok(!self.gaps.some((gap) => gap.includes("ختمك")), "signing alone no longer waits for a saved seal");
   assert.equal(checkEnvelopeSetupGate({ docs: [doc], meSigns: true, me, sealReady: true }).ok, true);
 
   const group = checkEnvelopeSetupGate({ docs: [doc], meSigns: true, me, recipients: [nora, ext], subject: "للتوقيع", canGroup: true });

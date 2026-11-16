@@ -12,6 +12,7 @@ import { canonicalizePlatformFacts } from "../facts/migrate.js";
 import { voidLegacyHolidayRequestsIn } from "../leaveDerivations.js";
 import { longShiftRestPatch } from "../shiftDerivations.js";
 import { art55FilePatch } from "../contractLawDerivations.js";
+import { titleBranchHrManagers } from "../hrTree.js";
 
 /** Every shift type past five hours carries the rest the worker places himself (longShiftRestPatch) — no roster break settings. */
 export function openLongShiftRests(data) {
@@ -45,6 +46,8 @@ export const COMPANY_INVARIANTS = Object.freeze([
   // Art. 112: official holidays apply from the calendar — a pending «eid» request needs no decision.
   { id: "void-holiday-requests", run: voidLegacyHolidayRequestsIn },
   { id: "long-shift-rests", run: openLongShiftRests },
+  // A branch's HR manager is a manager, not an officer: the title follows the appointment.
+  { id: "branch-hr-manager-title", run: titleBranchHrManagers },
 ]);
 
 /** Invariants that read the clock run last, after any preview seeding of files. */

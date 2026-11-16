@@ -1,5 +1,4 @@
 import React from "react";
-import { Printer } from "lucide-react";
 import { contributoryWage, employeeWageSplit, inKindOf, moneySar } from "@/lib/employeeFileView";
 import { allowanceLedger, HOSPITAL_FAR_MINUTES, siteConditions } from "@/lib/allowanceKinds";
 import { gosiLine } from "@/lib/payrollDerivations";
@@ -135,15 +134,6 @@ export function PayslipEstimateCard({ employee, ar = true, monthLabel = "", stat
           <span style={{ marginInlineStart: "auto", display: "inline-flex", alignItems: "center", height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 700, background: "rgba(200,164,90,.18)", color: "#F3E3BC", border: "1px solid rgba(200,164,90,.5)" }}>
             {ar ? "تقدير من الملف" : "Estimate from the file"}
           </span>
-          <button
-            type="button"
-            data-payslip-print="1"
-            onClick={() => printPayslipSheet({ employee, slip, ar, monthLabel, stationName, otRows: ot.rows })}
-            style={{ fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,.28)", background: "rgba(255,255,255,.06)", color: "#fff", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
-          >
-            <Printer size={14} aria-hidden />
-            {ar ? "طباعة" : "Print"}
-          </button>
         </div>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 18, flexWrap: "wrap" }}>
           <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>

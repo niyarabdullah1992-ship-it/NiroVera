@@ -126,6 +126,12 @@ export function panelActions(node, { data, user } = {}) {
     add("edit", { id: "seatEdit", ar: "الرمز والمسمى في قوى والحالة", en: "Code, Qiwa title, state", fn: "patchSeatDesign", form: "seatEdit", blocked: hasSeat ? seatDeny : NO_SEAT });
     if (filled) add("edit", { id: "grade", ar: "الدرجة وصلاحيات المقعد وموقع العمل", en: "Grade, seat access, work site", fn: "assignHolderGrade · cycleSeatAccess · setActualWorkSite", form: "file", blocked: deny });
     if (filled) add("remove", { id: "vacate", ar: "إخلاء المنصب", en: "Vacate the seat", fn: "endSeatTenure", form: "confirmVacate", destructive: true, blocked: deny || fixedHead || (hasSeat ? null : NO_SEAT) });
+    if (!filled && hasSeat && str(node.hrPost) !== "director") {
+      add("remove", { id: "removeSeat", ar: "حذف المنصب الشاغر", en: "Remove the vacant seat", fn: "removeVacantSeat", form: "confirmRemoveSeat", destructive: true, blocked: seatDeny });
+    }
+    if (!filled && str(node.hrPost) === "director") {
+      add("assign", { id: "pickDirector", ar: "تعيين موظف حالي مديراً للموارد البشرية", en: "Appoint an existing employee", fn: "setStationManager", form: "branchDrawer", blocked: deny });
+    }
     const frozen = node.state === "frozen";
     add("remove", {
       id: "freeze",

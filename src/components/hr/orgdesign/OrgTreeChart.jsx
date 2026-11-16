@@ -38,6 +38,7 @@ import {
   planMove,
 } from "@/lib/orgChartActions";
 import { canEditOrgDesign } from "@/lib/orgDesign";
+import { isHrUnit } from "@/lib/stationTree";
 import {
   branchPeopleKey,
   buildBranchTree,
@@ -1304,8 +1305,8 @@ export default function OrgTreeChart({
   // The «⋯» menu lists only what can be done now on this card: nothing blocked, no links to elsewhere.
   const BRANCH_MENU = [
     ["branchManagers", "تعيين مدير الفرع", "Set the branch manager", "seat"],
-    ["hireManager", "توظيف مدير للفرع", "Hire the branch manager", "seat"],
-    ["hireHere", "توظيف في الفرع", "Hire into the branch", "seat"],
+    ["hireManager", "تعيين مدير للفرع", "Assign the branch manager", "seat"],
+    ["hireHere", "تعيين موظف في الفرع", "Assign into the branch", "seat"],
     ["addUnit", "إضافة فرع تحته", "Add a branch under it", "seat"],
     ["moveParent", "نقل تحت فرع آخر", "Move under another branch", "decide"],
     ["rename", "تعديل الاسم", "Rename", "decide"],
@@ -1313,9 +1314,22 @@ export default function OrgTreeChart({
     ["unitKind", "تغيير النوع: فرع أو منطقة", "Change kind: branch or region", "decide"],
     ["deleteBranch", "إغلاق الفرع ونقل ما فيه للأعلى", "Close the branch, its content moves up", "decide"],
   ];
+  // «وحدة الموارد البشرية»: its manager, its staff, and the HR manager of every branch are set from here.
+  const HR_UNIT_MENU = [
+    ["hrBranches", "تعيين مدراء الموارد البشرية للفروع", "Set each branch's HR manager", "seat"],
+    ["hireManager", "تعيين مدير للموارد البشرية", "Assign the HR director", "seat"],
+    ["hireHere", "تعيين موظف في الموارد البشرية", "Assign into HR", "seat"],
+    ["location", "تعديل الموقع", "Edit the location", "decide"],
+  ];
   const branchMenu = (card) => {
     if (!manage) return [];
     const ready = new Map(panelActions(card, { data, user }).flatMap((g) => g.items).filter((i) => !i.blocked).map((i) => [i.id, i]));
+    const station = (data?.stations || []).find((row) => String(row.id) === String(card.stationId || ""));
+    if (isHrUnit(station)) {
+      return HR_UNIT_MENU
+        .filter(([id]) => (id === "hrBranches" || id === "pickDirector") ? canEditSeats : ready.has(id))
+        .map(([id, ar, en, group]) => ({ id, ar, en, group, blocked: null, stationId: String(card.stationId || "") }));
+    }
     return BRANCH_MENU.filter(([id]) => ready.has(id)).map(([id, ar, en, group]) => ({ id, ar, en, group, blocked: null, stationId: ready.get(id).stationId }));
   };
   const menuActions = !menu ? [] : menu.card.kind === "branch"
@@ -1511,7 +1525,7 @@ export default function OrgTreeChart({
     if (!card) return;
     if (id === "moveUnder" || id === "moveParent") { openPanel(card.key, "moveParent"); return; }
     if (["rename", "location", "unitKind", "deleteBranch"].includes(id)) { openPanel(card.key, id); return; }
-    if (id === "branchManagers") { setBranchDrawer(String(card.stationId || "")); return; }
+    if (id === "branchManagers" || id === "hrBranches") { setBranchDrawer(String(card.stationId || "")); return; }
     if (id === "addUnit") { setAddPlace(null); setAddUnit(String(action?.stationId || card.stationId || "")); return; }
     if (id === "hireHere") { onHire?.({ stationId: action?.stationId || card.stationId || "" }); return; }
     if (id === "transfer") { openPanel(card.key, "moveBranch"); return; }
@@ -1519,6 +1533,8 @@ export default function OrgTreeChart({
     if (id === "acting") { openPanel(card.key, "acting"); return; }
     if (id === "vacate") { openPanel(card.key, "vacate"); return; }
     if (id === "freeze") { openPanel(card.key, "freeze"); return; }
+    if (id === "removeSeat") { openPanel(card.key, "removeSeat"); return; }
+    if (id === "pickDirector") { setBranchDrawer(String(action?.stationId || card.stationId || "")); return; }
     if (id === "perms") { navigate(`/app/hr?tab=org&pane=authority&open=perm&emp=${encodeURIComponent(String(card.employeeId || ""))}`, { state: { from: `${location.pathname}${location.search}` } }); return; }
     if (id === "addSeat") { onHire?.({ stationId: action?.stationId || card.stationId || "" }); return; }
     if (id === "file") { setDetails(card); return; }
@@ -1959,7 +1975,7 @@ export default function OrgTreeChart({
             companyName={data?.settings?.companyName || company?.name || ""}
             ar={ar}
             canWrite={rights.canManage}
-            onHire={onHire}
+            onHire={onHire ? (detail) => { setBranchDrawer(""); onHire(detail); } : undefined}
             onAddChild={(parentId) => { setBranchDrawer(""); setAddUnit(String(parentId || "")); }}
             onClose={() => setBranchDrawer("")}
             onDeleted={() => setBranchDrawer("")}

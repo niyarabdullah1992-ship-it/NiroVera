@@ -116,20 +116,19 @@ assert.equal(row("docs").count, 1);
 assert.equal(row("docs").to, "/app/hr?tab=people&filter=expiring");
 assert.equal(row("contracts").count, 1);
 assert.equal(row("probation").count, 1);
-assert.equal(row("changes").count, 1);
-assert.equal(row("changes").to, "/app/hr?tab=org&pane=changes");
+assert.equal(row("changes"), undefined, "structure changes apply directly — no approval row");
 assert.equal(row("gosi").count, 2, "the same GOSI rule as «أنظمة الوزارة — السجلات»");
 assert.ok(row("nitaqat"), "the Saudization note is there when files exist");
 assert.ok(overview.clear.some((r) => r.id === "acting"), "clean checks are listed, not hidden");
-assert.deepEqual(overview.decisions.map((d) => d.kind), ["change", "doc", "probation", "contract"], "nearest deadline first");
+assert.deepEqual(overview.decisions.map((d) => d.kind), ["doc", "probation", "contract"], "nearest deadline first");
 assert.ok(overview.decisions.every((d, i, a) => i === 0 || a[i - 1].days <= d.days));
 assert.equal(overview.decisions.find((d) => d.kind === "contract").to, "/app/employees/e1?tab=contract");
 const scoped = deriveHrOverview(data, { today: TODAY, scopeIds: ["b2"] });
 assert.equal(scoped.staff, 1);
 assert.equal(scoped.rows.some((r) => r.id === "docs"), false);
 const readOnly = deriveHrOverview(data, { today: TODAY, orgWrite: false });
-assert.equal(readOnly.rows.find((r) => r.id === "changes").to, "/app/hr?tab=org", "a reader opens the structure, not an editor pane");
-assert.equal(dueWord(-3), "متأخر 3 يوماً");
+assert.equal([...readOnly.rows, ...readOnly.clear].find((r) => r.id === "acting").to, "/app/hr?tab=org", "a reader opens the structure, not an editor pane");
+assert.equal(dueWord(-3), "متأخر 3 أيام");
 assert.equal(dueWord(0), "اليوم");
 
 /* the directory pills read the same rules */

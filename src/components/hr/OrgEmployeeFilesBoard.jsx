@@ -444,7 +444,7 @@ export default function OrgEmployeeFilesBoard({
           <span style={{ flex: 1 }} />
           {canWrite ? (
             <button type="button" onClick={() => onHire?.({})} style={btnPrimary()}>
-              {ar ? "+ ملف موظف جديد" : "+ New employee file"}
+              {ar ? "+ تعيين" : "+ Assign"}
             </button>
           ) : null}
         </header>

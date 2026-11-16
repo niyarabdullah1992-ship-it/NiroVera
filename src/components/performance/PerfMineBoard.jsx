@@ -291,25 +291,6 @@ function proofRows(employee, from, to, data) {
   });
 }
 
-function printMine({ ar, employee, job, place, period, score, band, drivers, months }) {
-  const title = ar ? "أدائي" : "My performance";
-  const rows = drivers.map((driver) => `<tr><td>${driver.name}</td><td>${driver.weight}%</td><td class="n">${driver.value}</td><td>${driver.source}</td></tr>`).join("");
-  const cols = months.map((month) => `<td class="n">${month.name}<br><b>${month.score == null ? "—" : month.score}</b></td>`).join("");
-  const html = `<!DOCTYPE html><html dir="${ar ? "rtl" : "ltr"}" lang="${ar ? "ar" : "en"}"><head><meta charset="utf-8"><title>${title}</title>
-<style>body{font-family:"IBM Plex Sans Arabic",Tahoma,sans-serif;color:#111418;margin:24px}h1{color:#0B3D27;font-size:20px}table{width:100%;border-collapse:collapse;margin-top:12px}td,th{border-bottom:1px solid #E4E9E6;padding:6px 8px;text-align:start;font-size:12px}.n{font-family:"IBM Plex Mono",monospace;direction:ltr}</style></head><body>
-<h1>${title}</h1>
-<p>${employee?.name || "—"} · ${job || "—"} · ${place || "—"}</p>
-<p>${period} · ${score == null ? "—" : score} · ${band}</p>
-<table><thead><tr><th>${ar ? "المحرّك" : "Driver"}</th><th>${ar ? "الوزن" : "Weight"}</th><th>${ar ? "النسبة" : "Share"}</th><th>${ar ? "المصدر" : "Source"}</th></tr></thead><tbody>${rows}</tbody></table>
-<table><tr>${cols}</tr></table>
-<p>${ar ? "درجتك تراها أنت ومديرك المباشر فقط." : "Only you and your direct manager see this score."}</p>
-</body></html>`;
-  const win = window.open("", "_blank");
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
-  setTimeout(() => { try { win.print(); } catch { /* print blocked */ } }, 300);
-}
 
 /** The period's quality line: the five-level scale of model Arts. 18–19, the same that fills «الكفاءة». */
 function qualityPeriodHint(ar = true) {
@@ -465,35 +446,7 @@ export default function PerfMineBoard({ lang, employee, data }) {
           <PlatformDateField compact ar={ar} value={safeTo} min={safeFrom} max={today} onChange={applyTo} />
         </label>
         <span style={{ fontSize: 11.5, color: MUTED, alignSelf: "center" }}>{rangeNote}</span>
-        <button
-          type="button"
-          onClick={() => printMine({
-            ar,
-            employee,
-            job,
-            place,
-            period,
-            score,
-            band: bandOfMine(score, ar),
-            drivers: driverRows,
-            months,
-          })}
-          style={{
-            height: 32,
-            padding: "0 12px",
-            borderRadius: 999,
-            border: `1px solid ${LINE}`,
-            background: CARD,
-            color: INK,
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: "pointer",
-            fontFamily: "inherit",
-            marginInlineStart: "auto",
-          }}
-        >
-          {ar ? "حفظ PDF" : "Save PDF"}
-        </button>
+        
       </section>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,340px),1fr))", gap: 14, alignItems: "start" }}>

@@ -75,6 +75,9 @@ export function buildOrgFocusTree(data, { viewerId = "", scope = "mine", ar = tr
       avatarUrl: raw.vacant ? "" : str(raw.avatarUrl),
       // a dotted (matrix) line to another seat — counted on that seat's card as «مصفوفة»
       dottedToKey: str(seat?.dottedToSeatId),
+      hrPost: str(seat?.hrPost),
+      // the HR unit head sits first under the head office
+      ...(raw.hrHead ? { order: -1 } : {}),
       parentKey: parentKey || "",
       childKeys: [],
     };

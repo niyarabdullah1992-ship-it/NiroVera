@@ -349,7 +349,7 @@ export default function OrgEmployeeFilesBoard({
       if (row.branch && row.branch !== DASH) g.branches.add(row.branch);
     });
     return [...map.values()].sort((a, b) => (a.hr ? 0 : 1) - (b.hr ? 0 : 1) || b.rows.length - a.rows.length);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [incomplete.map((r) => r.key).join("|"), data]);
   const branchName = tiles.find((tile) => tile.id === branchId)?.name || (ar ? "كل الفروع" : "All branches");
   const countLabel = query.trim()

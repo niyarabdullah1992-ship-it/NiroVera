@@ -12,7 +12,6 @@ import OrgTemplateBoard, { OrgChartUpkeep } from "@/components/hr/OrgTemplateBoa
 import OrgFormerFilesBoard from "@/components/hr/OrgFormerFilesBoard";
 import OrgSeatRegister from "@/components/hr/orgdesign/OrgSeatRegister";
 import OrgHealthBoard from "@/components/hr/orgdesign/OrgHealthBoard";
-import OrgDoaBoard from "@/components/hr/orgdesign/OrgDoaBoard";
 import OrgChartEntry from "@/components/hr/orgdesign/OrgChartEntry";
 import PageErrorBoundary from "@/components/PageErrorBoundary";
 import { MUTED } from "@/lib/platformStyles";
@@ -132,7 +131,7 @@ export default function HrStructurePane({ ar = true, lang = "ar", data, currentU
     if (pane !== "changes" || changeSeed || searchParams.get("op")) return;
     const id = setTimeout(() => { if (!searchParams.get("op")) goChart("tree"); }, 50);
     return () => clearTimeout(id);
-  }, [pane, changeSeed, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pane, changeSeed, searchParams]);
 
   const scrollPanel = (ref) => setTimeout(() => ref.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" }), 60);
   const goAuthority = (setOpen, ref) => {

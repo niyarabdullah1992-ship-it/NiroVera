@@ -4,7 +4,7 @@ import StatusFilterPills from "@/components/shared/StatusFilterPills";
 import { chip, mono, slab } from "@/components/schedules/scheduleChrome";
 import { OrgAddBranchDrawer, OrgBranchDrawer } from "@/components/hr/OrgBranchDrawer";
 import { ui } from "@/lib/platformStyles";
-import { deriveStationReadiness, readinessLabel } from "@/lib/stationReadiness";
+import { deriveStationReadiness } from "@/lib/stationReadiness";
 import { HR_BRANCH_FILTERS, hrBranchMatches, hrBranchRows } from "@/lib/hrSection";
 import { foldOrgLookup } from "@/lib/orgLookup";
 

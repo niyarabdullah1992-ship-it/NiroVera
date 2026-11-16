@@ -24,7 +24,6 @@ import {
   jobTitleCatalog,
   occupantTitle,
   placeExistingEmployee,
-  SEAT_ACCESS_ROWS,
   seatAccessOf,
   seatDrawerReason,
   seatForEmployee,
@@ -34,7 +33,7 @@ import {
 import { gradeCategories, personLevel, setPersonLevel } from "@/lib/gradeCategories";
 import { applyContractLeave, contractLeaveOf } from "@/lib/contractLeave";
 import ContractLeaveFields from "@/components/hr/ContractLeaveFields";
-import { assignHolderGrade, employeeJobGrade, gradeRank, gradeSalaryRange, gradesForTitle, ladderBands, orderedJobGrades } from "@/lib/jobGrades";
+import { employeeJobGrade, gradeRank, gradeSalaryRange, gradesForTitle, ladderBands, orderedJobGrades } from "@/lib/jobGrades";
 import { gradeBadge, OrgLockMark } from "@/components/hr/orgUi";
 import { buildPeopleTree, explainWorkplaceManager, pathToPerson } from "@/lib/peopleTree";
 import { isCompanyRootStation, isHrUnit, isManagerUnit, stationParentId, workplaceStations } from "@/lib/stationTree";

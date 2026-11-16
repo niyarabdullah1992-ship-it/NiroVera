@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
-import { ChevronDown } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { hrSectionAccessFor } from "@/lib/navVisibility";
@@ -14,8 +13,6 @@ import { toast } from "@/components/ui/use-toast";
 import useStationScope from "@/hooks/useStationScope";
 import OpsFrame, { HeroSwitch } from "@/components/tasks/OpsFrame";
 import PageErrorBoundary from "@/components/PageErrorBoundary";
-import JobGradeManager from "@/components/employees/JobGradeManager";
-import HrDirectoryBoard from "@/components/hr/HrDirectoryBoard";
 import ComplianceMhrsdBoard from "@/components/hr/ComplianceMhrsdBoard";
 import CompanyObligationsList from "@/components/dashboard/CompanyObligationsList";
 import { visibleEmployees } from "@/lib/permissions";
@@ -145,6 +142,12 @@ export default function HRStructureManagement() {
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
+  // file lists moved to «الموظفون»: old links to the structure's file panes land there
+  useEffect(() => {
+    const pane = searchParams.get("pane");
+    if (searchParams.get("tab") === "org" && (pane === "files" || pane === "former")) setSearchParams(new URLSearchParams({ tab: "people" }), { replace: true });
+  }, [searchParams, setSearchParams]);
+
   if (!data || !currentUser || !company) return null;
   if (!access.panes.length) return <Navigate to="/app/org?view=employee" replace />;
 
@@ -169,11 +172,6 @@ export default function HRStructureManagement() {
     </div>
   ) : null;
   const filter = searchParams.get("filter") || "";
-  // file lists moved to «الموظفون»: old links to the structure's file panes land there
-  useEffect(() => {
-    const pane = searchParams.get("pane");
-    if (searchParams.get("tab") === "org" && (pane === "files" || pane === "former")) setSearchParams(new URLSearchParams({ tab: "people" }), { replace: true });
-  }, [searchParams, setSearchParams]);
 
   return (
     <>

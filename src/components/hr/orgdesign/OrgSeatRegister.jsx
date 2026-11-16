@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { deriveSeatRegister, SEAT_STATES, SEAT_STATE_LABELS, todayKey } from "@/lib/orgDesign";
 import { patchSeatDesign } from "@/lib/orgDesignStore";
 import { endActingAssignment, openHireDrawer, setActingAssignment } from "@/lib/orgHire";
-import { DrawerHead, EmptyInvite, Face, GateLine, Note, OkLine, OrgDrawer, Slab, SlabBar, StateChip, SubHead, ToneChip, btnGhost, btnPrimary, filterChip, fmtDay, initialsOf, levelLabel, seatOptionLabel } from "./orgDesignUi";
+import { DrawerHead, EmptyInvite, Face, GateLine, Note, OkLine, OrgDrawer, Slab, SlabBar, StateChip, SubHead, ToneChip, btnGhost, btnPrimary, filterChip, fmtDay, initialsOf, levelLabel } from "./orgDesignUi";
 
 const NAT = {
   saudi: { ar: "سعودي", en: "Saudi" },

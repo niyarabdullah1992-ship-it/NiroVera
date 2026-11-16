@@ -12,7 +12,7 @@ import { useAuth } from "@/lib/PowerCareAuth";
 import { isViewerOwnFile } from "@/lib/employeeFileView";
 import { nightMedicalReportOf } from "@/lib/decision18632";
 import { canEditEmployeeFile } from "@/lib/permissions";
-import { patchEmployeeFile, updateEmployeeProfile } from "@/lib/store";
+import { updateEmployeeProfile } from "@/lib/store";
 import { ART108_CATEGORIES, art108CategoryOf, hoursBasisOf, isJuvenile } from "@/lib/laborHoursPolicy.js";
 import { fileOffDows, weeklyRestDayCountOf } from "@/lib/leaveEidOverlap.js";
 import { contractLeaveOf, restWord, WEEKDAYS_AR } from "@/lib/contractLeave.js";

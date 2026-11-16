@@ -15,7 +15,7 @@ export default function ContractLeaveCard({ employee, companyId, canEdit = false
     if (!canEdit) return;
     if (fileEditing) { setTerms({ annual, restCount: count, restDows: dows }); setEditing(true); onTermsChange?.(null); }
     else setEditing(false);
-  }, [fileEditing, canEdit]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fileEditing, canEdit]);
   const row = (label, value, note) => (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "9px 0", borderBottom: "1px solid var(--nv-line2, var(--nv-line))", alignItems: "baseline" }}>
       <span style={{ fontSize: 12.5, color: "var(--nv-muted)" }}>{label}</span>

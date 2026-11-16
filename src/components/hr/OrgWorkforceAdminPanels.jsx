@@ -10,32 +10,25 @@ import {
 } from "@/components/hr/orgUi";
 import { Slab, btnGhost, btnPrimary, btnQuiet, filterChip } from "@/components/hr/orgdesign/orgDesignUi";
 import { chip, chipButton } from "@/components/schedules/scheduleChrome";
-import { statusBanner } from "@/lib/platformStyles";
 import OrgLookupField from "@/components/hr/OrgLookupField";
 import { personLookupOption } from "@/lib/orgLookup";
 import AssignEscalationDialog from "@/components/hr/AssignEscalationDialog";
 import { deriveBranchEscalationChain } from "@/lib/orgDerivations";
 import { setBranchEscalationChain } from "@/lib/orgTree";
 import { isHrUnit, workplaceStations } from "@/lib/stationTree";
-import { SMART_DEPARTMENTS, saveSmartPosition } from "@/lib/smartPositions";
+import { saveSmartPosition } from "@/lib/smartPositions";
 import { formatOrgStructureEvent, orgStructureEvents } from "@/lib/orgStructureLog";
 import { updateCompany } from "@/lib/store";
 import { readBranchEscalationSla } from "@/lib/facts";
 import {
   addHigherLadderGrade,
-  catalogMatchKey,
-  createTitleGrade,
-  gradeRank,
-  gradesForTitle,
   ladderBands,
   jobTitleKey,
-  moveTitleGrade,
   orderJobTitleCatalog,
   patchJobGrade,
   removeListGrade,
-  setTitleGradeRank,
 } from "@/lib/jobGrades";
-import { addListPosition, companyLists, listPositions, removeListPosition } from "@/lib/permissionTemplates";
+import { companyLists, listPositions } from "@/lib/permissionTemplates";
 import NvIcon from "@/components/shared/NvIcon";
 
 /** HTML permList — seven gates, each bound to a live department id. */
@@ -501,7 +494,7 @@ export default function OrgWorkforceAdminPanels({
     if (!permSeed) return;
     setPermEmployeeId(String(permSeed));
     setTimeout(() => permRef?.current?.scrollIntoView?.({ behavior: "smooth", block: "start" }), 120);
-  }, [permSeed]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [permSeed]);
   const [logView, setLogView] = useState("live");
   const [logKind, setLogKind] = useState("all");
   const [assignForStation, setAssignForStation] = useState("");

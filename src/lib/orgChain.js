@@ -112,7 +112,7 @@ export function orgChainNext(data, ar = true) {
   return {
     tab: "people",
     tone: "green",
-    ar: "السلسلة مكتملة. الناس يُشتقّون، والتصعيد يمشي شجرة المكان نفسها.",
+    ar: "السلسلة مكتملة. الناس يُشتقّون، والتصعيد يسير وفق شجرة المكان نفسها.",
     en: "The chain is complete. People are derived; escalation walks the same workplace tree.",
   };
 }

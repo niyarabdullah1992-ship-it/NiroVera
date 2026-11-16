@@ -32,7 +32,11 @@ export const escalationStageCount = (data, stationId) => {
   if (branch.length) return branch.length;
   return escalationGroups(data).length + 1;
 };
-export const complaintEscalationStageCount = (data, stationId) => manualChain(data).length || escalationStageCount(data, stationId);
+export const complaintEscalationStageCount = (data, stationId) => {
+  const routed = deriveBranchEscalationChain(stationId, data, "complaint");
+  if (routed.some((step) => step.hr)) return routed.length;
+  return manualChain(data).length || escalationStageCount(data, stationId);
+};
 export const usesManualComplaintEscalation = (data) => manualChain(data).length > 0;
 export const isManualComplaintHandler = (employee, data) => manualChain(data).some((handler) => handler.id === employee?.id);
 
@@ -59,6 +63,12 @@ export function handlersForLevel(levelIdx, r, data) {
 }
 
 export function complaintHandlersForLevel(levelIdx, r, data) {
+  // a complaint route set in «سلسلة التصعيد»: the manager, then the HR levels in order
+  const routed = deriveBranchEscalationChain(r?.stationId, data, "complaint");
+  if (routed.some((step) => step.hr)) {
+    const step = routed[levelIdx];
+    return step ? (data.employees || []).filter((e) => String(e.id) === String(step.employeeId)) : [];
+  }
   // A branch ladder set in the org (or derived from it) names the same people as المهام.
   if (deriveBranchEscalationChain(r?.stationId, data).length) return handlersForLevel(levelIdx, r, data);
   const manual = manualChain(data);

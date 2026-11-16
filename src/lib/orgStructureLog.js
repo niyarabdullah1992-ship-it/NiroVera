@@ -30,8 +30,15 @@ function personNameOf(data, employeeId) {
   return (data?.employees || []).find((employee) => String(employee.id) === id)?.name || "";
 }
 
+// the signed-in person, set by the auth layer, so every event names who took the action
+let currentActor = null;
+export function setOrgLogActor(user) {
+  currentActor = user && user.id ? { id: String(user.id), name: String(user.name || "") } : null;
+}
+
 export function appendOrgStructureEvent(data, event) {
   if (!data || !event) return null;
+  const actor = event.actor || currentActor;
   const row = {
     id: uid(),
     at: new Date().toISOString(),
@@ -50,6 +57,8 @@ export function appendOrgStructureEvent(data, event) {
     toStationId: event.toStationId ? String(event.toStationId) : "",
     fromStationName: event.fromStationName || stationNameOf(data, event.fromStationId),
     toStationName: event.toStationName || stationNameOf(data, event.toStationId),
+    actorId: actor?.id ? String(actor.id) : "",
+    actorName: actor?.name || personNameOf(data, actor?.id) || "",
   };
   data.orgStructureLog = Array.isArray(data.orgStructureLog) ? data.orgStructureLog : [];
   data.orgStructureLog.unshift(row);

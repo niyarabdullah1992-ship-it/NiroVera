@@ -3442,7 +3442,7 @@ export default function RequestsWorkspace({
                 return (
                   <>
                     <div data-balance="annual" style={row}>
-                      {head(ar ? "السنوية" : "Annual", "109", annual.statutory ? (
+                      {head(ar ? (Number(subject?.profile?.contractAnnualLeaveDays) ? `السنوية — ${subject.profile.contractAnnualLeaveDays} يوماً في العقد` : "السنوية") : "Annual", "109", annual.statutory ? (
                         <span style={sub}>{ar
                           ? <>المستحق الآن <span style={num}>{annualDueNow}</span> · المكتسب هذه السنة <span style={num}>{annualEarned.cap}</span> من {annual.statutory} (يُطلب مقدماً بموافقة المنشأة)</>
                           : <><span style={num}>{annualDueNow}</span> due now · <span style={num}>{annualEarned.cap}</span> of {annual.statutory} earned this year (an advance, with consent)</>}</span>

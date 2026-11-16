@@ -61,7 +61,7 @@ export default function OrgDoaBoard({ ar, data, actor, companyId, canEdit }) {
       >
       {!rows.length && !form ? (
         <EmptyInvite
-          text={ar ? "لا أسطر بعد — كل الطلبات تمشي على مدير الوحدة في الهيكل. أضف سطراً حين تريد أن يعتمد منصبٌ محدد نوعاً من القرارات حتى حدٍّ معيّن." : "No rows yet — every request follows the unit manager. Add a row when a specific seat should decide a type up to a limit."}
+          text={ar ? "لا أسطر بعد — كل الطلبات تمرّ على مدير الوحدة في الهيكل. أضف سطراً حين تريد أن يعتمد منصبٌ محدد نوعاً من القرارات حتى حدٍّ معيّن." : "No rows yet — every request follows the unit manager. Add a row when a specific seat should decide a type up to a limit."}
           action={canEdit ? <button type="button" style={btnGhost()} onClick={() => setForm({ ...blank })}>{ar ? "أضف أول سطر" : "Add the first row"}</button> : null}
         />
       ) : null}

@@ -28,6 +28,7 @@ import {
   wouldCreateStationCycle,
 } from "./stationTree.js";
 import { checkConsentGate, checkNecessityGate } from "./consentEffects.js";
+import { sectionGrant } from "./manageSections.js";
 
 /* ───────────────────────── basics ───────────────────────── */
 
@@ -1012,7 +1013,9 @@ export function isOrgOwner(user, data) {
 export function canEditOrgDesign(user, data) {
   if (!user) return false;
   if (isOrgOwner(user, data)) return true;
-  if (["director", "admin", "hr_manager"].includes(user.role)) return true;
+  const grant = sectionGrant(data, user.id, "hr");
+  if (grant) return grant === "manage";
+  if (user.role === "hr_manager") return true;
   const level = activeHrLevel(user, data);
   return Boolean(level && (level.permissions || []).includes("manage_employees"));
 }

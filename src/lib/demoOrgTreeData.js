@@ -8,6 +8,13 @@ export const DEMO_ORG_OFFICE_EMAIL = `hassan.office@${DEMO_ORG_EMAIL_DOMAIN}`;
 export const DEMO_ORG_JEDDAH_EMAIL = `majid.jeddah@${DEMO_ORG_EMAIL_DOMAIN}`;
 export const DEMO_ORG_NOURA_EMAIL = `noura.hq@${DEMO_ORG_EMAIL_DOMAIN}`;
 
+/** Branch HR officers of the demo: who completes the files of each branch (one person serves up to three). */
+export const DEMO_BRANCH_HR = [
+  { email: `sara.hr.west@${DEMO_ORG_EMAIL_DOMAIN}`, branches: ["فرع جدة", "فرع رابغ"] },
+  { email: `reem.hr.khafji@${DEMO_ORG_EMAIL_DOMAIN}`, branches: ["فرع الخفجي"] },
+  { email: `mona.hr.dammam@${DEMO_ORG_EMAIL_DOMAIN}`, branches: ["فرع الدمام", "المكتب الرئيسي", "ميناء الدمام"] },
+];
+
 export const DEMO_BRANCH_MANAGERS = [
   { branch: "المنطقة الشرقية", email: DEMO_ORG_EAST_EMAIL },
   { branch: "المنطقة الغربية", email: DEMO_ORG_WEST_EMAIL },
@@ -235,6 +242,48 @@ export function demoOrgHireRows() {
       grade: "متوسط",
       branch: "",
       onCompanyRoot: true,
+      parentBranch: "",
+      reportsTo: "نورة القحطاني",
+      extraBranches: "",
+    },
+    {
+      name: "سارة المالكي",
+      email: `sara.hr.west@${DEMO_ORG_EMAIL_DOMAIN}`,
+      nationalId: "1093100101",
+      phone: "0594100101",
+      hireDate: "2022-05-01",
+      list: "الموارد البشرية",
+      title: "مسؤول موارد بشرية",
+      grade: "متوسط",
+      branch: "فرع جدة",
+      parentBranch: "",
+      reportsTo: "نورة القحطاني",
+      extraBranches: "",
+    },
+    {
+      name: "ريم الشهري",
+      email: `reem.hr.khafji@${DEMO_ORG_EMAIL_DOMAIN}`,
+      nationalId: "1093100102",
+      phone: "0594100102",
+      hireDate: "2022-05-01",
+      list: "الموارد البشرية",
+      title: "مسؤول موارد بشرية",
+      grade: "متوسط",
+      branch: "فرع الخفجي",
+      parentBranch: "",
+      reportsTo: "نورة القحطاني",
+      extraBranches: "",
+    },
+    {
+      name: "منى العتيبي",
+      email: `mona.hr.dammam@${DEMO_ORG_EMAIL_DOMAIN}`,
+      nationalId: "1093100103",
+      phone: "0594100103",
+      hireDate: "2022-05-01",
+      list: "الموارد البشرية",
+      title: "مسؤول موارد بشرية",
+      grade: "متوسط",
+      branch: "فرع الدمام",
       parentBranch: "",
       reportsTo: "نورة القحطاني",
       extraBranches: "",

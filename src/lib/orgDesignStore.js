@@ -323,6 +323,34 @@ export function transitionOrgChange(companyId, actor, changeId, next, { note = "
   return { ok: true };
 }
 
+/**
+ * Direct structure change: whoever manages HR applies it — no approval request. It is kept as a
+ * signed decision in the audit log; a future effective date waits and publishes on that day.
+ */
+export function applyOrgChangeNow(companyId, actor, draft = {}, { today = todayKey() } = {}) {
+  const saved = saveOrgChangeDraft(companyId, actor, draft);
+  if (!saved.ok) return saved;
+  const data = getCompanyData(companyId);
+  const gate = checkOrgChangeGate(data, orgDesignOf(data).changes.find((c) => str(c.id) === str(saved.id)), { today });
+  if (!gate.ok) return { ...gate, id: saved.id };
+  const at = new Date().toISOString();
+  updateCompany(companyId, (d) => {
+    const row = ensureDesign(d).changes.find((c) => str(c.id) === str(saved.id));
+    if (!row) return;
+    row.status = "approved";
+    row.submittedAt = at;
+    row.submittedBy = actor?.name || "";
+    row.approvedAt = at;
+    row.approvedBy = actor?.name || "";
+    row.approvedById = str(actor?.id);
+    row.direct = true;
+  });
+  logAudit(companyId, "org.change.direct", `Org change ${str(draft.title)} applied directly`, { reason: str(draft.reason) || null });
+  const fresh = orgDesignOf(getCompanyData(companyId)).changes.find((c) => str(c.id) === str(saved.id));
+  if (str(fresh.effectiveDate).slice(0, 10) <= today) return { ...publishInto(companyId, actor, fresh, today), id: saved.id };
+  return { ok: true, id: saved.id, scheduled: true };
+}
+
 /** Approved changes whose effective date has come are published by the first editor session. */
 export function publishDueOrgChanges(companyId, actor, today = todayKey()) {
   const data = getCompanyData(companyId);

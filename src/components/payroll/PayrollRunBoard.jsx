@@ -187,6 +187,13 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
     );
   };
 
+  // «اعتمد المسير» in the section's header asks the board to approve — the same gate and call as its own button.
+  useEffect(() => {
+    const onAsk = () => { approve(); };
+    window.addEventListener("nv:payroll-approve", onAsk);
+    return () => window.removeEventListener("nv:payroll-approve", onAsk);
+  });
+
   if (!currentUser) return null;
 
   const totals = run?.totals;

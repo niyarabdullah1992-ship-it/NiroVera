@@ -63,7 +63,7 @@ export default function MinistrySectionPanel({ section: given, sectionKey, lane 
     .map((card) => ({ card, rows: rows.filter((row) => row.source === card.key) }));
   const citesRegs = cards.some((card) => card.key === "regs" || card.key === "model");
   const n = rows.length;
-  const rulesArePage = section.key === "hr" || section.key === "records";
+  const rulesArePage = false;
   const foldable = phone || !rulesArePage;
   const folded = foldable && !unfolded && hash !== `#${anchor}`;
 

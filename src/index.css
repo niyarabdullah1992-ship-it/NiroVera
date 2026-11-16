@@ -4042,6 +4042,7 @@ html.dark .nv7-section-head {
 /* مسير الأجور — cycle stages wrap on narrow screens */
 @media (max-width: 900px){ .nv-cycle-stages{grid-template-columns:repeat(4,minmax(0,1fr)) !important} }
 @media (max-width: 560px){ .nv-cycle-stages{grid-template-columns:repeat(2,minmax(0,1fr)) !important} }
+@media (max-width: 760px){ .nv-cycle-phases{grid-template-columns:1fr !important} }
 
 /* ── «سطر لا بطاقة»: inline figure row (طلباتي header pattern on white) ── */
 .nv-figrow {

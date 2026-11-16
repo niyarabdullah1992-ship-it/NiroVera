@@ -460,7 +460,6 @@ export function orgBranchActions(node, { canWrite = false, data = null, user = n
         : null,
     });
   }
-  add("health", "صحة الهيكل", "Structure health", "look", { count: Number(node.findings || 0) });
   add("authority", "الصلاحيات", "Authority", "look");
   return out;
 }

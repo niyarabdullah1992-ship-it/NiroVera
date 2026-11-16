@@ -364,8 +364,8 @@ export default function EnvelopeSetup({
             <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>
               {recipients.length
                 ? (ar ? "لا ختم محفوظ لك — تعتمد توقيعك عند دورك مثل بقية المستلمين، أو " : "No saved seal — you adopt your signature on your turn like the others, or ")
-                : (ar ? "توقيعك وحدك يُختم بختمك — " : "Signing alone uses your seal — ")}
-              <button type="button" onClick={onOpenStudio} style={{ border: "none", background: "none", padding: 0, color: "var(--nv-ok-ink, #2F6B43)", fontWeight: 700, fontFamily: "inherit", fontSize: 11.5, cursor: "pointer", textDecoration: "underline" }}>{ar ? "صمّم ختمك" : "design your seal"}</button>
+                : (ar ? "لا توقيع محفوظ لك — عند «التالي» ترفع صورة توقيعك أو ترسمه ثم توقّع مباشرة. أو " : "No saved signature — on Next you upload or draw it, then sign right away. Or ")}
+              <button type="button" onClick={onOpenStudio} style={{ border: "none", background: "none", padding: 0, color: "var(--nv-ok-ink, #2F6B43)", fontWeight: 700, fontFamily: "inherit", fontSize: 11.5, cursor: "pointer", textDecoration: "underline" }}>{ar ? "جهّزه الآن" : "set it up now"}</button>
             </span>
           ) : null}
 

@@ -455,7 +455,7 @@ export default function SigningHome({
         {sealPreview ? <img src={sealPreview} alt={ar ? "توقيعك" : "Your signature"} style={{ height: 34, maxWidth: 96, objectFit: "contain", border: "1px solid var(--nv-line)", borderRadius: 8, background: "#fff", padding: 2 }} /> : null}
         {sealId ? <span dir="ltr" style={{ ...mono, fontSize: 11, color: "var(--nv-muted)" }}>{sealId}</span> : null}
         <button type="button" onClick={onOpenStudio} style={lineBtn}>{sealReady ? (ar ? "غيّر التوقيع" : "Change signature") : (ar ? "صمّم توقيعك" : "Design your signature")}</button>
-        {sealReady && manage ? <button type="button" onClick={onRemoveSeal} style={{ ...lineBtn, color: "var(--nv-bad-ink)" }}>{ar ? "احذف" : "Remove"}</button> : null}
+        {sealReady ? <button type="button" onClick={onRemoveSeal} style={{ ...lineBtn, color: "var(--nv-bad-ink)" }}>{ar ? "احذف" : "Remove"}</button> : null}
       </Line>
       <Line dataKey="verify" label={ar ? "تحقق من مستند" : "Verify a document"} note={ar ? "تُحسب البصمة على جهازك وتُطابق سجل الشركة." : "The fingerprint is computed on your device and matched to the registry."}>
         <button type="button" onClick={() => setView("verify")} style={lineBtn}>{ar ? "افتح التحقق" : "Open verify"}</button>

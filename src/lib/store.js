@@ -1518,6 +1518,7 @@ export function addNotification(companyId, userId, text, extra = {}) {
       row.voiceNotice = extra.voiceNotice;
     }
     if (extra?.to) row.to = String(extra.to);
+    if (extra?.lane) row.lane = String(extra.lane);
     d.notifications.unshift(row);
   });
 }
@@ -1830,7 +1831,7 @@ export function openDueReligionNotices(companyId) {
       const key = `religion-missing:${emp.id}:${m.id}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      addNotification(companyId, m.id, `الديانة غير محددة في ملف ${emp.name || "موظف"} — حدّدها ليظهر له ما يخصه من الإجازات: الحج للمسلم (المادة 114)، ومدة العدة 130 يوماً للمسلمة أو 15 لغيرها (المادة 160).`, { key, to: `/app/employees/${emp.id}?tab=identity` });
+      addNotification(companyId, m.id, `الديانة غير محددة في ملف ${emp.name || "موظف"} — حدّدها ليظهر له ما يخصه من الإجازات: الحج للمسلم (المادة 114)، ومدة العدة 130 يوماً للمسلمة أو 15 لغيرها (المادة 160).`, { key, to: `/app/employees/${emp.id}?tab=identity`, lane: "manage" });
       notified += 1;
     }
     const own = `religion-missing:${emp.id}:self`;

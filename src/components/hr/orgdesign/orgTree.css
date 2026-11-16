@@ -1,6 +1,6 @@
 /*
  * The org chart (/app/org/chart, and embedded in «الفروع والدليل») in the platform's identity:
- * a quiet dotted canvas (SAP-style), cards = slab geometry (--nv-card, 1px --nv-line, radius 12),
+ * a quiet dotted canvas, cards = slab geometry (--nv-card, 1px --nv-line, radius 12),
  * controls radius 8, names and figures in ink (IBM Plex Mono, Latin digits), one green accent for
  * the selected card only, warm/red chips only for real problems. Tokens only — dark mode follows
  * --nv-*. Cards and lines are placed by the layout (physical left/top, mirrored in JS for RTL).
@@ -115,7 +115,7 @@
 .nv-ot-crumbs button[aria-current="true"] { color: var(--nv-ink); font-weight: 700; }
 .nv-ot-crumbs__note { color: var(--nv-muted); font-size: 11.5px; }
 
-/* ── canvas: flat and plain like SAP's org chart — the page tone, no pattern (dark follows tokens) ── */
+/* ── canvas: flat and plain — the page tone, no pattern (dark follows tokens) ── */
 .nv-ot-scroller {
   flex: 1 1 auto; min-height: 0; overflow: auto; position: relative; outline: none;
   padding: 32px 56px 72px; cursor: grab; overscroll-behavior: contain; touch-action: pan-x pan-y;
@@ -183,7 +183,7 @@
 .nv-ot-card[data-me="1"] .nv-ot-avatar { background: var(--nv-accent-soft); color: var(--nv-accent-deep, var(--nv-accent)); border-color: var(--nv-accent-border, var(--nv-line)); }
 
 .nv-ot-card__text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
-/* SAP: the name in the one accent (green here), bold, up to two lines; the title in ink */
+/* the name in the one accent (green here), bold, up to two lines; the title in ink */
 .nv-ot-card__name {
   font-size: 13.5px; font-weight: 700; line-height: 1.35; color: var(--nv-accent-deep, var(--nv-accent));
   display: flex; gap: 6px; align-items: flex-start; min-width: 0;
@@ -369,7 +369,7 @@
 .nv-oap-danger[disabled] { opacity: .45; cursor: not-allowed; }
 .nv-oap-danger:focus-visible { outline: 2px solid var(--nv-navy); outline-offset: 2px; }
 
-/* ── edge arrows (SAP): pan the canvas sideways ── */
+/* ── edge arrows: pan the canvas sideways ── */
 .nv-ot-arrow {
   position: absolute; top: 55%; transform: translateY(-50%); z-index: 4;
   width: 36px; height: 84px; border-radius: 8px; border: 1px solid var(--nv-line);
@@ -538,3 +538,77 @@
 }
 .nv-ot-entry__n { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 11.5px; font-weight: 600; color: var(--nv-ink); font-variant-numeric: tabular-nums; flex: none; }
 .nv-ot-entry__fold { text-align: start; padding-inline-start: 23px; color: var(--nv-muted); line-height: 1; }
+
+/* ── motion & selection ── */
+.nv-ot-stage { transition: opacity .2s ease; }
+.nv-ot[data-busy="1"] .nv-ot-card, .nv-ot[data-busy="1"] .nv-ot-line { opacity: .38; transition: opacity .18s ease; }
+.nv-ot-dots {
+  position: absolute; z-index: 4; transform: translateX(-50%); display: inline-flex; gap: 6px; pointer-events: none;
+}
+.nv-ot-dots i {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--nv-accent); display: block;
+  animation: nv-ot-dot .9s ease-in-out infinite both;
+}
+.nv-ot-dots i:nth-child(2) { animation-delay: .15s; }
+.nv-ot-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes nv-ot-dot { 0%, 80%, 100% { transform: scale(.55); opacity: .45; } 40% { transform: scale(1); opacity: 1; } }
+
+/* cards slide to their new place, new ones grow in */
+.nv-ot[data-motion="1"] .nv-ot-card, .nv-ot[data-motion="1"] .nv-ot-more {
+  transition: left .45s cubic-bezier(.22, .9, .25, 1), top .45s cubic-bezier(.22, .9, .25, 1), opacity .2s ease, border-color .15s ease, box-shadow .15s ease;
+  animation: nv-ot-pop .36s cubic-bezier(.22, .9, .25, 1) both;
+}
+.nv-ot[data-motion="1"] .nv-ot-line {
+  transition: left .45s cubic-bezier(.22, .9, .25, 1), top .45s cubic-bezier(.22, .9, .25, 1), width .45s cubic-bezier(.22, .9, .25, 1), height .45s cubic-bezier(.22, .9, .25, 1), opacity .2s ease;
+}
+@keyframes nv-ot-pop { from { opacity: 0; transform: translateY(-10px) scale(.96); } to { opacity: 1; transform: none; } }
+
+/* tight team block: cards sit almost edge to edge */
+.nv-ot-card { border-radius: 6px; }
+
+/* the chosen card: a clear accent frame and its name marked like a text selection */
+.nv-ot-card[data-focus="1"] {
+  border: 1.5px solid var(--nv-accent);
+  box-shadow: 0 0 0 3px var(--nv-accent-soft), 0 8px 22px var(--nv-shadow, rgba(0, 0, 0, .08));
+  z-index: 2;
+}
+.nv-ot-card[data-focus="1"] .nv-ot-card__nm {
+  background: var(--nv-accent-deep, var(--nv-accent)); color: #fff; padding: 0 5px; border-radius: 3px;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+}
+
+/* profile panel: slides in from the edge, cover band + large avatar */
+@keyframes nv-pp-in-rtl { from { transform: translateX(-24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes nv-pp-in-ltr { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.nv-pp-sheet { animation: nv-pp-in-rtl .32s cubic-bezier(.22, .9, .25, 1) both; }
+[dir="ltr"] > .nv-pp-sheet { animation-name: nv-pp-in-ltr; }
+.nv-pp-hero { position: relative; flex: none; }
+.nv-pp-cover {
+  height: 104px; border-radius: 7px 7px 0 0;
+  background:
+    radial-gradient(120% 140% at 85% 0%, color-mix(in oklab, var(--nv-gold, #C9A24A) 55%, transparent) 0%, transparent 55%),
+    linear-gradient(135deg, var(--nv-accent-deep, #0F5132) 0%, var(--nv-navy, #0B3D27) 100%);
+}
+.nv-pp-cover::after {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 104px; border-radius: 7px 7px 0 0; opacity: .14;
+  background-image: repeating-linear-gradient(45deg, #fff 0 1px, transparent 1px 14px), repeating-linear-gradient(-45deg, #fff 0 1px, transparent 1px 14px);
+}
+.nv-pp-close {
+  position: absolute; top: 10px; inset-inline-end: 10px; z-index: 2; width: 30px; height: 30px; border-radius: 8px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; border: none; color: #fff;
+  background: color-mix(in oklab, #000 28%, transparent);
+}
+.nv-pp-close:hover { background: color-mix(in oklab, #000 42%, transparent); }
+.nv-pp-avatar {
+  position: absolute; top: 64px; inset-inline-start: 18px; z-index: 2; width: 80px; height: 80px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 600;
+  background: var(--nv-soft); color: var(--nv-ink2, var(--nv-ink)); border: 4px solid var(--nv-card, #fff);
+  box-shadow: 0 4px 14px var(--nv-shadow, rgba(0, 0, 0, .12));
+}
+.nv-pp-id { padding: 48px 18px 14px; display: flex; flex-direction: column; gap: 3px; border-bottom: 1px solid var(--nv-line, #E4E9E6); }
+.nv-pp-name { font-size: 19px; font-weight: 700; line-height: 1.3; color: var(--nv-accent-deep, var(--nv-accent)); }
+.nv-pp-sub { font-size: 13px; color: var(--nv-ink2, var(--nv-ink)); }
+.nv-pp-chain { font-size: 12px; color: var(--nv-muted); }
+@media (prefers-reduced-motion: reduce) { .nv-pp-sheet { animation: none; } }
+.nv-od-drawer { animation: nv-pp-in-rtl .32s cubic-bezier(.22, .9, .25, 1) both; }
+[dir="ltr"] > .nv-od-drawer { animation-name: nv-pp-in-ltr; }

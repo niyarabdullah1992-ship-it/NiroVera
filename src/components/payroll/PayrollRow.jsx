@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { FileText, CheckCircle2, Circle, ListChecks } from "lucide-react";
 import EmployeeIdentityRow from "@/components/employees/EmployeeIdentityRow";
 import { netOf } from "@/lib/payroll";
@@ -17,7 +18,7 @@ const GREEN = "var(--nv-accent)";
 // way in the table, the totals, and the exported WPS file.
 const money = (value) => Number(value || 0).toLocaleString("en-US");
 
-export default function PayrollRow({ item, employee, ar, payday = null, onChange, onTogglePaid, onPayslip, onDeductions }) {
+export default function PayrollRow({ item, employee, ar, payday = null, payLocked = false, onChange, onTogglePaid, onPayslip, onDeductions }) {
   const num = (v) => Number(v) || 0;
   const baseMissing = !item.isOwner && num(item.base) <= 0;
   const cell = (field, editable = true) => {
@@ -69,6 +70,16 @@ export default function PayrollRow({ item, employee, ar, payday = null, onChange
           compact
           link={!!employee?.role}
         />
+        {baseMissing ? (
+          <span data-base-missing="1" style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginTop: 6, fontSize: 11.5, color: "var(--nv-bad-ink, #9B2C2C)" }}>
+            {ar ? "لا أجر أساسي في الملف" : "No base wage on the file"}
+            {item.employeeId ? (
+              <Link to={`/app/employees/${encodeURIComponent(item.employeeId)}?tab=contract`} style={{ fontWeight: 700, color: "var(--nv-accent, #1E9E63)", textDecoration: "underline" }}>
+                {ar ? "أكمله من العقد والأجر" : "Complete it in Contract and wage"}
+              </Link>
+            ) : null}
+          </span>
+        ) : null}
       </td>
       <td data-label={ar ? "الأساسي" : "Base"} style={cellStyle}>{cell("base")}</td>
       <td data-label={ar ? "البدلات" : "Allowances"} style={cellStyle}>{cell("allowances")}</td>
@@ -124,8 +135,8 @@ export default function PayrollRow({ item, employee, ar, payday = null, onChange
       <td data-label={ar ? "الحالة" : "Status"} style={cellStyle}>
         <button
           onClick={() => onTogglePaid(!item.paid)}
-          disabled={baseMissing && !item.paid}
-          title={baseMissing && !item.paid ? (ar ? "حدّد الراتب الأساسي أولاً" : "Set the base salary first") : undefined}
+          disabled={(baseMissing || payLocked) && !item.paid}
+          title={!item.paid && baseMissing ? (ar ? "حدّد الراتب الأساسي أولاً" : "Set the base salary first") : !item.paid && payLocked ? (ar ? "يُصرف الأجر بعد اعتماد المسير" : "Pay after the run is approved") : undefined}
           style={{
             display: "inline-flex",
             alignItems: "center",

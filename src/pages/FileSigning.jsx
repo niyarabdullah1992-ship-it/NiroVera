@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -37,6 +37,16 @@ export default function FileSigning() {
   const [loading, setLoading] = useState(false);
   const [workspace, setWorkspace] = useState(null);
   const [studioOpen, setStudioOpen] = useState(false);
+  // signing alone without a saved signature: the envelope waits here while the signature is uploaded
+  const pendingStart = useRef(null);
+  const startFieldsRef = useRef(null);
+  const [resume, setResume] = useState(null);
+  useEffect(() => {
+    if (!resume || studioOpen || !startFieldsRef.current) return;
+    const next = resume;
+    setResume(null);
+    startFieldsRef.current(next.envelope, next.gate, next.signature);
+  }, [resume, studioOpen]);
   const [postSend, setPostSend] = useState(null);
   const [homeFilter, setHomeFilter] = useState(null);
   // «مظروف جديد»: the setup page's input (files handed from the desk, a draft, or a copy).
@@ -216,10 +226,21 @@ export default function FileSigning() {
         companyName={company.name}
         currentUser={{ ...currentUser, profile: seal }}
         ar={ar}
-        onClose={() => setStudioOpen(false)}
+        onClose={() => { pendingStart.current = null; setStudioOpen(false); }}
         onSaved={(saved) => {
           applySavedSeal(saved);
           setStudioOpen(false);
+          const pending = pendingStart.current;
+          pendingStart.current = null;
+          if (pending) {
+            setResume({ envelope: pending.envelope, gate: pending.gate, signature: {
+              signatureUrl: saved.signatureUrl,
+              signatureRawUrl: saved.signatureRawUrl,
+              signatureVariant: saved.signatureVariant,
+              stampConfig: saved.stampConfig,
+              preview: saved.signatureUrl,
+            } });
+          }
         }}
       />
     );
@@ -278,7 +299,13 @@ export default function FileSigning() {
   };
 
   // Setup → field editor: the documents become one signing file, the recipients keep their order.
-  const startFields = async (envelope, gate) => {
+  const startFields = async (envelope, gate, signatureOverride = null) => {
+    if (gate.mode === "self" && !sealReady && !signatureOverride) {
+      // no saved signature: upload or draw it first, then the envelope continues by itself
+      pendingStart.current = { envelope, gate };
+      setStudioOpen(true);
+      return;
+    }
     setSetupBusy(true);
     setSetupError("");
     try {
@@ -292,7 +319,7 @@ export default function FileSigning() {
         file,
         sourceUrl: URL.createObjectURL(new Blob([bytes], { type: "application/pdf" })),
         templateId: setup?.templateId || "",
-        signature: sealSignature,
+        signature: signatureOverride || sealSignature,
         envelope: { ...envelope, templateId: setup?.templateId || "" },
         signers,
       });
@@ -303,6 +330,8 @@ export default function FileSigning() {
       setSetupBusy(false);
     }
   };
+
+  startFieldsRef.current = startFields;
 
   const saveDraft = (draft) => {
     const result = saveEnvelopeDraft(companyId, userId, draft);

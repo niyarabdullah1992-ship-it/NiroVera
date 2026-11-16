@@ -4,6 +4,8 @@ import { updateCompany } from "@/lib/store";
  * Grantable product sections — aligned with Layout sidebar labels & routes.
  * `employees` is not a nav item; it unlocks filling files in branch scope.
  */
+export { MANAGE_SECTIONS } from "./manageSections.js";
+
 export const SMART_DEPARTMENTS = [
   // Proof cycle — matches Layout category "daily"
   {

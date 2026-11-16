@@ -210,9 +210,12 @@ export function statutoryLeaveFloor(key, profile, onDate, requests) {
   const k = String(key || "").trim().toLowerCase();
   if (k === "annual") {
     const years = effectiveServiceYears(profile, requests, onDate);
-    return years >= 5
+    const law = years >= 5
       ? ruleValue("leave.annual.afterFiveYearsDays", onDate)
       : ruleValue("leave.annual.days", onDate);
+    // the contract may give more than the law (never less): what was written on hiring is the entitlement
+    const contract = Number(profile?.contractAnnualLeaveDays) || 0;
+    return Math.max(law, contract);
   }
   // Art. 151(1): twelve weeks. The sick/disabled-child month (151(2)) is its own leave type, never added here.
   if (k === "maternity") return ruleValue("leave.maternity.days", onDate);

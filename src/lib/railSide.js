@@ -8,6 +8,7 @@ const RailSideContext = React.createContext({
   route: "",
   explicit: "",
   resolved: "",
+  hasManage: false,
   setExplicit() {},
 });
 
@@ -19,7 +20,7 @@ export function routeRailSide(sides, activeKey, pathname) {
   return (sides || [])[0]?.id || "";
 }
 
-export function RailSideProvider({ routeSide = "", children }) {
+export function RailSideProvider({ routeSide = "", hasManage = false, children }) {
   const [explicit, setExplicitState] = useState("");
   useEffect(() => {
     if (explicit && explicit === routeSide) setExplicitState("");
@@ -28,10 +29,11 @@ export function RailSideProvider({ routeSide = "", children }) {
     route: routeSide || "",
     explicit,
     resolved: explicit || routeSide || "",
+    hasManage: Boolean(hasManage),
     setExplicit(side) {
       setExplicitState(side === "employee" || side === "manage" ? side : "");
     },
-  }), [routeSide, explicit]);
+  }), [routeSide, explicit, hasManage]);
   return React.createElement(RailSideContext.Provider, { value }, children);
 }
 
@@ -41,6 +43,11 @@ export function useExplicitRailSide() {
 
 export function useSetRailSide() {
   return useContext(RailSideContext).setExplicit;
+}
+
+/** Whether this person has a «الإدارة» side at all. */
+export function useHasManageSide() {
+  return useContext(RailSideContext).hasManage;
 }
 
 export function useRailSide() {

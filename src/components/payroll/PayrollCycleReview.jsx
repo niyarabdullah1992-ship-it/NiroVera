@@ -28,16 +28,27 @@ const STATE = {
   note: { dot: "#C8A45A", ink: "#F3E3BC", label: ["للنظر", "To look at"] },
   wait: { dot: "rgba(255,255,255,.3)", ink: "#A9CDB8", label: ["بانتظار ما قبلها", "Waiting"] },
 };
+const PHASES = [
+  { id: "prepare", ar: "تجهيز المسير", en: "Prepare the run", ids: ["att", "lines", "deduct", "gosi"] },
+  { id: "approve", ar: "المراجعة والاعتماد", en: "Review and approve", ids: ["wpscheck", "review", "approve"] },
+  { id: "pay", ar: "الصرف وحماية الأجور", en: "Pay and wage protection", ids: ["wps"] },
+];
 const FLAG = { big: ["تغيّر أكثر من 10٪", "Moved over 10%", "warn"], new: ["جديد", "New", "ok"], left: ["خرج", "Left", "bad"], zero: ["صافٍ صفر", "Zero net", "bad"] };
 
 const th = { fontSize: 11, fontWeight: 600, color: "var(--nv-muted)", padding: "8px 12px", textAlign: "start", background: "var(--nv-soft, #F6F8FA)", borderBottom: "1px solid var(--nv-line2, #EEF2F7)", whiteSpace: "nowrap" };
 const td = { fontSize: 12, padding: "9px 12px", borderBottom: "1px solid var(--nv-line2, #EEF2F7)", textAlign: "start", color: "var(--nv-ink2)", verticalAlign: "top" };
 
-function Fold({ id, title, note, trailing, defaultOpen = true, children }) {
+export function Fold({ id, title, note, trailing, defaultOpen = false, children }) {
   // Follows the data until the reader toggles it: a section that fills after load opens itself.
   const [chosen, setChosen] = useState(null);
   const open = chosen ?? defaultOpen;
   const setOpen = (fn) => setChosen(fn(open));
+  // A cycle step that points here opens it first, then scrolls to it.
+  React.useEffect(() => {
+    const onOpen = (e) => { if (e.detail === id) setChosen(true); };
+    window.addEventListener("nv:open-fold", onOpen);
+    return () => window.removeEventListener("nv:open-fold", onOpen);
+  }, [id]);
   return (
     <section id={id} data-cycle-section={id} style={{ ...slab, overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} style={{ fontFamily: "inherit", border: "none", background: "transparent", padding: 0, textAlign: "start", cursor: "pointer" }}>
@@ -58,6 +69,7 @@ function Fold({ id, title, note, trailing, defaultOpen = true, children }) {
 }
 
 export default function PayrollCycleReview({
+  middle = null,
   ar = true,
   month,
   monthLabel,
@@ -134,8 +146,10 @@ export default function PayrollCycleReview({
 
   const go = (stage) => {
     if (stage.tab === "run") {
-      const target = stage.id === "review" ? "cycle-review" : stage.id === "wpscheck" ? "cycle-wps" : "";
-      if (target) document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const target = stage.id === "review" ? "cycle-review" : stage.id === "wpscheck" ? "cycle-wps" : stage.id === "approve" ? "cycle-approve" : "";
+      if (!target) return;
+      window.dispatchEvent(new CustomEvent("nv:open-fold", { detail: target }));
+      window.setTimeout(() => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
       return;
     }
     onGo?.(stage.tab);
@@ -172,34 +186,54 @@ export default function PayrollCycleReview({
             </span>
           ))}
         </div>
-        <ol data-cycle-stages="1" style={{ listStyle: "none", margin: 0, padding: "12px 0 0", borderTop: `1px solid ${DK.line}`, display: "grid", gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))`, gap: 6 }} className="nv-cycle-stages">
-          {stages.map((s, i) => {
-            const st = STATE[s.state];
-            const on = s.id === currentId;
+        {/* Three phases instead of eight boxes: prepare · review and approve · pay. Each lists only its own checks. */}
+        <div data-cycle-phases="1" className="nv-cycle-phases" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, paddingTop: 12, borderTop: `1px solid ${DK.line}` }}>
+          {PHASES.map((ph, pi) => {
+            const subs = ph.ids.map((id) => stages.find((x) => x.id === id)).filter(Boolean);
+            const open = subs.filter((x) => x.state === "todo" || x.state === "note");
+            const state = subs.every((x) => x.state === "done") ? "done"
+              : subs.every((x) => x.state === "wait") ? "wait"
+              : open.some((x) => x.state === "todo") ? "todo" : open.length ? "note" : "done";
+            const st = STATE[state];
+            const here = subs.some((x) => x.id === currentId);
+            const first = open[0] || subs.find((x) => x.state !== "done") || subs[0];
+            const summary = state === "done" ? (ar ? "مكتملة" : "Done")
+              : state === "wait" ? (ar ? "بعد ما قبلها" : "After the previous phase")
+              : (ar ? `${open.length} ${open.length === 1 ? "أمر يحتاج نظرة" : "أمور تحتاج نظرة"}` : `${open.length} to look at`);
             return (
-              <li key={s.id} data-stage={s.id} data-state={s.state}>
-                <button
-                  type="button"
-                  onClick={() => go(s)}
-                  style={{ fontFamily: "inherit", width: "100%", height: "100%", textAlign: "start", display: "flex", flexDirection: "column", gap: 5, padding: "9px 10px", borderRadius: 10, cursor: "pointer", border: `1px solid ${on ? DK.gold : "rgba(255,255,255,.16)"}`, background: on ? "rgba(200,164,90,.16)" : "rgba(255,255,255,.05)", color: "#fff" }}
-                >
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    <span aria-hidden style={{ width: 18, height: 18, borderRadius: 999, background: s.state === "done" ? st.dot : "transparent", border: `2px solid ${st.dot}`, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#0B3D27", flexShrink: 0, boxSizing: "border-box" }}>
-                      {s.state === "done" ? <Check size={11} strokeWidth={3} /> : <span style={{ ...MONO, fontSize: 9.5, color: st.ink }}>{i + 1}</span>}
-                    </span>
-                    <strong style={{ fontSize: 12, lineHeight: 1.3 }}>{ar ? s.ar : s.en}</strong>
+              <div key={ph.id} data-phase={ph.id} data-state={state} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 12px 10px", borderRadius: 12, border: `1px solid ${here ? DK.gold : "rgba(255,255,255,.16)"}`, background: here ? "rgba(200,164,90,.14)" : "rgba(255,255,255,.05)" }}>
+                <button type="button" onClick={() => first && go(first)} style={{ fontFamily: "inherit", border: "none", background: "transparent", color: "#fff", padding: 0, cursor: "pointer", textAlign: "start", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span aria-hidden style={{ width: 24, height: 24, borderRadius: 999, flexShrink: 0, boxSizing: "border-box", display: "inline-flex", alignItems: "center", justifyContent: "center", background: state === "done" ? st.dot : "transparent", border: `2px solid ${st.dot}`, color: "#0B3D27" }}>
+                    {state === "done" ? <Check size={13} strokeWidth={3} /> : <span style={{ ...MONO, fontSize: 11, color: st.ink }}>{pi + 1}</span>}
                   </span>
-                  <span style={{ fontSize: 11, color: s.late ? "#F4A3A3" : st.ink, lineHeight: 1.4 }}>{ar ? s.noteAr : s.noteEn}</span>
+                  <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                    <strong style={{ fontSize: 14 }}>{ar ? ph.ar : ph.en}</strong>
+                    <span style={{ fontSize: 11.5, color: st.ink }}>{summary}</span>
+                  </span>
                 </button>
-              </li>
+                <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                  {subs.map((x) => {
+                    const xs = STATE[x.state];
+                    return (
+                      <li key={x.id} data-stage={x.id} data-state={x.state}>
+                        <button type="button" onClick={() => go(x)} style={{ fontFamily: "inherit", width: "100%", border: "none", background: "transparent", color: "#fff", padding: "3px 0", cursor: "pointer", textAlign: "start", display: "flex", alignItems: "baseline", gap: 6, fontSize: 12 }}>
+                          <span aria-hidden style={{ color: xs.dot, width: 12, flexShrink: 0 }}>{x.state === "done" ? "✓" : "•"}</span>
+                          <span style={{ flex: "1 1 auto", minWidth: 0 }}>{ar ? x.ar : x.en}</span>
+                          {x.state === "done" ? null : <span style={{ fontSize: 11, color: x.late ? "#F4A3A3" : xs.ink, whiteSpace: "nowrap" }}>{ar ? x.noteAr : x.noteEn}</span>}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             );
           })}
-        </ol>
+        </div>
         {current ? (
           <div data-cycle-next="1" className="nv-cycle-next">
             <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
               <span style={{ fontSize: 11.5, color: DK.faint }}>
-                {ar ? `الخطوة ${currentIndex + 1} من ${stages.length} — المطلوب منك الآن` : `Step ${currentIndex + 1} of ${stages.length} — what's needed now`}
+                {ar ? "المطلوب منك الآن" : "What's needed now"}
               </span>
               <strong style={{ fontSize: 15, color: "#fff" }}>
                 {ar ? current.ar : current.en}
@@ -212,6 +246,9 @@ export default function PayrollCycleReview({
           </div>
         ) : null}
       </section>
+
+      {/* The run itself (totals, approval, the lines) sits right under the cycle; the checks below stay folded. */}
+      {middle ? <div id="cycle-approve" style={{ scrollMarginTop: 80 }}>{middle}</div> : null}
 
       {/* 1. Against last month. */}
       <Fold
@@ -271,7 +308,6 @@ export default function PayrollCycleReview({
         title={ar ? "أثر الإجازات والإصابات على المسير" : "What leave and injury do to the run"}
         note={ar ? "تدخل تلقائياً: المرضية بشرائحها، والسنوية بأجرها المقدّم، وإصابات العمل، والإجازة بلا أجر أجراً غير مستحق." : "Applied automatically: sick bands, annual leave paid in advance, work injuries, and unpaid leave as wage not due."}
         trailing={<span style={chip(effects.length ? "warn" : "mute")}>{ar ? `${effects.length} موظفاً` : `${effects.length} people`}</span>}
-        defaultOpen={effects.length > 0}
       >
         {!effects.length ? (
           <p style={{ margin: 0, padding: "12px 18px 16px", fontSize: 12, color: "var(--nv-muted)" }}>{ar ? "لا إجازات معتمدة ولا إصابات في هذا الشهر." : "No approved leave or injuries this month."}</p>
@@ -298,7 +334,6 @@ export default function PayrollCycleReview({
         id="cycle-allowances"
         title={ar ? "البدلات بأنواعها حسب الفرع" : "Allowances by kind, per branch"}
         note={ar ? "كل نوع بدل في عمود، مع تنبيه للفرع الذي فيه موظف بالتزام موقع غير مغطّى (146–148)." : "One column per allowance kind, with a flag for a branch where someone has an uncovered site duty (146–148)."}
-        defaultOpen={false}
       >
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
@@ -344,7 +379,6 @@ export default function PayrollCycleReview({
             <span style={chip(wps.unpaid ? "warn" : "ok")}>{ar ? `${wps.unpaid} لم يُدفع` : `${wps.unpaid} unpaid`}</span>
           </span>
         )}
-        defaultOpen={wps.blocked > 0 || wps.noted > 0}
       >
         {wps.rows.filter((r) => r.blockers.length || r.notes.length).length ? (
           <ol style={{ listStyle: "none", margin: 0, padding: "4px 18px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
@@ -366,7 +400,6 @@ export default function PayrollCycleReview({
         id="cycle-cost"
         title={ar ? "تكلفة المنشأة لهذا الشهر" : "What this month costs the establishment"}
         note={ar ? "الإجمالي + حصة صاحب العمل في التأمينات + مخصص مكافأة نهاية الخدمة الشهري (نصف شهر عن كل سنة من الخمس الأولى ثم شهر — المادة 84). للإدارة فقط." : "Gross + employer GOSI + the monthly end-of-service accrual (half a month a year for the first five, then a month — Art. 84). Management only."}
-        defaultOpen={false}
       >
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
@@ -406,7 +439,6 @@ export default function PayrollCycleReview({
         return (
           <Fold
             id="pay-equity"
-            defaultOpen={equity.items.length > 0}
             title={ar ? "مراجعة تكافؤ الأجور (المادة 61/4)" : "Pay-equity review (Art. 61(4))"}
             note={ar
               ? `في الوظيفة والدرجة نفسيهما: فرق الوسيط بين الفئات فوق ${Math.round(PAY_EQUITY_THRESHOLD * 100)}٪ يُراجَع — لا يمنع المسير، ويُتحقق أنه لسبب مشروع لا تمييز.`

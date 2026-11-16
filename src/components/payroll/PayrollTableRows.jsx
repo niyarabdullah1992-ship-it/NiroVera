@@ -3,7 +3,7 @@ import { AlertCircle, MapPin } from "lucide-react";
 import PayrollRow from "@/components/payroll/PayrollRow";
 import { ACCENT, MUTED, NAVY, BORDER, SURFACE } from "@/lib/platformStyles";
 
-export default function PayrollTableRows({ items, stations, getStationId, employeeForItem, ar, payday = null, onChange, onTogglePaid, onPayslip, onDeductions }) {
+export default function PayrollTableRows({ items, stations, getStationId, employeeForItem, ar, payday = null, payLocked = false, onChange, onTogglePaid, onPayslip, onDeductions }) {
   const groups = stations.map((station) => ({
     id: station.id,
     name: station.name,
@@ -42,6 +42,7 @@ export default function PayrollTableRows({ items, stations, getStationId, employ
           employee={employeeForItem(item)}
           ar={ar}
           payday={payday}
+          payLocked={payLocked}
           onChange={(field, value) => onChange(item.id, field, value)}
           onTogglePaid={(paid) => onTogglePaid(item, paid)}
           onPayslip={() => onPayslip(item)}

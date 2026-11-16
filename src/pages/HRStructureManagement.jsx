@@ -102,7 +102,7 @@ export default function HRStructureManagement() {
       });
       return;
     }
-    setHire({ stationId: detail.stationId || "", seatId: detail.seatId || "", listId: detail.listId || "", listName: detail.listName || "" });
+    setHire({ stationId: detail.stationId || "", seatId: detail.seatId || "", listId: detail.listId || "", listName: detail.listName || "", hrBranchId: detail.hrBranchId || "" });
   }, [data?.stations, ar]);
   useEffect(() => {
     if (!searchParams.get("hire")) return;
@@ -192,7 +192,7 @@ export default function HRStructureManagement() {
                   </button>
                 ) : null}
                 <button type="button" onClick={() => openHire({})} style={quickBtn(true)}>
-                  {ar ? "＋ توظيف" : "+ Hire"}
+                  {ar ? "＋ تعيين" : "+ Assign"}
                 </button>
               </div>
             ) : null}
@@ -267,6 +267,7 @@ export default function HRStructureManagement() {
         seatId={hire?.seatId || ""}
         listId={hire?.listId || ""}
         listName={hire?.listName || ""}
+        hrBranchId={hire?.hrBranchId || ""}
         onClose={() => setHire(null)}
         onNeedAccess={() => {
           setHire(null);

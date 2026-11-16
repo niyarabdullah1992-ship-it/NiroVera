@@ -95,6 +95,7 @@ export default function MyPayslipArchive({ employee, employeeIds = [], runs = []
 
   return (
     <RecordSmartArchive
+      hideListActions
       items={items}
       lang={lang}
       dir={ar ? "rtl" : "ltr"}

@@ -48,7 +48,8 @@ import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { BORDER, CARD, MUTED, NAVY } from "@/lib/platformStyles";
 import SectionBackLink from "@/components/shared/SectionBackLink";
 import IdentityCard from "@/components/shared/IdentityCard";
-import { applyDueLaborRules, openDueNightRotateCycles, patchEmployeeFile, updateCompany } from "@/lib/store";
+import { appendEmployeeFileLog, applyDueLaborRules, openDueNightRotateCycles, patchEmployeeFile, updateCompany } from "@/lib/store";
+import { describeFileChanges, fileChangeLogText } from "@/lib/fileChangeTrail";
 import { checkFileChangeConsentGate, necessityDaysUsed, NECESSITY_CAP_DAYS, spendConsent } from "@/lib/consentEffects";
 import { toast } from "@/components/ui/use-toast";
 import PlatformDateField from "@/components/shared/PlatformDateField";
@@ -200,7 +201,18 @@ export default function EmployeeProfile() {
   const saveEdit = () => {
     if (!canEditFile || !dirty) return;
     // «الإجازات والراحة في العقد» saves with the file — one save in the top bar.
-    if (leaveDraft) applyContractLeave(company.id, employee.id, leaveDraft);
+    if (leaveDraft) {
+      applyContractLeave(company.id, employee.id, leaveDraft);
+      appendEmployeeFileLog(company.id, employee.id, {
+        text: ar ? "تعديل الإجازات والراحة في العقد" : "Contract leave and rest updated",
+        by: currentUser.name || currentUser.email,
+        kind: ar ? "الإجازات" : "Leave",
+        changes: [
+          ...(leaveDraft.annual != null ? [{ label: ar ? "الإجازة السنوية" : "Annual leave", from: "", to: ar ? `${leaveDraft.annual} يوماً` : `${leaveDraft.annual} days` }] : []),
+          ...(leaveDraft.restCount != null ? [{ label: ar ? "أيام الراحة الأسبوعية" : "Weekly rest days", from: "", to: String(leaveDraft.restCount) }] : []),
+        ],
+      });
+    }
     if (!fieldsDirty) {
       setEditing(false);
       setDraft({});
@@ -251,12 +263,16 @@ export default function EmployeeProfile() {
       profile,
       name,
       phone,
-      log: {
-        text: ar ? "تعديل بيانات الملف" : "File fields updated",
-        by: currentUser.name || currentUser.email,
-        at: new Date().toISOString().slice(0, 16).replace("T", " "),
-        dot: "#3C7D50",
-      },
+      log: (() => {
+        const changes = describeFileChanges(seed, { ...profile, ...(name != null ? { name } : {}), ...(phone != null ? { phone } : {}) }, ar);
+        return {
+          text: fileChangeLogText(changes, ar),
+          by: currentUser.name || currentUser.email,
+          at: new Date().toISOString().slice(0, 16).replace("T", " "),
+          dot: "#3C7D50",
+          changes,
+        };
+      })(),
     });
     if (consentGate.spend.length || consentGate.necessity) {
       updateCompany(company.id, (d) => {
@@ -493,7 +509,7 @@ export default function EmployeeProfile() {
         )}
         {tab === "contract" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {canEditContract || isSelf ? <ContractTab employee={employee} companyId={company.id} canEdit={canEditContract && !isSelf} viewerId={currentUser.id} /> : null}
+            {canEditContract || isSelf ? <ContractTab employee={employee} companyId={company.id} canEdit={canEditContract && (!isSelf || isCompanyOwner(currentUser, data))} viewerId={currentUser.id} viewerName={currentUser.name || currentUser.email || ""} /> : null}
             {canEditContract || isSelf ? <ContractLawPanel employee={employee} ar={ar} lane={isSelf ? "employee" : "manage"} /> : null}
             {/* The leaving worker's read-only twin of «أنظمة الوزارة — نهاية الخدمة» (the case view sits in OffboardingTab). */}
             <HoursOnFile employee={employee} data={data} lang={lang} inContract />

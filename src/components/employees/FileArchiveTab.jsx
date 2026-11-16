@@ -7,6 +7,8 @@ import { printSheet } from "@/lib/printSheet";
 import { regulationOf } from "@/lib/workRegulation";
 import SanctionsElsewhereLink from "@/components/employees/SanctionsElsewhereLink";
 import StatusFilterPills from "@/components/shared/StatusFilterPills";
+import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
+import { fileChangeArchiveItems } from "@/lib/fileChangeTrail";
 
 const MUTED = "var(--nv-ink3)";
 const INK = "var(--nv-ink)";
@@ -60,8 +62,65 @@ function MissingLine({ row, ar }) {
   );
 }
 
-/** «أرشيف الملف»: the documents on this file, grouped by type. Edits stay on the file trail, not here. */
-export default function FileArchiveTab({ employee, data, isSelf, managerView, ar }) {
+/** «سجل التعديلات»: every change on the file — what, who, and the day, month and year — in the shared archive. */
+function FileChangeTrail({ employee, isSelf, ar }) {
+  const items = useMemo(() => fileChangeArchiveItems(employee, ar), [employee, ar]);
+  return (
+    <RecordSmartArchive
+      items={items}
+      lang={ar ? "ar" : "en"}
+      dir={ar ? "rtl" : "ltr"}
+      kicker={ar ? "سجل زمني" : "Timeline"}
+      title={isSelf ? (ar ? "التعديلات على ملفي" : "Changes on my file") : (ar ? "سجل تعديلات الملف" : "File change log")}
+      subtitle={ar
+        ? `${items.length} تحديث على الملف — ما الذي تغيّر، ومن قام به، وفي أي يوم وشهر وسنة. ما يُسجَّل في الأقسام الأخرى يبقى فيها. لا يُحذف منه شيء.`
+        : `${items.length} changes — what changed, who did it, and when. Nothing is deleted.`}
+      emptyLabel={ar ? "لا تعديلات مسجّلة على الملف بعد." : "No changes recorded on the file yet."}
+      searchPlaceholder={ar ? "ابحث في التعديلات…" : "Search changes…"}
+      exportName={ar ? `سجل-تعديلات-${employee?.name || "الملف"}` : `file-changes-${employee?.id || ""}`}
+      renderOpen={(item) => (
+        <div data-file-change={item.id} style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 10, borderTop: "1px solid var(--nv-line)" }}>
+          <span style={{ fontSize: 12, color: MUTED }}>{ar ? "قام به" : "By"}: <strong style={{ color: INK }}>{item.by}</strong></span>
+          {item.changes?.length ? (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ color: MUTED, textAlign: ar ? "right" : "left" }}>
+                  <th style={{ padding: "4px 6px", fontWeight: 600 }}>{ar ? "الحقل" : "Field"}</th>
+                  <th style={{ padding: "4px 6px", fontWeight: 600 }}>{ar ? "قبل" : "Before"}</th>
+                  <th style={{ padding: "4px 6px", fontWeight: 600 }}>{ar ? "بعد" : "After"}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {item.changes.map((c) => (
+                  <tr key={c.label} style={{ borderTop: "1px solid var(--nv-line)" }}>
+                    <td style={{ padding: "5px 6px", color: INK, fontWeight: 600 }}>{c.label}</td>
+                    <td style={{ padding: "5px 6px", color: MUTED }}>{c.from || (c.to ? "—" : (ar ? "مخفي" : "Hidden"))}</td>
+                    <td style={{ padding: "5px 6px", color: INK }}>{c.to || (c.from ? "—" : (ar ? "مخفي" : "Hidden"))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : <span style={{ fontSize: 12, color: MUTED }}>{ar ? "لا تفاصيل حقول لهذا الإجراء." : "No field details for this action."}</span>}
+        </div>
+      )}
+    />
+  );
+}
+
+/**
+ * «أرشيف الملف»: the updates made to this employee's file only — what changed, who, and when.
+ * Records of other sections (requests, sanctions, letters, custody) stay in those sections.
+ */
+export default function FileArchiveTab({ employee, isSelf, ar }) {
+  return (
+    <div data-file-archive="1" className="nv-list-stack">
+      <FileChangeTrail employee={employee} isSelf={isSelf} ar={ar} />
+    </div>
+  );
+}
+
+/** The documents gathered on the file — kept for reuse; the archive tab shows file updates only. */
+export function FileDocsArchive({ employee, data, isSelf, managerView, ar }) {
   const [group, setGroup] = useState("all");
   const [query, setQuery] = useState("");
   const archive = useMemo(() => buildFileArchive({

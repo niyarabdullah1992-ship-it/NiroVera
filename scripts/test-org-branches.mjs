@@ -92,14 +92,16 @@ assert.equal(B("east").flag.kind, "MANAGER_VACANT", "a region without a manager 
 assert.equal(B("jed").flag.kind, "FINDINGS", "a seat open past the alert is a health finding on its branch");
 assert.equal(B("dmm").flag, null, "a staffed branch with nothing wrong carries no chip");
 
-/* «أشخاص الفرع»: the manager's people, never a person who heads a branch on screen */
-const jedPeople = tree.nodes.get(branchPeopleKey("jed"));
-assert.ok(jedPeople && jedPeople.kind === "people");
-const names = jedPeople.childKeys.map((k) => tree.nodes.get(k).name || "شاغر");
+/* the manager's people hang straight under the branch card — no «أشخاص الفرع» card in between */
+assert.ok(![...tree.nodes.values()].some((n) => n.kind === "people"), "no people group card");
+assert.equal(tree.nodes.get(branchPeopleKey("jed")), undefined);
+const names = B("jed").childKeys.map((k) => tree.nodes.get(k)).filter((n) => n.kind === "person").map((n) => n.name || "شاغر");
 assert.ok(names.includes("فني جدة") && names.includes("مشغل جدة"));
-assert.ok(!B("west").childKeys.includes(branchPeopleKey("west")) || !tree.nodes.get(branchPeopleKey("west")).childKeys.some((k) => tree.nodes.get(k).employeeId === "bj"),
-  "the Jeddah manager is on the Jeddah card, not under the region's people");
-const dmmPeople = tree.nodes.get(branchPeopleKey("dmm")).childKeys.map((k) => tree.nodes.get(k).employeeId);
+assert.ok(!B("west").childKeys.some((k) => tree.nodes.get(k).employeeId === "bj"),
+  "the Jeddah manager is on the Jeddah card, not under the region");
+const kids = B("dmm").childKeys.map((k) => tree.nodes.get(k));
+assert.ok(kids.findIndex((n) => n.kind === "person") > kids.findIndex((n) => n.kind === "branch"), "sub-branches before people");
+const dmmPeople = kids.filter((n) => n.kind === "person").map((n) => n.employeeId);
 assert.ok(dmmPeople.includes("d1"));
 const allPersonKeys = [...tree.nodes.values()].filter((n) => n.kind === "person").map((n) => n.key);
 assert.equal(new Set(allPersonKeys).size, allPersonKeys.length, "nobody appears twice");
@@ -112,12 +114,12 @@ assert.equal(B("jed").isMe, true);
 /* smart default: HQ and regions open (every branch on screen), people folded */
 const open = defaultBranchExpanded(tree);
 assert.ok(open.has(branchKey("hq")) && open.has(branchKey("west")) && open.has(branchKey("east")));
-assert.ok(![...open].some((k) => k.startsWith("bp:")), "people stay folded");
+assert.ok(!open.has(branchKey("jed")), "a leaf branch stays folded");
 const geo = { cardW: 248, cardH: 112, gap: 12, rowGap: 32, indent: 40, maxCols: 4 };
 const layout = layoutOrgTree(tree, open, geo);
 const shown = new Set(layout.cards.map((c) => c.key));
 ["hq", "west", "east", "jed", "dmm", "kfj", "lone", "hr"].forEach((id) => assert.ok(shown.has(branchKey(id)), `${id} is on screen`));
-assert.ok(!layout.cards.some((c) => tree.nodes.get(c.key)?.kind === "person"), "no person card until a branch's people are opened");
+assert.ok(!layout.cards.some((c) => tree.nodes.get(c.key)?.employeeId === "j1"), "a folded branch's people stay off screen");
 for (let i = 0; i < layout.cards.length; i += 1) {
   for (let j = i + 1; j < layout.cards.length; j += 1) {
     const a = layout.cards[i];
@@ -128,7 +130,6 @@ for (let i = 0; i < layout.cards.length; i += 1) {
 
 /* opening a branch's people keeps every other branch open */
 let more = toggleExpanded(open, branchKey("jed"));
-more = toggleExpanded(more, branchPeopleKey("jed"));
 more = toggleExpanded(more, branchKey("dmm"));
 const l2 = layoutOrgTree(tree, more, geo);
 assert.ok(l2.cards.some((c) => tree.nodes.get(c.key)?.employeeId === "j1"), "Jeddah's people are on screen");
@@ -144,15 +145,15 @@ const mine = buildBranchTree(data, { viewerId: "j1", scope: "mine", day: DAY, he
 const mineBranches = [...mine.nodes.values()].filter((n) => n.kind === "branch").map((n) => n.stationId).sort();
 assert.deepEqual(mineBranches, ["hq", "jed", "west"], "HQ → region → their branch");
 assert.ok([...mine.nodes.values()].every((n) => n.kind !== "branch" || (!n.counted && !n.flag)), "no headcounts or flags");
-assert.ok(mine.nodes.has(branchPeopleKey("jed")), "their own branch's people (pruned)");
-assert.ok(!mine.nodes.has(branchPeopleKey("west")), "no other team's people");
+assert.ok(mine.nodes.get(branchKey("jed")).childKeys.some((k) => mine.nodes.get(k)?.kind === "person"), "their own branch's people (pruned)");
+assert.ok(!mine.nodes.get(branchKey("west")).childKeys.some((k) => mine.nodes.get(k)?.kind === "person"), "no other team's people");
 const site = buildBranchTree(data, { viewerId: "p1", scope: "mine", day: DAY });
 assert.equal(site.viewerKey, branchKey("dmm"), "a site worker's branch is the branch that owns the site");
 
 /* the branch menu: existing actions only, with the named block */
 const owner = data.employees[0];
 const ids = orgBranchActions(B("jed"), { canWrite: true, data, user: owner }).map((a) => a.id);
-assert.deepEqual(ids, ["branch", "people", "moveUnder", "addSeat", "health", "authority"]);
+assert.deepEqual(ids, ["branch", "people", "moveUnder", "addSeat", "authority"]);
 assert.ok(!orgBranchActions(B("hq"), { canWrite: true, data, user: owner }).some((a) => a.id === "moveUnder"), "HQ never moves");
 const east = orgBranchActions(B("east"), { canWrite: true, data, user: owner });
 const hire = east.find((a) => a.id === "hireManager");

@@ -3,7 +3,6 @@ import CollapsibleItemCard, { useCollapsibleItems } from "@/components/shared/Co
 import EscalationLadder from "@/components/shared/EscalationLadder";
 import { voiceLadderSteps, voiceLadderWindow } from "@/components/complaints/voiceLadder";
 import VoiceAuditTrail from "@/components/complaints/VoiceAuditTrail";
-import VoiceRelatedLinks from "@/components/complaints/VoiceRelatedLinks";
 import { voicePublicId } from "@/lib/voiceBoard";
 
 export function voicePillOf(card, ar) {
@@ -77,7 +76,6 @@ export default function VoiceMineBoard({ cards = [], chain = [], ar, onEscalate,
               </button>
             ) : null}
             <VoiceAuditTrail events={card.audit} ar={ar} />
-            <VoiceRelatedLinks links={card.related} ar={ar} />
           </CollapsibleItemCard>
         );
       })}

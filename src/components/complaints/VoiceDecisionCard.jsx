@@ -2,7 +2,6 @@ import EscalationLadder from "@/components/shared/EscalationLadder";
 import { voiceLadderSteps, voiceLadderWindow } from "@/components/complaints/voiceLadder";
 import React from "react";
 import VoiceAuditTrail from "@/components/complaints/VoiceAuditTrail";
-import VoiceRelatedLinks from "@/components/complaints/VoiceRelatedLinks";
 import { voicePublicId } from "@/lib/voiceBoard";
 
 function stepHead(n, label) {
@@ -105,7 +104,6 @@ export default function VoiceDecisionCard({ card, ar, note, onNote, noteReady, o
             {ar ? "كل إجراء يُقيَّد في مسار القرار بوقته. صاحب الصوت المسمّى يرى من قرّر؛ والبلاغ المجهول يُعرض مساره بلا اسم المراجع." : "Every action is written on the decision path. The named author sees who ruled; an anonymous path hides the reviewer's name."}
           </span>
           <VoiceAuditTrail events={card.audit} ar={ar} />
-          <VoiceRelatedLinks links={card.related} ar={ar} />
         </div>
       </div>
     </article>

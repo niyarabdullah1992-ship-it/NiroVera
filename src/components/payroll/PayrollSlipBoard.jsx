@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Check, Printer, Shield } from "lucide-react";
+import { Check, Shield } from "lucide-react";
 import { article93MaxDeduction, checkArticle93Gate, gosiLine, lineComponents } from "@/lib/payrollDerivations";
 import { companyPayday } from "@/lib/payrollLaw";
 import { slipRowHint } from "@/lib/rightHints.pay";
@@ -489,7 +489,7 @@ const money = (n, ar) => `${sarDigits(n)} ${ar ? "ر.س" : "SAR"}`;
  * the net and three figures, then one line per component with its source and «حقك». No selection,
  * no pager; zero lines stay out — a figure that is nothing is not a line on a payslip.
  */
-function PersonalSlipCard({ ar, item, monthLabel, parts, gross, withheld, rows, hintCtx, onExport }) {
+function PersonalSlipCard({ ar, item, monthLabel, parts, gross, withheld, rows, hintCtx }) {
   const shown = rows.filter((row) => row.info || row.blocked || Math.abs(Number(row.amount) || 0) > 0);
   const hidden = rows.length - shown.length;
   return (
@@ -503,10 +503,6 @@ function PersonalSlipCard({ ar, item, monthLabel, parts, gross, withheld, rows, 
           <span style={{ marginInlineStart: "auto", display: "inline-flex", alignItems: "center", height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 700, background: item.paid ? "rgba(255,255,255,.14)" : "rgba(200,164,90,.18)", color: item.paid ? "#fff" : "#F3E3BC", border: `1px solid ${item.paid ? "rgba(255,255,255,.35)" : "rgba(200,164,90,.5)"}` }}>
             {item.paid ? (ar ? "صُرفت" : "Paid") : (ar ? "من المسير · الحضور مقفل" : "From the run · attendance locked")}
           </span>
-          <button type="button" data-payslip-print="1" onClick={() => onExport?.(item)} style={{ fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,.28)", background: "rgba(255,255,255,.06)", color: "#fff", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
-            <Printer size={14} aria-hidden />
-            {ar ? "حفظ PDF" : "Save PDF"}
-          </button>
         </div>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 18, flexWrap: "wrap" }}>
           <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>

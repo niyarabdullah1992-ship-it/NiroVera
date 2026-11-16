@@ -1566,9 +1566,24 @@ export function patchEmployeeFile(companyId, employeeId, { profile, phone, name,
     }
     if (phone != null) emp.phone = phone;
     if (name != null && String(name).trim()) emp.name = String(name).trim();
-    if (log) emp.fileLog = [log, ...(emp.fileLog || [])].slice(0, 40);
+    if (log) emp.fileLog = [log, ...(emp.fileLog || [])].slice(0, 200);
   });
   return { ok: true };
+}
+
+/** One line on the file's change trail («سجل التعديلات» in أرشيف الملف): what, who, when. */
+export function appendEmployeeFileLog(companyId, employeeId, log) {
+  if (!companyId || !employeeId || !log?.text) return;
+  updateCompany(companyId, (d) => {
+    const emp = (d.employees || []).find((e) => String(e.id) === String(employeeId));
+    if (!emp) return;
+    emp.fileLog = [{
+      at: new Date().toISOString().slice(0, 16).replace("T", " "),
+      dot: "#3C7D50",
+      ...log,
+      by: log.by || (auditActor && auditActor !== "system" ? auditActor : ""),
+    }, ...(emp.fileLog || [])].slice(0, 200);
+  });
 }
 
 /** Write due Article 55 conversion and statutory leave floors onto one employee file. */

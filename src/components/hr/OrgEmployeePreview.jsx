@@ -1279,7 +1279,7 @@ function VacantPositionDrawer({ node, data, ar, canWrite, companyId, onHire, onC
               onClick={() => onHire?.({ stationId: node?.stationId || "", seatId: node?.seatId || "" })}
               style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 34, borderRadius: 8, background: "var(--nv-btn-fill)", color: "var(--nv-btn-ink, #fff)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid var(--nv-btn-fill)", fontFamily: "inherit" }}
             >
-              {ar ? "توظيف على هذه الوظيفة" : "Hire into this seat"}
+              {ar ? "تعيين على هذه الوظيفة" : "Assign to this seat"}
             </button>
           </div>
         ) : null}

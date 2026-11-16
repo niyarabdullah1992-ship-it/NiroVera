@@ -647,9 +647,33 @@ export function listBranchHrManagers(data) {
       && !isCompanyRootStation(station)
     ));
     if (managesField) return false;
-    if (employee.hrLevelId || employee.role === "hr_manager") return true;
-    return /م\.ب|موارد\s*بشر/i.test(hrTitle(employee, data));
+    return isBranchHrCandidate(employee, data);
   });
+}
+
+/** Anyone in the company can be appointed; HR people are listed first. */
+export function listBranchHrCandidates(data) {
+  const ceo = String((data?.stations || []).find((station) => isCompanyRootStation(station))?.managerId || "");
+  const all = (data?.employees || []).filter((employee) => {
+    if (!employee?.name || employee.role === "system" || employee.active === false) return false;
+    if (employee.profile?.employmentStatus === "terminated") return false;
+    if (String(employee.id) === ceo || isHrDirector(employee, data)) return false;
+    return !(data?.stations || []).some((station) => (
+      String(station.managerId || "") === String(employee.id)
+      && !isHrUnit(station)
+      && !isCompanyRootStation(station)
+    ));
+  });
+  const byName = (a, b) => String(a.name).localeCompare(String(b.name), "ar");
+  return {
+    hr: all.filter((employee) => isBranchHrCandidate(employee, data)).sort(byName),
+    company: all.filter((employee) => !isBranchHrCandidate(employee, data)).sort(byName),
+  };
+}
+
+function isBranchHrCandidate(employee, data) {
+  if (employee.hrLevelId || employee.role === "hr_manager") return true;
+  return /م\.ب|موارد\s*بشر/i.test(hrTitle(employee, data));
 }
 
 export function branchHrManager(data, stationId) {
@@ -902,6 +926,9 @@ export function hireFromSeat(companyId, input) {
       return;
     }
     const stationNode = ensureStationNode(data, seat.stationId);
+    // the access chosen in the hire card wins; the seat keeps it for the next holder
+    const chosenList = String(input?.listId || "").trim();
+    if (chosenList && packById(data, chosenList)) seat.listId = chosenList;
     const pack = packById(data, seat.listId);
     const permissions = pack?.permissions || {};
     const grade = gradeById(data, seat.gradeId);
@@ -1169,6 +1196,8 @@ export function placeExistingEmployee(companyId, employeeId, input) {
       error = "SEAT_TAKEN";
       return;
     }
+    const chosenList = String(input?.listId || "").trim();
+    if (chosenList && packById(data, chosenList)) seat.listId = chosenList;
     data.orgSeats.forEach((item) => {
       if (item.employeeId === employeeId && item.id !== seat.id) {
         item.employeeId = null;
@@ -1291,4 +1320,35 @@ export function inviteUrl(employeeId, token) {
   const url = new URL(`/app/employees/${employeeId}`, window.location.origin);
   if (token) url.searchParams.set("invite", token);
   return url.toString();
+}
+
+/**
+ * «حذف المنصب الشاغر»: a vacant seat leaves the structure. Seats that reported to it move up to its own
+ * parent. The HR director seat stays (the HR unit is fixed); an HR post removed here is not recreated.
+ */
+export function removeVacantSeat(companyId, seatId) {
+  const id = String(seatId || "").trim();
+  if (!companyId || !id) return { ok: false, error: "FIELDS" };
+  let error = "";
+  updateCompany(companyId, (data) => {
+    const seats = data.orgSeats || [];
+    const seat = seats.find((item) => String(item.id) === id);
+    if (!seat) { error = "MISSING"; return; }
+    if (seat.employeeId) { error = "FILLED"; return; }
+    if (seat.hrPost === "director") { error = "DIRECTOR"; return; }
+    seats.forEach((item) => {
+      if (String(item.reportsToSeatId || "") !== id) return;
+      item.reportsToSeatId = seat.reportsToSeatId || null;
+      if (!item.reportsToEmployeeId && seat.reportsToEmployeeId) item.reportsToEmployeeId = seat.reportsToEmployeeId;
+    });
+    data.orgSeats = seats.filter((item) => item !== seat);
+    if (seat.hrPost) {
+      data.dismissedHrPosts = [...new Set([...(data.dismissedHrPosts || []), id])];
+    }
+    const station = (data.stations || []).find((item) => String(item.id) === String(seat.stationId || ""));
+    appendOrgStructureEvent(data, { type: "seat", stationId: seat.stationId || "", stationName: station?.name || "", to: `حُذف المنصب الشاغر «${seat.title || "—"}»` });
+  });
+  if (error) return { ok: false, error };
+  logAudit(companyId, "org_seat_removed", id);
+  return { ok: true };
 }

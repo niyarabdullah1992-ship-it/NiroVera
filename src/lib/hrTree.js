@@ -64,7 +64,43 @@ export function isHrDirector(employee, data) {
   if (ceoId(data) === String(employee.id)) return false;
   const unit = hrUnitStation(data);
   if (unit && String(unit.managerId || "") === String(employee.id)) return true;
+  // one director: once the unit has a seated manager, a leftover title does not make a second
+  const seated = unit ? employeeById(data, unit.managerId) : null;
+  if (seated && seated.active !== false && seated.role !== "system" && String(seated.id) !== ceoId(data)) return false;
   return hrPostOf(employee, data) === "director";
+}
+
+export const HR_DIRECTOR_TITLE = "مدير الموارد البشرية";
+
+/**
+ * The HR unit changes hands: the outgoing director keeps working in HR as «مدير موارد بشرية»
+ * (free to serve branches), the incoming one takes the director title and seat mark.
+ */
+export function handOverHrDirector(data, previous, next) {
+  const retitle = (employee, title) => {
+    const seat = seatOf(data, employee.id);
+    if (seat) seat.title = title;
+    employee.profile = { ...(employee.profile || {}), position: title };
+    if (employee.position !== undefined) employee.position = title;
+    if (employee.jobTitle !== undefined) employee.jobTitle = title;
+    return seat;
+  };
+  if (previous?.id && String(previous.id) !== String(next?.id || "")) {
+    const seat = retitle(previous, BRANCH_HR_TITLE);
+    if (seat?.hrPost === "director") delete seat.hrPost;
+  }
+  if (next?.id) {
+    const before = String(seatOf(data, next.id)?.title || next.profile?.position || "").trim();
+    if (before && before !== HR_DIRECTOR_TITLE && next.hrTitleBefore === undefined) next.hrTitleBefore = before;
+    const seat = retitle(next, HR_DIRECTOR_TITLE);
+    if (seat) seat.hrPost = "director";
+    // a director does not also serve a branch
+    (data.stations || []).forEach((station) => {
+      if (String(station.hrManagerId || "") === String(next.id)) station.hrManagerId = null;
+    });
+    next.hrServesStationIds = [];
+    next.hrStationId = null;
+  }
 }
 
 export function servedStationIds(data, employeeId) {
@@ -84,7 +120,7 @@ export function servedStationIds(data, employeeId) {
     const sid = String(item || "").trim();
     if (!sid || seen.has(sid)) return;
     const station = (data?.stations || []).find((row) => String(row.id) === sid);
-    if (!station || isHrUnit(station) || isCompanyRootStation(station)) return;
+    if (!station || isHrUnit(station)) return;
     seen.add(sid);
     out.push(sid);
   });
@@ -141,6 +177,8 @@ export function hrSolidManager(employee, data) {
     const managerId = ceo && ceo !== String(employee.id) ? ceo : null;
     return { handled: true, managerId };
   }
+  // HR staff hired into a branch work under that branch's manager, like anyone else there.
+  if (!isRegionalHr(employee, data) && branchManagerOver(data, employee)) return { handled: false, managerId: null };
   const post = hrPostOf(employee, data);
   if (post === "recruitment" || post === "affairs") {
     const seat = seatOf(data, employee.id);
@@ -153,6 +191,19 @@ export function hrSolidManager(employee, data) {
   if (directorId && directorId !== String(employee.id)) return { handled: true, managerId: directorId };
   if (ceo && ceo !== String(employee.id)) return { handled: true, managerId: ceo };
   return { handled: true, managerId: null };
+}
+
+/** The manager of the field branch this person sits in, when there is one. */
+export function branchManagerOver(data, employee) {
+  const sid = String(employee?.stationId || "");
+  if (!sid) return "";
+  const station = (data?.stations || []).find((item) => String(item.id) === sid);
+  if (!station || isHrUnit(station) || isCompanyRootStation(station)) return "";
+  const managerId = String(station.managerId || "");
+  if (!managerId || managerId === String(employee.id)) return "";
+  // only when the seat was placed under that manager (hired into the branch under him)
+  const seat = seatOf(data, employee.id);
+  return String(seat?.reportsToEmployeeId || "") === managerId ? managerId : "";
 }
 
 /** Field staff never report to HR. Walk up to the first manager who is not HR staff. */
@@ -182,6 +233,8 @@ export function seatsOnHrUnit(employee, data) {
   if (!employee?.id || !isHrStaff(employee, data)) return false;
   if (ceoId(data) === String(employee.id)) return false;
   if (isRegionalHr(employee, data) && managesFieldStation(data, employee.id)) return false;
+  // HR staff a branch manager hired under him stay in that branch
+  if (!isRegionalHr(employee, data) && branchManagerOver(data, employee)) return false;
   return true;
 }
 
@@ -326,6 +379,9 @@ function upsertVacantPost(data, { hrPost, hrLeadId = "", reportsToEmployeeId = n
     ? findRegionalSeat(data, hrRegionId)
     : findPostSeat(data, hrPost, lead);
   if (!seat) {
+    // a post HR removed on purpose («حذف المنصب الشاغر») is not recreated
+    const wanted = hrRegionId ? `seat_hr_regional_${hrRegionId}` : (lead ? `seat_hr_${hrPost}_${lead}` : `seat_hr_${hrPost}`);
+    if ((data.dismissedHrPosts || []).includes(wanted)) return false;
     seat = {
       id: hrRegionId
         ? `seat_hr_regional_${hrRegionId}`
@@ -391,12 +447,35 @@ export function ensureHrPosts(data) {
   data.orgSeats = data.orgSeats || [];
   let changed = false;
   const titledDirector = holderOfPost(data, "director");
-  if (titledDirector && String(unit.managerId || "") !== String(titledDirector.id) && !managesFieldStation(data, titledDirector.id)) {
+  // a director chosen on the unit stands; the title only fills an empty seat
+  const seated = employeeById(data, unit.managerId);
+  const seatedOk = seated && seated.active !== false && seated.role !== "system" && String(seated.id) !== ceoId(data);
+  if (!seatedOk && titledDirector && String(unit.managerId || "") !== String(titledDirector.id) && !managesFieldStation(data, titledDirector.id)) {
     unit.managerId = titledDirector.id;
     changed = true;
   }
   const manager = employeeById(data, unit.managerId);
   const directorId = manager && isHrDirector(manager, data) ? String(manager.id) : "";
+  // one director: whoever sits on the unit carries the title; a former one stays in HR as «مدير موارد بشرية»
+  if (directorId) {
+    (data.employees || []).forEach((employee) => {
+      if (!employee?.id || String(employee.id) === directorId) return;
+      const seat = seatOf(data, employee.id);
+      const titled = /مديرة?\s+الموارد\s+البشرية/.test(hrTitleBlob(employee, data)) && !/م\.?\s*ب/.test(hrTitleBlob(employee, data));
+      if (seat?.hrPost !== "director" && !titled) return;
+      handOverHrDirector(data, employee, null);
+      changed = true;
+    });
+    const seat = seatOf(data, directorId);
+    const current = String(seat?.title || manager.profile?.position || "").trim();
+    if (current !== HR_DIRECTOR_TITLE && !/مديرة\s+الموارد\s+البشرية/.test(current)) {
+      handOverHrDirector(data, null, manager);
+      changed = true;
+    } else if (seat && seat.hrPost !== "director") {
+      seat.hrPost = "director";
+      changed = true;
+    }
+  }
   const ceo = ceoId(data) || null;
   const directorSeatId = "seat_hr_director";
 
@@ -555,17 +634,13 @@ export function linkBranchHr(data, stationId, employeeId) {
   if (!data || !sid || !eid) return { ok: false, error: "FIELDS" };
   const station = (data.stations || []).find((item) => String(item.id) === sid);
   const employee = employeeById(data, eid);
-  if (!station || isHrUnit(station) || isCompanyRootStation(station) || !employee || employee.active === false || employee.role === "system") {
+  if (!station || isHrUnit(station) || !employee || employee.active === false || employee.role === "system") {
     return { ok: false, error: "MISSING" };
   }
   if (String(station.unitKind || "") === "manager") return { ok: false, error: "NOT_BRANCH" };
   if (isHrDirector(employee, data)) return { ok: false, error: "DIRECTOR" };
   if (managesFieldStation(data, eid)) return { ok: false, error: "BRANCH_MANAGER" };
-  const allowed = /م\.?\s*ب|موارد\s*بشر/i.test(hrTitleBlob(employee, data))
-    || employee.role === "hr_manager"
-    || Boolean(employee.hrLevelId)
-    || servedStationIds(data, eid).length > 0;
-  if (!allowed) return { ok: false, error: "NOT_HR" };
+  if (ceoId(data) === eid) return { ok: false, error: "DIRECTOR" };
   const already = servedStationIds(data, eid);
   if (!already.includes(sid) && already.length >= HR_SPAN_MAX) return { ok: false, error: "HR_SPAN" };
   (data.employees || []).forEach((item) => {
@@ -576,6 +651,7 @@ export function linkBranchHr(data, stationId, employeeId) {
     if (String(item.hrStationId || "") === sid) item.hrStationId = null;
   });
   station.hrManagerId = eid;
+  promoteToBranchHrTitle(data, employee);
   const next = [...new Set([...already, sid])];
   employee.hrServesStationIds = next;
   employee.hrStationId = sid;
@@ -594,9 +670,51 @@ export function unlinkBranchHr(data, stationId) {
     }
     if (String(item.hrStationId || "") === sid) item.hrStationId = null;
   });
+  (data.employees || []).forEach((item) => {
+    if (item?.hrTitleBefore === undefined || servedStationIds(data, item.id).length) return;
+    restoreTitleBefore(data, item);
+  });
   return { ok: true };
 }
 
+/** A branch HR appointee is a manager, not an officer: «مدير موارد بشرية». The old title is kept to restore on removal. */
+export const BRANCH_HR_TITLE = "مدير موارد بشرية";
+
+/** Every person serving a branch as its HR manager carries «مدير موارد بشرية». */
+export function titleBranchHrManagers(data) {
+  let changed = false;
+  (data?.employees || []).forEach((employee) => {
+    if (!employee?.id || employee.active === false || isHrDirector(employee, data)) return;
+    if (!servedStationIds(data, employee.id).length) return;
+    if (promoteToBranchHrTitle(data, employee)) changed = true;
+  });
+  return changed;
+}
+
+function promoteToBranchHrTitle(data, employee) {
+  if (!employee) return false;
+  const seat = seatOf(data, employee.id);
+  const current = String(seat?.title || employee.profile?.position || employee.position || "").trim();
+  if (/^مدير(?:ة)?\s+(?:ال)?موارد\s+(?:ال)?بشرية/.test(current) || /م\.?\s*ب/.test(current)) return false;
+  if (employee.hrTitleBefore === undefined) employee.hrTitleBefore = current;
+  if (seat) seat.title = BRANCH_HR_TITLE;
+  employee.profile = { ...(employee.profile || {}), position: BRANCH_HR_TITLE };
+  if (employee.position !== undefined) employee.position = BRANCH_HR_TITLE;
+  return true;
+}
+
+function restoreTitleBefore(data, employee) {
+  const before = String(employee.hrTitleBefore || "").trim();
+  delete employee.hrTitleBefore;
+  if (!before) return;
+  const seat = seatOf(data, employee.id);
+  if (seat && seat.title === BRANCH_HR_TITLE) seat.title = before;
+  if (employee.profile?.position === BRANCH_HR_TITLE) employee.profile = { ...employee.profile, position: before };
+  if (employee.position === BRANCH_HR_TITLE) employee.position = before;
+}
+
 export function fieldBranchesForHr(data) {
-  return fieldWorkplaces(data);
+  // the head office is a workplace too: its staff need an HR manager like any branch
+  const root = companyRootStation(data?.stations);
+  return [...(root ? [root] : []), ...fieldWorkplaces(data)];
 }

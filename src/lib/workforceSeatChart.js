@@ -6,7 +6,7 @@
 
 import { buildPeopleTree } from "./peopleTreeGraph.js";
 import { isCompanyRootStation, isManagerUnit } from "./stationTree.js";
-import { coordinateLine, hrManagerForStation, isHrDirector, isHrStaff, isHrUnit, isRegionalHr, regionalSeatLine, servedStationIds } from "./hrTree.js";
+import { branchManagerOver, coordinateLine, hrManagerForStation, isHrDirector, isHrStaff, isHrUnit, isRegionalHr, regionalSeatLine, servedStationIds } from "./hrTree.js";
 import { productGradeIndex, productGradeLabel } from "./jobGradeTitles.js";
 
 function todayKey() {
@@ -389,6 +389,7 @@ export function buildWorkforceSeatChart(data, { ar = true, meId = "" } = {}) {
       if (node.vacant || !node.employeeId) return;
       const employee = byEmployee.get(String(node.employeeId));
       if (!employee || isHrDirector(employee, data) || !isHrStaff(employee, data)) return;
+      if (!isRegionalHr(employee, data) && branchManagerOver(data, employee)) return;
       const parent = ownerOf.get(node) || null;
       if (parent === directorSeat) return;
       const parentEmployee = parent?.employeeId ? byEmployee.get(String(parent.employeeId)) : null;
@@ -442,6 +443,21 @@ export function buildWorkforceSeatChart(data, { ar = true, meId = "" } = {}) {
     else roots.push(node);
     byId.set(node.id, node);
   });
+
+  // The HR unit hangs straight under the head office, first in line — never wrapped under a region.
+  const hrHead = flattenSeatChart(roots).find((node) => (
+    (node.vacant && node.hrPost === "director")
+    || (node.employeeId && isHrDirector(byEmployee.get(String(node.employeeId)), data))
+  ));
+  if (hrHead) {
+    hrHead.hrHead = true;
+    const lists = [roots, ...flattenSeatChart(roots).map((node) => node.children)];
+    const owner = lists.find((list) => list.includes(hrHead));
+    if (owner && owner.indexOf(hrHead) > 0) {
+      owner.splice(owner.indexOf(hrHead), 1);
+      owner.unshift(hrHead);
+    }
+  }
 
   roots.forEach((node) => rollup(node));
   return { roots, flat: flattenSeatChart(roots) };

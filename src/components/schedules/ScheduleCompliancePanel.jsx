@@ -1,5 +1,5 @@
 import { ruleValue } from "@/lib/laborRules";
-import React, { forwardRef, useMemo, useState } from "react";
+import React, { forwardRef, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { sectionRouteFor } from "@/lib/sectionRoutes";
 import { NIGHT_FACILITY_FLAGS } from "@/lib/decision18632";
@@ -311,6 +311,15 @@ const ScheduleCompliancePanel = forwardRef(function ScheduleCompliancePanel({
     onSource?.(next);
   };
   const [showSettled, setShowSettled] = useState(false);
+  // Folded by default like the employee's «ما يخص دوامي» panel — the header counters carry the
+  // verdict; the rows open on demand, or by themselves when the roster sends the reader here.
+  const [unfolded, setUnfolded] = useState(false);
+  useEffect(() => {
+    if (highlighted) setUnfolded(true);
+  }, [highlighted]);
+  useEffect(() => {
+    if (sourceProp && sourceProp !== "all") setUnfolded(true);
+  }, [sourceProp]);
 
   const own = useComplianceSummary({ gates, company, onDate, weekStart, employees, ar });
   const { board, grouped, stationNotes, openRows, settledRows, people, blockCount, warnCount, settledCount, violationCount = 0, season, sourceCards } = summaryProp || own;
@@ -352,7 +361,18 @@ const ScheduleCompliancePanel = forwardRef(function ScheduleCompliancePanel({
           </div>
         )}
       />
-
+      <button
+        type="button"
+        className="nv-fold-toggle"
+        data-compliance-fold="1"
+        aria-expanded={unfolded}
+        onClick={() => setUnfolded((open) => !open)}
+      >
+        <span>{unfolded ? (ar ? "اطوِ القواعد" : "Fold the rules") : (ar ? `اعرض القواعد (${checks})` : `Show the rules (${checks})`)}</span>
+        <span aria-hidden className="nv-fold-toggle__chev" data-open={unfolded ? "true" : "false"}>⌄</span>
+      </button>
+      {unfolded ? (
+      <>
       <div style={{ padding: "14px 18px 12px", display: "flex", flexDirection: "column", gap: 12, borderBottom: "1px solid var(--nv-line2, #EEF2F7)" }}>
         {hideSourceCards ? null : <MinistrySourceCards cards={sourceCards} active={source} onPick={setSource} ar={ar} />}
         <MinistrySourceTabs active={source} onPick={setSource} ar={ar} chipButton={chipButton} />
@@ -497,6 +517,8 @@ const ScheduleCompliancePanel = forwardRef(function ScheduleCompliancePanel({
         </div>
       ) : null}
       <RegsSourceLine ar={ar} />
+      </>
+      ) : null}
     </section>
   );
 });

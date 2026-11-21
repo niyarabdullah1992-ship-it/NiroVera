@@ -3,6 +3,9 @@ import { Link } from "react-router-dom";
 import MarketingChrome from "@/components/landing/MarketingChrome";
 import { Nv7Strip, nv7Count, nv7Tab } from "@/components/shared/Nv7SectionHead";
 import { statusPillStyle } from "@/components/shared/StatusFilterPills";
+import ProofWindow from "@/components/landing/ProofWindow";
+import RuleLab from "@/components/landing/RuleLab";
+import { LABOR_RULES } from "@/lib/laborRules";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { trackVisit } from "@/lib/trackVisit";
@@ -14,7 +17,9 @@ import { DEFAULT_SUBSCRIPTION_PLANS, planDisplayName } from "@/lib/subscriptionP
  * strip of tabs under it, white 12px cards with a hairline, letter tiles like «إجراء جديد», mono
  * article chips like «م 66», and the green status pills. Nothing here is a second design: a visitor
  * who signs in should feel they never left the page.
- *   the claim and the Proof Cycle (as the case stepper), with the page tabs in the white strip;
+ *   the claim beside a window from the inside that plays the Proof Cycle link by link, the stepper
+ *   as its control, and the page tabs in the white strip;
+ *   «جرّب القاعدة»: a wage and a slider, answered by the rule catalogue with figure, formula, article;
  *   the sections (as the option tiles, grouped like the sidebar);
  *   the law (as the case rows) and the honest list of pending government links;
  *   what changed in this release;
@@ -179,6 +184,7 @@ export default function Landing() {
   }, []);
 
   const pageTabs = [
+    ["#lab", T("جرّب القاعدة", "Try a rule"), 0],
     ["#sections", T("الأقسام", "Sections"), SECTION_COUNT],
     ["#mhrsd", T("النظام", "The law"), LAW.length],
     ["#release", T("الجديد", "What's new"), RELEASE.length],
@@ -190,6 +196,13 @@ export default function Landing() {
       <style>{`
         [data-nv="page"] { max-width: 1240px; margin: 0 auto; padding: 18px 24px 40px; display: flex; flex-direction: column; gap: 22px; }
         [data-nv="stepper"] { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+        .nv7-section-head h1[data-nv="hero-title"] { font-size: 46px !important; }
+        [data-nv="proof-top"] { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 36px; align-items: center; }
+        [data-nv="proof-panel"] { animation: nvProofIn .32s ease both; }
+        @keyframes nvProofIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+        [data-nv="step"]:focus-visible { outline: 2px solid #E2C57E; outline-offset: 4px; border-radius: 8px; }
+        [data-nv="lab"] { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 20px; align-items: stretch; }
+        @media (prefers-reduced-motion: reduce) { [data-nv="proof-panel"] { animation: none; } }
         [data-nv="tiles"] { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
         [data-nv="law"] { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 16px; align-items: start; }
         [data-nv="release"] { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
@@ -198,10 +211,11 @@ export default function Landing() {
         @media (max-width: 1000px) {
           [data-nv="page"] { padding: 12px 14px 32px; }
           [data-nv="band"] { padding: 22px 18px !important; }
-          [data-nv="hero-title"] { font-size: 28px !important; }
-          [data-nv="stepper"] { grid-template-columns: 1fr; gap: 12px; }
-          [data-nv="stepper"] > li { flex-direction: row !important; text-align: start !important; align-items: flex-start !important; }
-          [data-nv="stepper-rule"] { display: none; }
+          .nv7-section-head h1[data-nv="hero-title"] { font-size: 30px !important; }
+          [data-nv="proof-top"], [data-nv="lab"] { grid-template-columns: 1fr; gap: 20px; }
+          [data-nv="stepper"] { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 14px; }
+          [data-nv="stepper-rule"], [data-nv="step-note"] { display: none; }
+          [data-nv="facts"] { gap: 18px !important; }
           [data-nv="tiles"], [data-nv="law"], [data-nv="release"], [data-nv="plan"] { grid-template-columns: 1fr; }
         }
       `}</style>
@@ -209,32 +223,42 @@ export default function Landing() {
       <div data-nv="page">
         {/* The claim, and the Proof Cycle as the case stepper. */}
         <div id="how" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <Band
-            big
-            num="00"
-            kicker={T("نيروفيرا", "NiroVera")}
-            title={T("العمل يُثبَت قبل أن يُحكم عليه", "Work is proven before it is judged")}
-            hint={T(
-              "منصة موارد بشرية سعودية لا تكتفي بتسجيل العمل، بل تثبته: كل حكم — أجر أو جزاء أو درجة — يُقرأ من سجل واحد، وتحت كل قاعدة اسم مادتها من نظام العمل.",
-              "A Saudi HR platform that does not only record work — it proves it. Every ruling, whether pay, a penalty or a score, reads one record, and every rule names its Labour Law article.",
-            )}
+          <header
+            className="nv7-section-head"
+            data-nv="band"
+            style={{ background: "linear-gradient(135deg,#0B3D27 0%,#0F5535 100%)", borderRadius: 12, boxShadow: "0 6px 18px rgba(6,61,38,.16)", color: "#fff", textAlign: "start", padding: "36px 36px 30px" }}
           >
-            <ol data-nv="stepper" aria-label={T("دورة الإثبات", "The Proof Cycle")} style={{ listStyle: "none", margin: "26px 0 0", padding: 0, position: "relative" }}>
-              <span data-nv="stepper-rule" aria-hidden style={{ position: "absolute", top: 15, insetInline: "8.33%", height: 2, background: "rgba(200,164,90,.45)", borderRadius: 2 }} />
-              {CHAIN.map(([nameAr, nameEn, noteAr, noteEn], i) => {
-                const last = i === CHAIN.length - 1;
-                return (
-                  <li key={nameAr} style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 6, padding: "0 6px" }}>
-                    <span style={{ ...MONO, width: 32, height: 32, borderRadius: "50%", flexShrink: 0, background: last ? C.gold : "#fff", color: last ? "#3A2A08" : C.green, fontSize: 13, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", position: "relative", boxShadow: "0 0 0 4px rgba(11,61,39,.9)" }}>{i + 1}</span>
-                    <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <strong style={{ fontFamily: HEAD, fontSize: 15, fontWeight: 700, color: "#fff" }}>{T(nameAr, nameEn)}</strong>
-                      <span style={{ fontSize: 12, lineHeight: 1.7, color: C.soft, maxWidth: 180 }}>{T(noteAr, noteEn)}</span>
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-          </Band>
+            <ProofWindow chain={CHAIN} ar={ar}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8, color: C.soft, fontWeight: 600, fontSize: 12 }}>
+                  <span aria-hidden style={{ width: 12, height: 2, background: C.gold, borderRadius: 8, display: "inline-block" }} />
+                  <span dir="ltr" style={{ ...MONO, letterSpacing: ".04em" }}>00</span>
+                  <span>{T("نيروفيرا", "NiroVera")}</span>
+                </span>
+                <h1 className="nv-h" data-nv="hero-title" style={{ margin: 0, fontFamily: HEAD, fontSize: 46, fontWeight: 700, color: "#fff", lineHeight: 1.3 }}>
+                  {T("العمل يُثبَت قبل أن يُحكم عليه", "Work is proven before it is judged")}
+                </h1>
+                <p style={{ margin: 0, fontSize: 15.5, lineHeight: 1.95, color: "#C5DBCD", maxWidth: 520 }}>
+                  {T(
+                    "منصة موارد بشرية سعودية لا تكتفي بتسجيل العمل، بل تثبته: كل حكم — أجر أو جزاء أو درجة — يُقرأ من سجل واحد، وتحت كل قاعدة اسم مادتها من نظام العمل.",
+                    "A Saudi HR platform that does not only record work — it proves it. Every ruling, whether pay, a penalty or a score, reads one record, and every rule names its Labour Law article.",
+                  )}
+                </p>
+                <dl data-nv="facts" style={{ margin: "6px 0 0", display: "flex", gap: 26, flexWrap: "wrap" }}>
+                  {[
+                    [LABOR_RULES.length, T("قاعدة نظامية مؤرّخة", "dated legal rules")],
+                    [SECTION_COUNT, T("قسماً على سجل واحد", "sections on one record")],
+                    [CHAIN.length, T("حلقات في دورة الإثبات", "links in the Proof Cycle")],
+                  ].map(([figure, label]) => (
+                    <div key={label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <dt style={{ order: 2, fontSize: 12, color: C.soft }}>{label}</dt>
+                      <dd dir="ltr" style={{ ...MONO, margin: 0, fontSize: 30, fontWeight: 600, color: "#F1D98F", lineHeight: 1.1, textAlign: ar ? "right" : "left" }}>{figure}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            </ProofWindow>
+          </header>
           <Nv7Strip
             meta={(
               <>
@@ -257,6 +281,8 @@ export default function Landing() {
             )}
           />
         </div>
+
+        <RuleLab ar={ar} />
 
         {/* The sections, as the option tiles of «إجراء جديد», grouped like the sidebar. */}
         <section id="sections" style={{ ...CARD, padding: 20, display: "flex", flexDirection: "column", gap: 18 }}>

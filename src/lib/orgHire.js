@@ -1,6 +1,6 @@
-import { deriveSaudiStatus, checkContractTermGate, nationalityIsSaudi } from "@/lib/complianceDerivations";
+import { deriveSaudiStatus, checkContractTermGate, localDateKey, nationalityIsSaudi } from "@/lib/complianceDerivations";
 import { checkStationLocationGate } from "@/lib/geoPlaces";
-import { checkBranchLegacyCrGate, companyCrNumber } from "@/lib/commercialRegister";
+import { checkBranchLegacyCrGate, checkRegisterAnnualDueGate, companyCrNumber } from "@/lib/commercialRegister";
 import { assignEmployeeNumber, employeeNumberTaken } from "@/lib/employeeNumber";
 import { checkProbationGate, workPatternForcesFixed } from "@/lib/contractLawDerivations";
 import { checkHiringAgeGate } from "@/lib/employerDuties";
@@ -575,6 +575,35 @@ export function setStationLegacyCr(companyId, stationId, value) {
   if (error === "COMPANY_ROOT") return { ok: false, error, reason: "المقر الرئيسي يحمل سجل المنشأة نفسه.", reasonEn: "The head office carries the company register itself." };
   logAudit(companyId, "org_branch_register", `${stationId} → ${gate.value || "—"}`);
   return { ok: true, value: gate.value };
+}
+
+/* م11: موعد التأكيد السنوي لبيانات السجل التجاري — يُحفظ للمنشأة كلها. */
+export function setRegisterAnnualDue(companyId, value) {
+  const gate = checkRegisterAnnualDueGate(value);
+  if (!gate.ok) return gate;
+  updateCompany(companyId, (draft) => {
+    const reg = { ...(draft.commercialRegister || {}) };
+    if (gate.value) reg.annualConfirmDue = gate.value;
+    else delete reg.annualConfirmDue;
+    draft.commercialRegister = reg;
+  });
+  logAudit(companyId, "cr_annual_due", gate.value || "—");
+  return { ok: true, value: gate.value };
+}
+
+/* م16: عرض بيانات القيد في مكان واضح في كل موقع — يُسجَّل تاريخ التحقق أو يُزال. */
+export function setStationCrDisplayChecked(companyId, stationId, checked, today = localDateKey(new Date())) {
+  let found = false;
+  updateCompany(companyId, (draft) => {
+    const station = (draft.stations || []).find((item) => String(item.id) === String(stationId));
+    if (!station) return;
+    found = true;
+    if (checked) station.crDisplayCheckedAt = today;
+    else delete station.crDisplayCheckedAt;
+  });
+  if (!found) return { ok: false, error: "MISSING", reason: "الفرع غير موجود.", reasonEn: "Branch not found." };
+  logAudit(companyId, "cr_display_check", `${stationId} → ${checked ? today : "—"}`);
+  return { ok: true, value: checked ? today : "" };
 }
 
 export function setOrgUnitKind(companyId, stationId, unitKind) {

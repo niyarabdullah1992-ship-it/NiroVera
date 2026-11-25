@@ -12,6 +12,8 @@ import {
   renameOrgBranch,
   setStationLocation,
   setStationLegacyCr,
+  setRegisterAnnualDue,
+  setStationCrDisplayChecked,
   setOrgBranchParent,
   setOrgUnitKind,
 } from "@/lib/orgHire";
@@ -19,7 +21,8 @@ import { explainWorkplaceManager } from "@/lib/peopleTree";
 import { setStationManager } from "@/lib/store";
 import { deleteStationWithData } from "@/lib/stationData";
 import { DEFAULT_COUNTRY, stationPlace } from "@/lib/geoPlaces";
-import { branchRegisterLine, companyCrNumber } from "@/lib/commercialRegister";
+import { localDateKey } from "@/lib/complianceDerivations";
+import { branchRegisterLine, companyCrNumber, deriveRegisterAnnualStatus, registerDisplayPlaces } from "@/lib/commercialRegister";
 import LocationPicker, { placeLine } from "@/components/hr/orgdesign/LocationPicker";
 import {
   allowedStationParents,
@@ -328,16 +331,34 @@ export function OrgBranchDrawer({
   const known = stationPlace(station);
   const [place, setPlace] = useState({ countryCode: known.countryCode || DEFAULT_COUNTRY, city: known.city, cityRegion: known.cityRegion });
   const [legacyCr, setLegacyCr] = useState(station?.legacySubCr || "");
+  const [annualDue, setAnnualDue] = useState(data?.commercialRegister?.annualConfirmDue || "");
 
   useEffect(() => {
     const p = stationPlace(station);
     setPlace({ countryCode: p.countryCode || DEFAULT_COUNTRY, city: p.city, cityRegion: p.cityRegion });
     setLegacyCr(station?.legacySubCr || "");
+    setAnnualDue(data?.commercialRegister?.annualConfirmDue || "");
     setName(station?.name || "");
     setMoveSel("");
     setErr("");
     setConfirmDel(false);
-  }, [stationId, station?.name, station?.city, station?.countryCode, station?.legacySubCr]);
+  }, [stationId, station?.name, station?.city, station?.countryCode, station?.legacySubCr, data?.commercialRegister?.annualConfirmDue]);
+
+  const todayKey = localDateKey(new Date());
+  const annual = deriveRegisterAnnualStatus({ commercialRegister: { annualConfirmDue: data?.commercialRegister?.annualConfirmDue } }, todayKey);
+  const isDisplayPlace = registerDisplayPlaces(station ? [station] : []).length > 0;
+  const saveAnnualDue = () => {
+    const result = setRegisterAnnualDue(companyId, annualDue);
+    if (!result.ok) { setErr(ar ? result.reason : (result.reasonEn || result.reason)); return; }
+    setErr("");
+    toast({ description: result.value ? (ar ? `موعد التأكيد السنوي ${result.value}.` : `Annual confirmation due ${result.value}.`) : (ar ? "أُزيل موعد التأكيد السنوي." : "Annual confirmation date cleared.") });
+  };
+  const toggleDisplay = (checked) => {
+    const result = setStationCrDisplayChecked(companyId, stationId, checked);
+    if (!result.ok) { setErr(ar ? result.reason : (result.reasonEn || result.reason)); return; }
+    setErr("");
+    toast({ description: checked ? (ar ? `سُجّل التحقق من عرض بيانات السجل في «${station?.name || ""}».` : `Register display checked at “${station?.name || ""}”.`) : (ar ? "أُزيل التحقق." : "Check cleared.") });
+  };
 
   /* «السجل التجاري»: سجل واحد للمنشأة وفروعها؛ السجل الفرعي القائم يوثَّق فقط */
   const saveLegacyCr = () => {
@@ -551,6 +572,31 @@ export function OrgBranchDrawer({
               ? "ونطاقات يُحسب في قوى للمنشأة كلها بفروعها، لا لكل فرع وحده."
               : "Nitaqat is rated on Qiwa for the whole company with its branches, not per branch."}
           </div>
+          {isDisplayPlace ? (
+            <>
+              <label style={LABEL}>
+                {ar ? "موعد التأكيد السنوي للسجل — للمنشأة كلها (م11)" : "Annual register confirmation due — whole company (art. 11)"}
+                <input type="date" value={annualDue} dir="ltr" onChange={(event) => { setAnnualDue(event.target.value); setErr(""); }} style={FIELD} />
+              </label>
+              <span style={{ fontSize: 11, color: annual.state === "overdue" || annual.state === "suspendable" ? "var(--nv-danger, #B42318)" : "var(--nv-ink3)", lineHeight: 1.7 }}>
+                {annual.state === "unset"
+                  ? (ar ? "سجّل الموعد من شهادة السجل لتنبّهك المنصة قبله بثلاثين يومًا. التأخر تسعين يومًا يعلّق السجل ومعه كل التراخيص (م15)." : "Record it from the register certificate; the platform warns 30 days ahead. Ninety days late suspends the register with all licences (art. 15).")
+                  : annual.days >= 0
+                    ? (ar ? `باقٍ ${annual.days} يومًا على التأكيد السنوي.` : `${annual.days} day(s) to the annual confirmation.`)
+                    : (ar ? `فات الموعد منذ ${-annual.days} يومًا — بعد 90 يومًا يُعلَّق السجل ومعه كل التراخيص (م15).` : `${-annual.days} day(s) late — after 90 days the register and all licences are suspended (art. 15).`)}
+              </span>
+              <button type="button" onClick={saveAnnualDue} style={actionButton("var(--nv-navy)")}>{ar ? "حفظ الموعد" : "Save date"}</button>
+            </>
+          ) : null}
+          {isDisplayPlace ? (
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: "var(--nv-ink)", lineHeight: 1.7, cursor: "pointer" }}>
+              <input type="checkbox" checked={Boolean(station?.crDisplayCheckedAt)} onChange={(event) => toggleDisplay(event.target.checked)} style={{ marginTop: 4 }} />
+              <span>
+                {ar ? "بيانات السجل التجاري معروضة في مكان واضح في هذا الموقع (م16)" : "Commercial register data is shown in plain view at this place (art. 16)"}
+                {station?.crDisplayCheckedAt ? <span style={{ color: "var(--nv-ink3)" }}>{ar ? ` — تُحقِّق منه ${station.crDisplayCheckedAt}` : ` — checked ${station.crDisplayCheckedAt}`}</span> : null}
+              </span>
+            </label>
+          ) : null}
           {!isRoot ? (
             <>
               <label style={LABEL}>

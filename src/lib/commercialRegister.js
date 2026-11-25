@@ -12,7 +12,13 @@
  * لا يُخزَّن هنا رقم مشتق: الدوال تقرأ السجل وتعيد نصًّا أو قرارًا مسمّى السبب.
  */
 
+import { isCompanyRootStation, isHrUnit, isManagerUnit } from "./stationTree.js";
+
 export const CR_NUMBER_RE = /^\d{10}$/;
+/** م11: تأكيد سنوي للبيانات · م15: يُعلَّق القيد إن لم يُقدَّم خلال 90 يومًا من استحقاقه، ومعه كل التراخيص. */
+export const CR_ANNUAL_WARN_DAYS = 30;
+export const CR_SUSPEND_AFTER_DAYS = 90;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Arabic-Indic and Persian digits → ASCII, spaces and dashes dropped. */
 export function normalizeCrNumber(value) {
@@ -85,4 +91,73 @@ export function branchRegisterLine(station, { isRoot = false, companyCr = "", ar
   return ar
     ? `يتبع السجل الرئيسي للمنشأة${main ? ` ${main}` : ""}؛ لا يحتاج سجلًا خاصًّا به.`
     : `Falls under the company's main register${main ? ` ${main}` : ""}; it needs no register of its own.`;
+}
+
+function dayDiff(fromKey, toKey) {
+  const a = Date.UTC(+fromKey.slice(0, 4), +fromKey.slice(5, 7) - 1, +fromKey.slice(8, 10));
+  const b = Date.UTC(+toKey.slice(0, 4), +toKey.slice(5, 7) - 1, +toKey.slice(8, 10));
+  return Math.round((b - a) / 86400000);
+}
+
+/** Places where trade is done (م16 asks the register data on show in each): the head office and every branch workplace. */
+export function registerDisplayPlaces(stations = []) {
+  return (stations || []).filter((s) => s && !isHrUnit(s) && (isCompanyRootStation(s) || !isManagerUnit(s)));
+}
+
+/**
+ * بوابة موعد التأكيد السنوي (م11). فارغ = إزالة الموعد.
+ * @returns {{ok:true, value:string} | {ok:false, error:string, reason:string, reasonEn:string}}
+ */
+export function checkRegisterAnnualDueGate(value) {
+  const next = String(value ?? "").trim();
+  if (!next) return { ok: true, value: "" };
+  if (!DATE_RE.test(next) || Number.isNaN(Date.parse(next))) {
+    return { ok: false, error: "CR_DUE_DATE", reason: "اكتب موعد التأكيد السنوي تاريخًا صحيحًا.", reasonEn: "Enter the annual confirmation due date as a valid date." };
+  }
+  return { ok: true, value: next };
+}
+
+/** Where the annual confirmation stands today. */
+export function deriveRegisterAnnualStatus(data, today) {
+  const due = String(data?.commercialRegister?.annualConfirmDue || "");
+  if (!DATE_RE.test(due) || !DATE_RE.test(String(today || ""))) return { state: "unset", due: "", days: null };
+  const days = dayDiff(today, due); // >0 ahead, <0 overdue
+  if (days < -CR_SUSPEND_AFTER_DAYS) return { state: "suspendable", due, days };
+  if (days < 0) return { state: "overdue", due, days };
+  if (days <= CR_ANNUAL_WARN_DAYS) return { state: "soon", due, days };
+  return { state: "ok", due, days };
+}
+
+/**
+ * Register alerts for the ministry watch surface — named reasons, articles cited, nothing invented.
+ * @returns {Array<{ id, gate, level, count, to, ruleId, textAr, textEn, actionAr, actionEn }>}
+ */
+export function deriveRegisterAlerts(data, today) {
+  const alerts = [];
+  const annual = deriveRegisterAnnualStatus(data, today);
+  const base = { to: "/app/hr", ruleId: null, actionAr: "السجل التجاري", actionEn: "Commercial register" };
+  if (annual.state === "unset") {
+    alerts.push({ ...base, id: "cr_annual_unset", gate: "CR_ANNUAL_UNSET", level: "warn", count: 1,
+      textAr: "موعد التأكيد السنوي للسجل التجاري غير مسجَّل (نظام السجل التجاري م11).",
+      textEn: "The commercial register's annual confirmation date is not recorded (Commercial Register Law art. 11)." });
+  } else if (annual.state === "soon") {
+    alerts.push({ ...base, id: "cr_annual_soon", gate: "CR_ANNUAL_DUE", level: "warn", count: 1,
+      textAr: `التأكيد السنوي للسجل التجاري خلال ${annual.days} يومًا (${annual.due}) — م11.`,
+      textEn: `Commercial register annual confirmation due in ${annual.days} day(s) (${annual.due}) — art. 11.` });
+  } else if (annual.state === "overdue") {
+    alerts.push({ ...base, id: "cr_annual_overdue", gate: "CR_ANNUAL_OVERDUE", level: "critical", count: 1,
+      textAr: `فات التأكيد السنوي للسجل التجاري منذ ${-annual.days} يومًا؛ بعد ${CR_SUSPEND_AFTER_DAYS} يومًا يُعلَّق القيد ومعه كل التراخيص (م15).`,
+      textEn: `Commercial register annual confirmation is ${-annual.days} day(s) late; after ${CR_SUSPEND_AFTER_DAYS} days the register is suspended with all licences (art. 15).` });
+  } else if (annual.state === "suspendable") {
+    alerts.push({ ...base, id: "cr_annual_suspendable", gate: "CR_SUSPENDABLE", level: "critical", count: 1,
+      textAr: `مضى أكثر من ${CR_SUSPEND_AFTER_DAYS} يومًا على موعد التأكيد السنوي: السجل التجاري معرَّض للتعليق مع كل التراخيص (م15).`,
+      textEn: `More than ${CR_SUSPEND_AFTER_DAYS} days past the annual confirmation: the register is liable to suspension with all licences (art. 15).` });
+  }
+  const unchecked = registerDisplayPlaces(data?.stations || []).filter((s) => !DATE_RE.test(String(s.crDisplayCheckedAt || "")));
+  if (unchecked.length) {
+    alerts.push({ ...base, id: "cr_display_unchecked", gate: "CR_DISPLAY_UNCHECKED", level: "warn", count: unchecked.length,
+      textAr: `${unchecked.length} موقعًا لم يُتحقَّق فيه من عرض بيانات السجل التجاري في مكان واضح (م16).`,
+      textEn: `${unchecked.length} place(s) not checked for showing the commercial register data in plain view (art. 16).` });
+  }
+  return alerts;
 }

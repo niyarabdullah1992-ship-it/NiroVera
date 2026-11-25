@@ -13,6 +13,7 @@ import {
 import { isHeatBanDate } from "./contractLawDerivations.js";
 import { deriveWpsStatus, isWpsLate, wpsDeadline } from "./payrollDerivations.js";
 import { citeRule, ruleValue } from "./laborRules.js";
+import { deriveRegisterAlerts } from "./commercialRegister.js";
 
 function monthKey(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -217,6 +218,9 @@ export function deriveMinistryAlerts(data, { now = new Date(), today = localDate
       });
     }
   }
+
+  /* نظام السجل التجاري (م/83): التأكيد السنوي م11/م15 وعرض بيانات القيد في كل موقع م16 */
+  alerts.push(...deriveRegisterAlerts(data, today));
 
   return {
     alerts,

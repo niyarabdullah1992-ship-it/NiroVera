@@ -566,8 +566,8 @@ export function OrgBranchDrawer({
               </label>
               <span style={{ fontSize: 11, color: "var(--nv-ink3)", lineHeight: 1.7 }}>
                 {ar
-                  ? "لا تصدر سجلات فرعية جديدة. السجل الفرعي القائم له مهلة خمس سنوات لنقل ملكيته أو شطبه، ويُحفظ هنا للتوثيق دون أن يفصل الفرع عن المنشأة."
-                  : "No new sub-registers are issued. An existing one has a five-year period to be transferred or struck off; it is kept here for the record and does not split the branch from the company."}
+                  ? "المرسوم الملكي م/83 (1446/3/19هـ) منح خمس سنوات من نفاذ نظام السجل التجاري لتصحيح أوضاع السجلات الفرعية، وتُشطب كلها بانتهاء المهلة. يُحفظ الرقم هنا للتوثيق دون أن يفصل الفرع عن المنشأة."
+                  : "Royal Decree M/83 (1446/3/19 AH) gives five years from the Commercial Register Law taking effect to correct sub-registers; all are struck off when it ends. The number is kept here for the record and does not split the branch from the company."}
               </span>
               <button type="button" onClick={saveLegacyCr} style={actionButton("var(--nv-navy)")}>{ar ? "حفظ السجل" : "Save register"}</button>
             </>

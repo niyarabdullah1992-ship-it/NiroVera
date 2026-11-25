@@ -11,6 +11,7 @@ import {
   listBranchHrCandidates,
   renameOrgBranch,
   setStationLocation,
+  setStationLegacyCr,
   setOrgBranchParent,
   setOrgUnitKind,
 } from "@/lib/orgHire";
@@ -18,6 +19,7 @@ import { explainWorkplaceManager } from "@/lib/peopleTree";
 import { setStationManager } from "@/lib/store";
 import { deleteStationWithData } from "@/lib/stationData";
 import { DEFAULT_COUNTRY, stationPlace } from "@/lib/geoPlaces";
+import { branchRegisterLine, companyCrNumber } from "@/lib/commercialRegister";
 import LocationPicker, { placeLine } from "@/components/hr/orgdesign/LocationPicker";
 import {
   allowedStationParents,
@@ -325,15 +327,30 @@ export function OrgBranchDrawer({
   const [confirmDel, setConfirmDel] = useState(false);
   const known = stationPlace(station);
   const [place, setPlace] = useState({ countryCode: known.countryCode || DEFAULT_COUNTRY, city: known.city, cityRegion: known.cityRegion });
+  const [legacyCr, setLegacyCr] = useState(station?.legacySubCr || "");
 
   useEffect(() => {
     const p = stationPlace(station);
     setPlace({ countryCode: p.countryCode || DEFAULT_COUNTRY, city: p.city, cityRegion: p.cityRegion });
+    setLegacyCr(station?.legacySubCr || "");
     setName(station?.name || "");
     setMoveSel("");
     setErr("");
     setConfirmDel(false);
-  }, [stationId, station?.name, station?.city, station?.countryCode]);
+  }, [stationId, station?.name, station?.city, station?.countryCode, station?.legacySubCr]);
+
+  /* «السجل التجاري»: سجل واحد للمنشأة وفروعها؛ السجل الفرعي القائم يوثَّق فقط */
+  const saveLegacyCr = () => {
+    const result = setStationLegacyCr(companyId, stationId, legacyCr);
+    if (!result.ok) { setErr(ar ? result.reason : (result.reasonEn || result.reason)); return; }
+    setErr("");
+    setLegacyCr(result.value);
+    toast({
+      description: result.value
+        ? (ar ? `وُثّق السجل الفرعي ${result.value} على «${station?.name || ""}».` : `Sub-register ${result.value} recorded on “${station?.name || ""}”.`)
+        : (ar ? `«${station?.name || ""}» تحت السجل الرئيسي وحده.` : `“${station?.name || ""}” is under the main register only.`),
+    });
+  };
 
   /* «الموقع»: country and city — the tree regroups by city at once */
   const saveLocation = () => {
@@ -521,6 +538,40 @@ export function OrgBranchDrawer({
           ) : null}
           <LocationPicker ar={ar} value={place} required={!isManagerUnit(station)} onChange={(next) => { setPlace(next); setErr(""); }} />
           <button type="button" onClick={saveLocation} style={actionButton("var(--nv-navy)")}>{ar ? "حفظ الموقع" : "Save location"}</button>
+        </div>
+      ) : null}
+
+      {canWrite && !fixedHr && !isManagerUnit(station) ? (
+        <div data-nv="branch-register" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <SectionLabel>{ar ? "السجل التجاري" : "Commercial register"}</SectionLabel>
+          <div style={NOTE}>
+            {branchRegisterLine(station, { isRoot, companyCr: companyCrNumber(data), ar })}
+            {" "}
+            {ar
+              ? "ونطاقات يُحسب في قوى للمنشأة كلها بفروعها، لا لكل فرع وحده."
+              : "Nitaqat is rated on Qiwa for the whole company with its branches, not per branch."}
+          </div>
+          {!isRoot ? (
+            <>
+              <label style={LABEL}>
+                {ar ? "سجل فرعي قائم (إن وُجد قبل النظام الجديد)" : "Pre-existing sub-register (if any)"}
+                <input
+                  value={legacyCr}
+                  inputMode="numeric"
+                  dir="ltr"
+                  placeholder={ar ? "اتركه فارغًا — الوضع النظامي" : "Leave empty — the regular case"}
+                  onChange={(event) => { setLegacyCr(event.target.value); setErr(""); }}
+                  style={FIELD}
+                />
+              </label>
+              <span style={{ fontSize: 11, color: "var(--nv-ink3)", lineHeight: 1.7 }}>
+                {ar
+                  ? "لا تصدر سجلات فرعية جديدة. السجل الفرعي القائم له مهلة خمس سنوات لنقل ملكيته أو شطبه، ويُحفظ هنا للتوثيق دون أن يفصل الفرع عن المنشأة."
+                  : "No new sub-registers are issued. An existing one has a five-year period to be transferred or struck off; it is kept here for the record and does not split the branch from the company."}
+              </span>
+              <button type="button" onClick={saveLegacyCr} style={actionButton("var(--nv-navy)")}>{ar ? "حفظ السجل" : "Save register"}</button>
+            </>
+          ) : null}
         </div>
       ) : null}
 

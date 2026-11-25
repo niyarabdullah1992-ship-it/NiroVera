@@ -1,5 +1,6 @@
 import { deriveSaudiStatus, checkContractTermGate, nationalityIsSaudi } from "@/lib/complianceDerivations";
 import { checkStationLocationGate } from "@/lib/geoPlaces";
+import { checkBranchLegacyCrGate, companyCrNumber } from "@/lib/commercialRegister";
 import { assignEmployeeNumber, employeeNumberTaken } from "@/lib/employeeNumber";
 import { checkProbationGate, workPatternForcesFixed } from "@/lib/contractLawDerivations";
 import { checkHiringAgeGate } from "@/lib/employerDuties";
@@ -554,6 +555,26 @@ export function setStationLocation(companyId, stationId, place = {}) {
   if (!found) return { ok: false, error: "MISSING", reason: "الفرع غير موجود.", reasonEn: "Branch not found." };
   logAudit(companyId, "org_branch_located", `${stationId} → ${geo.place.countryCode} · ${geo.place.city}`);
   return { ok: true, place: geo.place };
+}
+
+/* «السجل الفرعي القائم»: يوثَّق على الفرع خلال مهلة التصحيح، ولا يفصل الفرع عن سجل المنشأة الواحد. */
+export function setStationLegacyCr(companyId, stationId, value) {
+  const data = getCompanyData(companyId) || {};
+  const gate = checkBranchLegacyCrGate({ value, stationId, stations: data.stations || [], companyCr: companyCrNumber(data) });
+  if (!gate.ok) return gate;
+  let error = "";
+  updateCompany(companyId, (draft) => {
+    const station = (draft.stations || []).find((item) => String(item.id) === String(stationId));
+    if (!station) { error = "MISSING"; return; }
+    if (isCompanyRootStation(station)) { error = "COMPANY_ROOT"; return; }
+    if (gate.value) station.legacySubCr = gate.value;
+    else delete station.legacySubCr;
+    appendOrgStructureEvent(draft, { type: "register", stationId: station.id, stationName: station.name || "", legacySubCr: gate.value || "" });
+  });
+  if (error === "MISSING") return { ok: false, error, reason: "الفرع غير موجود.", reasonEn: "Branch not found." };
+  if (error === "COMPANY_ROOT") return { ok: false, error, reason: "المقر الرئيسي يحمل سجل المنشأة نفسه.", reasonEn: "The head office carries the company register itself." };
+  logAudit(companyId, "org_branch_register", `${stationId} → ${gate.value || "—"}`);
+  return { ok: true, value: gate.value };
 }
 
 export function setOrgUnitKind(companyId, stationId, unitKind) {

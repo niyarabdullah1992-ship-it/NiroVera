@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { updateCompany } from "@/lib/store";
 import { Loader2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -51,6 +52,12 @@ export default function CompanySettingsBoard({ lang = "ar" }) {
   const applyRemote = (remote) => {
     if (!remote) return;
     if (remote.record) {
+      // The branch register checks (commercialRegister.companyCrNumber) read the main CR from the company
+      // blob — the settings record lives on the server only, so it is mirrored here when it changes.
+      const cr = String(remote.record.commercialRegistration || "");
+      if (company?.id && cr && String(data?.settings?.commercialRegistration || "") !== cr) {
+        updateCompany(company.id, (d) => { d.settings = { ...(d.settings || {}), commercialRegistration: cr }; });
+      }
       setRecord({
         name: remote.record.name || "",
         commercialRegistration: remote.record.commercialRegistration || "",

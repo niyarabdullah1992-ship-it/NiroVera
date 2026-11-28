@@ -655,6 +655,11 @@ export function linkBranchHr(data, stationId, employeeId) {
   const next = [...new Set([...already, sid])];
   employee.hrServesStationIds = next;
   employee.hrStationId = sid;
+  // the person this branch was taken from gets their own title back once they serve no branch (as unlink does)
+  (data.employees || []).forEach((item) => {
+    if (String(item.id) === eid || item?.hrTitleBefore === undefined || servedStationIds(data, item.id).length) return;
+    restoreTitleBefore(data, item);
+  });
   return { ok: true, stationIds: next };
 }
 

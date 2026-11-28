@@ -537,7 +537,6 @@ export default function RecordSmartArchive({
                       const dp = dayParts(it.date, lang);
                       const active = preview && preview.id === it.id;
                       const rowProps = {
-                        key: it.id,
                         "data-archive-row": it.id,
                         role: openable ? "button" : undefined,
                         tabIndex: 0,
@@ -547,7 +546,7 @@ export default function RecordSmartArchive({
                       };
                       if (compact) {
                         return (
-                          <li {...rowProps} className="nv-archive-row nv-archive-crow" style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "9px 14px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", background: active ? "var(--nv-ok-soft)" : "transparent", cursor: openable ? "pointer" : "default", position: "relative", minHeight: 42, boxSizing: "border-box" }}>
+                          <li key={it.id} {...rowProps} className="nv-archive-row nv-archive-crow" style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "9px 14px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", background: active ? "var(--nv-ok-soft)" : "transparent", cursor: openable ? "pointer" : "default", position: "relative", minHeight: 42, boxSizing: "border-box" }}>
                             <span aria-hidden style={{ position: "absolute", insetInlineStart: 0, top: 9, bottom: 9, width: 3, borderRadius: 3, background: tone.dot }} />
                             <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
                               <span style={{ ...MONO, fontSize: 12.5, fontWeight: 700, color: "var(--nv-ink)", textAlign: "start" }}>{dp ? dp.dm : "—"}</span>
@@ -565,7 +564,7 @@ export default function RecordSmartArchive({
                         );
                       }
                       return (
-                        <li {...rowProps} className="nv-archive-row" style={{ display: "grid", gridTemplateColumns: "54px minmax(0, 1fr)", gap: 12, padding: "11px 14px", borderRadius: 12, border: `1px solid ${active ? "#0B3D27" : "var(--nv-line)"}`, background: active ? "var(--nv-ok-soft)" : "var(--nv-card)", cursor: openable ? "pointer" : "default", position: "relative" }}>
+                        <li key={it.id} {...rowProps} className="nv-archive-row" style={{ display: "grid", gridTemplateColumns: "54px minmax(0, 1fr)", gap: 12, padding: "11px 14px", borderRadius: 12, border: `1px solid ${active ? "#0B3D27" : "var(--nv-line)"}`, background: active ? "var(--nv-ok-soft)" : "var(--nv-card)", cursor: openable ? "pointer" : "default", position: "relative" }}>
                           <span aria-hidden style={{ position: "absolute", insetInlineStart: 0, top: 12, bottom: 12, width: 3, borderRadius: 3, background: tone.dot }} />
                           <span style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", borderRadius: 10, background: "var(--nv-soft)", border: "1px solid var(--nv-line2, #EEF1EF)", padding: "6px 0", alignSelf: "start" }}>
                             <strong style={{ ...MONO, fontSize: 18, lineHeight: 1.1, color: "var(--nv-ink)" }}>{dp ? dp.day : "—"}</strong>

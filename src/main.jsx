@@ -3,6 +3,16 @@ import ReactDOM from "react-dom/client";
 import App from "@/App.jsx";
 import "@/index.css";
 
+// The app routes by hash (#/app/…). A link written as a path — an emailed invite, /login after a reset,
+// a bookmark, window.open("/app/…") — would land on the home page, so it is moved into the hash once.
+if (typeof window !== "undefined") {
+  const { pathname, search, hash } = window.location;
+  const base = (import.meta.env.BASE_URL || "/").replace(/\/?$/, "/");
+  if (!hash && pathname.startsWith(base) && pathname !== base && !/\.html?$/.test(pathname) && !pathname.startsWith(`${base}api/`)) {
+    window.history.replaceState(null, "", `${base}#/${pathname.slice(base.length)}${search}`);
+  }
+}
+
 class BootErrorBoundary extends React.Component {
   state = { error: null };
 

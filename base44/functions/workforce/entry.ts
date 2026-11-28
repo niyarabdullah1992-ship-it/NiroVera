@@ -342,7 +342,7 @@ Deno.serve(async (req) => {
       });
       request.auditTrail = appendRequestAudit(request, raiseRow);
       const leaveRequests = [request, ...(emp.leaveRequests || [])];
-      const fileLog = [requestAuditFileLog(raiseRow, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
+      const fileLog = [requestAuditFileLog(raiseRow, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 200);
       await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests, fileLog });
       await audit(raiseRow.action, raiseRow.details, { reason: raiseRow.reason, oldValue: raiseRow.oldValue, newValue: raiseRow.newValue });
       return Response.json({ request, canApproveLater: true, gate, audit: raiseRow });
@@ -447,7 +447,7 @@ Deno.serve(async (req) => {
       });
       request.auditTrail = appendRequestAudit(request, raiseRow);
       const otherRequests = [request, ...prior.filter((row: { id?: string }) => row?.id !== request.id)];
-      const fileLog = [requestAuditFileLog(raiseRow, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
+      const fileLog = [requestAuditFileLog(raiseRow, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 200);
       const patch: Record<string, unknown> = { otherRequests, fileLog };
       if (request.type === ART81_EXIT_TYPE) {
         // Art. 81: the worker leaves today with all his rights; the file carries it at once (undone on withdrawal).
@@ -583,7 +583,7 @@ Deno.serve(async (req) => {
             }
           }
         }
-        const fileLog = [requestAuditFileLog(row, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
+        const fileLog = [requestAuditFileLog(row, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 200);
         await base44.asServiceRole.entities.Employee.update(emp.id, profileNext ? { leaveRequests, fileLog, profile: profileNext } : { leaveRequests, fileLog });
         await audit(row.action, row.details, { reason: row.reason, oldValue: row.oldValue, newValue: row.newValue });
         return Response.json({ request: req, ok: true, audit: row });
@@ -618,7 +618,7 @@ Deno.serve(async (req) => {
       });
       req.auditTrail = appendRequestRefuseAudit(req, row);
       leaveRequests[idx] = req;
-      const fileLog = [requestRefuseFileLog(row, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
+      const fileLog = [requestRefuseFileLog(row, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 200);
       await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests, fileLog });
       await audit(row.action, row.details, { reason: row.reason, oldValue: row.oldValue, newValue: row.newValue });
       return Response.json({ request: req, ok: true, audit: row });
@@ -688,7 +688,7 @@ Deno.serve(async (req) => {
         });
         pending.auditTrail = appendRequestAudit(pending, row);
         otherRequests[idx] = pending;
-        const fileLog = [requestAuditFileLog(row, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
+        const fileLog = [requestAuditFileLog(row, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 200);
         const approvePatch: Record<string, unknown> = { otherRequests, fileLog };
         if (Object.keys(profilePatch).length) approvePatch.profile = { ...(emp.profile || {}), ...profilePatch };
         await base44.asServiceRole.entities.Employee.update(emp.id, approvePatch);
@@ -729,7 +729,7 @@ Deno.serve(async (req) => {
       });
       pending.auditTrail = appendRequestRefuseAudit(pending, row);
       otherRequests[idx] = pending;
-      const fileLog = [requestRefuseFileLog(row, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
+      const fileLog = [requestRefuseFileLog(row, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 200);
       await base44.asServiceRole.entities.Employee.update(emp.id, { otherRequests, fileLog });
       await audit(row.action, row.details, { reason: row.reason, oldValue: row.oldValue, newValue: row.newValue });
       return Response.json({ request: pending, ok: true, audit: row });

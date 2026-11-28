@@ -202,6 +202,7 @@ export function AuthProvider({ children }) {
                 crossStationChatEnabled: meta.crossStationChatEnabled,
                 settings: meta.settings, reportBranding: meta.reportBranding,
                 orgStructureLog: Array.isArray(meta.orgStructureLog) ? meta.orgStructureLog : undefined,
+                commercialRegister: meta.commercialRegister && typeof meta.commercialRegister === "object" ? meta.commercialRegister : undefined,
                 ...(metaEstablishment ? { gosiEstablishment: metaEstablishment } : {}),
               };
               cacheCloudData(s.companyId, Object.fromEntries(Object.entries(metaUpdates).filter(([, value]) => value !== undefined)));
@@ -216,6 +217,7 @@ export function AuthProvider({ children }) {
                 settings: meta.settings ?? prevData.settings,
                 reportBranding: meta.reportBranding ?? prevData.reportBranding,
                 orgStructureLog: Array.isArray(meta.orgStructureLog) ? meta.orgStructureLog : prevData.orgStructureLog,
+                commercialRegister: meta.commercialRegister && typeof meta.commercialRegister === "object" ? meta.commercialRegister : prevData.commercialRegister,
                 gosiEstablishment: String(meta.gosiEstablishment || "").trim() || prevData.gosiEstablishment,
                 } : prevData));
             })

@@ -193,7 +193,9 @@ export default function PayrollCycleReview({
             const open = subs.filter((x) => x.state === "todo" || x.state === "note");
             const state = subs.every((x) => x.state === "done") ? "done"
               : subs.every((x) => x.state === "wait") ? "wait"
-              : open.some((x) => x.state === "todo") ? "todo" : open.length ? "note" : "done";
+              : open.some((x) => x.state === "todo") ? "todo" : open.length ? "note"
+              // done + still-waiting steps (e.g. approval not given yet) is not a finished phase
+              : subs.some((x) => x.state === "wait") ? "wait" : "done";
             const st = STATE[state];
             const here = subs.some((x) => x.id === currentId);
             const first = open[0] || subs.find((x) => x.state !== "done") || subs[0];

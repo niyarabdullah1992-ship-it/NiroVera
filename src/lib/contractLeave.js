@@ -1,4 +1,6 @@
-import { updateCompany } from "@/lib/store";
+import { getCompanyData, updateCompany } from "@/lib/store";
+import { weeklyRestDayCountOf } from "@/lib/leaveEidOverlap";
+import { statutoryLeaveFloor } from "@/lib/leaveTypes";
 import { appendOrgStructureEvent } from "@/lib/orgStructureLog";
 
 /**
@@ -28,8 +30,32 @@ export function contractLeaveOf(employee) {
   const p = employee?.profile || {};
   const annual = Number(p.contractAnnualLeaveDays) || null;
   const dows = Array.isArray(p.weeklyOffDows) ? p.weeklyOffDows.map(Number).filter((n) => n >= 0 && n <= 6) : [];
-  const restCount = Number(p.weeklyRestCount) || dows.length || null;
+  const legacy = Number(p.weeklyRestDayCount);
+  const restCount = Number(p.weeklyRestCount) || dows.length || (legacy === 1 || legacy === 2 ? legacy : null);
   return { annual, restCount, restDows: dows };
+}
+
+/**
+ * What an editor opens with: the entitlement the person has now (the law's 21, or 30 after five years,
+ * or the contract's figure if higher) and the rest count the roster and leave already read (the file's,
+ * else the establishment's posting). Seeding 21 / one day here wrote them back on save and charged
+ * Saturdays to the balance.
+ */
+export function contractLeaveDefaults(employee, company) {
+  const now = contractLeaveOf(employee);
+  const restCount = now.restCount || weeklyRestDayCountOf(company, employee || {});
+  const floor = employee ? statutoryLeaveFloor("annual", employee.profile || {}, undefined, employee.leaveRequests) : ANNUAL_MIN;
+  return {
+    annual: Math.max(ANNUAL_MIN, Number(floor) || 0, now.annual || 0),
+    restCount,
+    restDows: now.restDows.length ? now.restDows : restDefaults(restCount),
+  };
+}
+
+export function contractLeaveDefaultsFor(companyId, employee) {
+  let company = null;
+  try { company = companyId ? getCompanyData(companyId) : null; } catch { company = null; }
+  return contractLeaveDefaults(employee, company);
 }
 
 export function clampAnnual(value) {
@@ -53,7 +79,8 @@ export function applyContractLeave(companyId, employeeId, { annual, restCount, r
       contractAnnualLeaveDays: days,
       weeklyRestCount: count,
       weeklyOffDows: dows,
-      leaveTotals: { ...(e.profile?.leaveTotals || {}), annual: days },
+      // a balance the manager already raised above the contract stays (getLeaveTotal reads the higher)
+      leaveTotals: { ...(e.profile?.leaveTotals || {}), annual: Math.max(days, Number(e.profile?.leaveTotals?.annual) || 0) },
     };
     if (before.annual !== days || before.restCount !== count) {
       appendOrgStructureEvent(d, {

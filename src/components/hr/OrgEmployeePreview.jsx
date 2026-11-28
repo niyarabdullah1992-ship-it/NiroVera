@@ -31,7 +31,7 @@ import {
   setActualWorkSite,
 } from "@/lib/orgHire";
 import { gradeCategories, personLevel, setPersonLevel } from "@/lib/gradeCategories";
-import { applyContractLeave, contractLeaveOf } from "@/lib/contractLeave";
+import { applyContractLeave, contractLeaveDefaultsFor } from "@/lib/contractLeave";
 import ContractLeaveFields from "@/components/hr/ContractLeaveFields";
 import { employeeJobGrade, gradeRank, gradeSalaryRange, gradesForTitle, ladderBands, orderedJobGrades } from "@/lib/jobGrades";
 import { gradeBadge, OrgLockMark } from "@/components/hr/orgUi";
@@ -610,8 +610,7 @@ function gradeOutOfOrder(employee, data) {
 }
 
 function ContractLeaveEditor({ employee, companyId }) {
-  const now = contractLeaveOf(employee);
-  const [terms, setTerms] = useState({ annual: now.annual || 21, restCount: now.restCount || 1, restDows: now.restDows.length ? now.restDows : [5] });
+  const [terms, setTerms] = useState(() => contractLeaveDefaultsFor(companyId, employee));
   const [saved, setSaved] = useState(false);
   return (
     <>

@@ -107,7 +107,7 @@ const RELEASE = [
   ["ملف الموظف كاملاً", "The full employee file", "الوثائق بتواريخ انتهائها، والعقد والأجر، والالتزام بالمنصات، وأرشيف الملف في مكان واحد.", "Documents with expiry dates, contract and pay, platform compliance and the file archive in one place."],
   ["التعيين والعقد", "Hiring and the contract", "تعيين الموظف على وظيفة في الهيكل، وعقد يُبنى من بيانات الملف ويُوقَّع داخل المنصة.", "Appoint a person to a seat in the structure; the contract is built from the file and signed in the platform."],
   ["مساران: الموظف والإدارة", "Two lanes: employee and management", "واجهة الموظف أبسط: بصمتي ومهامي وطلباتي، والإدارة في مسارها بصلاحياتها.", "A simpler employee lane — my punch, my tasks, my requests — and management in its own lane."],
-  ["نهاية الخدمة بحرف النظام", "End of service by the letter", "المواد 75–77 و110 في المكافأة وترحيل الإجازة، محسوبة كما نصّت.", "Articles 75–77 and 110 for the award and leave carry-over, computed as written."],
+  ["نهاية الخدمة بحرف النظام", "End of service by the letter", "المادتان 84 و85 في المكافأة، والمادة 110 في ترحيل الإجازة، محسوبة كما نصّت.", "Articles 84–85 for the award and 110 for leave carry-over, computed as written."],
   ["الراحة بنص المادة 101", "Rest by Art. 101", "نصف ساعة قبل أن تكتمل خمس ساعات، تُخصم وحدها بلا بصمة، وراحتان في دوام اثنتي عشرة ساعة.", "Half an hour before five hours, deducted on its own with no punch; two on a twelve-hour day."],
 ];
 

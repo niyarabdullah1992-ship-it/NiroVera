@@ -1,5 +1,5 @@
 import ContractLeaveFields from "@/components/hr/ContractLeaveFields";
-import { applyContractLeave } from "@/lib/contractLeave";
+import { applyContractLeave, contractLeaveDefaults } from "@/lib/contractLeave";
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
@@ -120,7 +120,8 @@ export default function HireSeatDrawer({
   // «توظيف جديد» or «نقل موظف من المنشأة» into the chosen seat
   const [source, setSource] = useState("new");
   const [existingId, setExistingId] = useState("");
-  const [leaveTerms, setLeaveTerms] = useState({ annual: 21, restCount: 1, restDows: [5] });
+  // a new hire starts on the establishment's rest count (two days unless it posts one), not one day
+  const [leaveTerms, setLeaveTerms] = useState(() => contractLeaveDefaults(null, data));
 
   const packs = useMemo(() => companyLists(data), [data]);
   // company lists first, then the ready templates — hiring never waits for a list to be built
@@ -366,7 +367,7 @@ export default function HireSeatDrawer({
       setStep(1);
       return;
     }
-    const seatHomeId = stationId || newSeat.stationId;
+    const seatHomeId = stationId || newSeat.stationId || (!creating ? activeSeat?.stationId : "") || "";
     if (creating && isManagerUnit((data?.stations || []).find((item) => item.id === seatHomeId))) {
       toast({ description: ar ? ADMIN_HIRE.ar : ADMIN_HIRE.en, variant: "destructive" });
       return;
@@ -448,8 +449,9 @@ export default function HireSeatDrawer({
       const linked = assignBranchHrManager(companyId, hrBranch.id, result.employeeId);
       if (!linked.ok) toast({ description: ar ? "وُظّف، لكن لم يُربط بالفرع. اربطه من بطاقة وحدة الموارد البشرية." : "Hired, but not linked to the branch.", variant: "destructive" });
     }
+    let madeManager = false;
     if (makeManager && seatHomeId && result.employeeId) {
-      setStationManager(companyId, seatHomeId, result.employeeId);
+      madeManager = Boolean(setStationManager(companyId, seatHomeId, result.employeeId)?.ok);
     }
     if (email && password && result.employeeId) {
       const saved = await setEmployeePassword(companyId, result.employeeId, email, password);
@@ -461,7 +463,8 @@ export default function HireSeatDrawer({
     const notes = [];
     if (result.warnings?.includes("SALARY_RANGE")) notes.push(ar ? "الراتب خارج النطاق — حُفظ مع توثيق." : "Salary outside range — saved with a note.");
     if (result.warnings?.includes("DOCS")) notes.push(ar ? "الوثائق الناقصة أُدرجت في تقويم الامتثال." : "Missing documents were queued on the compliance calendar.");
-    if (makeManager) notes.push(ar ? "عُيّن مديرًا لهذا الفرع." : "Appointed manager of this branch.");
+    if (madeManager) notes.push(ar ? "عُيّن مديرًا لهذا الفرع." : "Appointed manager of this branch.");
+    else if (makeManager) notes.push(ar ? "لم يُعيَّن مديرًا للفرع — عيّنه من بطاقة الفرع." : "Not set as branch manager — set it from the branch card.");
     if (hrBranch) notes.push(ar ? `عُيّن مدير الموارد البشرية لـ${hrBranch.name}.` : `Set as HR manager for ${hrBranch.name}.`);
     if (email && password) notes.push(ar ? "كلمة المرور جاهزة للدخول." : "Password is ready for sign-in.");
     if (result.draft) {
@@ -518,7 +521,7 @@ export default function HireSeatDrawer({
       toast({ description: ar ? "اختر منصبًا شاغرًا أو أنشئ واحدًا." : "Pick a vacant seat or create one.", variant: "destructive" });
       return;
     }
-    const seatHomeId = stationId || newSeat.stationId;
+    const seatHomeId = stationId || newSeat.stationId || (!creating ? activeSeat?.stationId : "") || "";
     setBusy(true);
     const result = placeExistingEmployee(companyId, mover.id, {
       name: mover.name,
@@ -545,7 +548,7 @@ export default function HireSeatDrawer({
       toast({ description: map[result?.error] || (ar ? `تعذّر النقل (${result?.error || "unknown"}).` : `Could not move (${result?.error || "unknown"}).`), variant: "destructive" });
       return;
     }
-    if (makeManager && seatHomeId) setStationManager(companyId, seatHomeId, mover.id);
+    const madeManager = Boolean(makeManager && seatHomeId && setStationManager(companyId, seatHomeId, mover.id)?.ok);
     {
       const fromSeat = (data?.orgSeats || []).find((row) => String(row.employeeId || "") === String(mover.id));
       const fromTitle = fromSeat?.title || mover.profile?.position || "";
@@ -558,17 +561,20 @@ export default function HireSeatDrawer({
         changes: [
           { label: ar ? "المنصب" : "Seat", from: fromTitle, to: toTitle },
           { label: ar ? "مكان العمل" : "Workplace", from: fromPlace, to: toPlace },
-          ...(makeManager ? [{ label: ar ? "الصفة الإدارية" : "Role", from: "", to: hrHome ? (ar ? "مدير الموارد البشرية" : "HR director") : (ar ? `مدير ${toPlace}` : `Manager of ${toPlace}`) }] : []),
+          ...(madeManager ? [{ label: ar ? "الصفة الإدارية" : "Role", from: "", to: hrHome ? (ar ? "مدير الموارد البشرية" : "HR director") : (ar ? `مدير ${toPlace}` : `Manager of ${toPlace}`) }] : []),
         ],
       });
     }
     const hrBranch = hrBranchId ? (data?.stations || []).find((item) => String(item.id) === String(hrBranchId)) : null;
-    if (hrBranch) assignBranchHrManager(companyId, hrBranch.id, mover.id);
+    const hrLinked = hrBranch ? Boolean(assignBranchHrManager(companyId, hrBranch.id, mover.id)?.ok) : false;
     setBusy(false);
     const notes = [ar ? `نُقل ${mover.name} إلى المنصب` : `${mover.name} moved to the seat`];
-    if (makeManager) notes.push(hrHome ? (ar ? "وعُيّن مدير الموارد البشرية" : "and appointed HR director") : (ar ? `وعُيّن مدير ${stationName}` : `and appointed manager of ${stationName}`));
-    if (hrBranch) notes.push(ar ? `ومدير الموارد البشرية لـ${hrBranch.name}` : `and HR manager for ${hrBranch.name}`);
-    toast({ description: notes.join(" ") + "." });
+    if (madeManager) notes.push(hrHome ? (ar ? "وعُيّن مدير الموارد البشرية" : "and appointed HR director") : (ar ? `وعُيّن مدير ${stationName}` : `and appointed manager of ${stationName}`));
+    if (hrLinked) notes.push(ar ? `ومدير الموارد البشرية لـ${hrBranch.name}` : `and HR manager for ${hrBranch.name}`);
+    const missed = [];
+    if (makeManager && !madeManager) missed.push(ar ? "لم يُعيَّن مديرًا للفرع" : "not set as branch manager");
+    if (hrBranch && !hrLinked) missed.push(ar ? `لم يُربط بـ${hrBranch.name} مديرًا للموارد البشرية` : `not linked as HR manager for ${hrBranch.name}`);
+    toast({ description: notes.join(" ") + "." + (missed.length ? ` ${missed.join("، ")}.` : ""), variant: missed.length ? "destructive" : undefined });
     onClose?.();
   };
 

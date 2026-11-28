@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Loader2, Banknote, ListChecks } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -64,6 +64,8 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
   const { company, data, currentUser } = useAuth();
   const [month, setMonth] = useState(monthProp || localMonthKey());
   const [run, setRun] = useState(null);
+  // the header's «اعتمد المسير» can ask before the run has loaded on a freshly opened tab — held until it has
+  const approveAsked = useRef(false);
   const [busy, setBusy] = useState(false);
   const [hoverRow, setHoverRow] = useState(null);
 
@@ -189,10 +191,15 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
 
   // «اعتمد المسير» in the section's header asks the board to approve — the same gate and call as its own button.
   useEffect(() => {
-    const onAsk = () => { approve(); };
+    const onAsk = () => { if (run) approve(); else approveAsked.current = true; };
     window.addEventListener("nv:payroll-approve", onAsk);
     return () => window.removeEventListener("nv:payroll-approve", onAsk);
   });
+  useEffect(() => {
+    if (!run || !approveAsked.current) return;
+    approveAsked.current = false;
+    approve();
+  }, [run]);
 
   if (!currentUser) return null;
 

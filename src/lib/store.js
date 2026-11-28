@@ -54,7 +54,7 @@ import {
 import { calendarDateKey, dayAssignmentMap } from "./attendanceCalendar";
 import { applyWorkplaceManagerRule, reportsToId, workplaceReportsToId } from "./peopleTreeGraph";
 import { doaApproverIds } from "./orgDesign";
-import { isWorkplaceStation } from "./stationTree";
+import { isTreeManagerTitle, isWorkplaceStation } from "./stationTree";
 import { appendOrgStructureEvent } from "./orgStructureLog";
 import { annualCarryAlerts, anniversaryYearWindow, leaveCoverRange, leaveTypeLabel, remainingLeaveDays, statutoryLeaveFloor, unpaidSuspensionPlan } from "./leaveTypes";
 import { EXAM_NOTICE_KIND, EXAM_SAT_KIND, LEAVE_ROSTER_BLOB, chargeableLeaveDays, checkAlterApprovedLeaveGate, checkApproveLeaveGate, checkAttachExamSatGate, checkRejectLeaveGate, checkSeeLeaveDecisionGate, checkSubmitLeaveGate, computeLeaveDays, leaveDecisionNoticeKey, leaveRosterFromEmployees, planAnnualPauseForSick, checkIddahBirthGate, checkMaternityBirthGate, checkLeaveBreachGate } from "./leaveDerivations";
@@ -274,7 +274,7 @@ function stampRefuseAudit(companyId, employee, request, { actor, note, family } 
 
 function pushEmployeeFileLog(employee, log) {
   if (!employee || !log) return;
-  employee.fileLog = [log, ...(employee.fileLog || [])].slice(0, 40);
+  employee.fileLog = [log, ...(employee.fileLog || [])].slice(0, 200);
 }
 // The lowest-order HR manager assigned to handle this employee's station (falls
 // back up through cluster/company tiers if no station-level manager is assigned).
@@ -635,7 +635,11 @@ function mergeLocalDemoRecords(current, incoming, kind, companyId = "") {
       const localMgr = local.managerId;
       const preferLocalManager = recentLocal
         && String(localMgr || "") !== String(remoteMgr ?? "");
+      const kept = Object.fromEntries(STATION_LOCAL_FIELDS
+        .filter((key) => station[key] === undefined && local[key] !== undefined)
+        .map((key) => [key, local[key]]));
       return {
+        ...kept,
         ...station,
         parentStationId: station.parentStationId || local.parentStationId || null,
         isCompanyRoot: Boolean(station.isCompanyRoot || local.isCompanyRoot),
@@ -749,6 +753,8 @@ function pushCompanyDataToCloud(id, data) {
     employeeNoSeq: data.employeeNoSeq || data.settings?.employeeNoSeq || 0,
     reportBranding: data.reportBranding,
     orgStructureLog: data.orgStructureLog || [],
+    // the register's annual confirmation date (م11) is the company's, not this device's
+    ...(data.commercialRegister ? { commercialRegister: data.commercialRegister } : {}),
     ...(readCompanyEstablishment(data) ? { gosiEstablishment: readCompanyEstablishment(data) } : {}),
   }]);
 }
@@ -927,6 +933,9 @@ async function syncStationsToEntity(companyId, stations) {
 }
 
 // Fetches the authoritative, persisted station list for a company from the real database.
+/** Station fields the fixed hydration list above did not name: kept from the local copy when the server row lacks them. */
+const STATION_LOCAL_FIELDS = ["legacySubCr", "crDisplayCheckedAt", "countryCode", "city", "cityRegion", "managerPickedId"];
+
 export async function hydrateStationsFromEntity(companyId) {
   try {
     const res = await invokeDirectory({ action: "getStations", companyId });
@@ -947,6 +956,9 @@ export async function hydrateStationsFromEntity(companyId) {
       lng: r.lng,
       radiusMeters: r.radiusMeters,
       createdAt: r.created_date,
+      // the branch's register and place fields (stored with the station on the server) — only when present,
+      // so a server row without them never blanks what this device holds
+      ...Object.fromEntries(STATION_LOCAL_FIELDS.filter((key) => r[key] != null && r[key] !== "").map((key) => [key, r[key]])),
     }));
   } catch {
     return null;
@@ -1240,6 +1252,12 @@ export function setStationManager(companyId, stationId, employeeId) {
       }
     }
     station.managerId = mid;
+    // Picked over the person in the branch's «مدير الفرع» seat: the seat sync must not hand the branch
+    // back to the seat holder on the next hire (orgHire.syncStationManagersFromSeats reads this pin).
+    const holdsManagerSeat = (data.orgSeats || []).some((seat) => String(seat.stationId) === sid
+      && String(seat.employeeId || "") === String(mid || "") && isTreeManagerTitle(seat.title));
+    if (mid && !holdsManagerSeat) station.managerPickedId = mid;
+    else delete station.managerPickedId;
     const next = mid ? (data.employees || []).find((employee) => String(employee.id) === mid) : null;
     appendOrgStructureEvent(data, {
       type: "manager",
@@ -4871,7 +4889,7 @@ export function setWorkInjuryArt139(companyId, employeeId, requestId, { ground =
       by,
       at: new Date().toISOString().slice(0, 16).replace("T", " "),
       dot: ground ? "#8A1C2B" : "#3C7D50",
-    }, ...(emp.fileLog || [])].slice(0, 40);
+    }, ...(emp.fileLog || [])].slice(0, 200);
   });
   if (hit && ground) {
     addNotification(companyId, employeeId, `قررت الإدارة سقوط حقك في معونة إصابة العمل (المادة 139): ${why}. لك الاعتراض أمام الجهة المختصة.`);
@@ -4889,7 +4907,7 @@ export function setWorkInjuryHospitalDays(companyId, employeeId, requestId, days
     if (!row || String(row.type || "").toLowerCase() !== "work_injury") return;
     hit = true;
     row.hospitalDays = n;
-    emp.fileLog = [{ text: `إصابة عمل — أيام التنويم على نفقة التأمينات: ${n}`, by, at: new Date().toISOString().slice(0, 16).replace("T", " "), dot: "#3C7D50" }, ...(emp.fileLog || [])].slice(0, 40);
+    emp.fileLog = [{ text: `إصابة عمل — أيام التنويم على نفقة التأمينات: ${n}`, by, at: new Date().toISOString().slice(0, 16).replace("T", " "), dot: "#3C7D50" }, ...(emp.fileLog || [])].slice(0, 200);
   });
   return hit ? { ok: true } : { ok: false, error: "NOT_FOUND" };
 }
@@ -4908,13 +4926,13 @@ export function setWorkInjuryOutcome(companyId, employeeId, requestId, { kind = 
     hit = true;
     row.outcome = kind ? { kind, percent: Number(percent) || 0, needsCare: !!needsCare, figure, at: today, by } : null;
     const label = { total: "عجز دائم كلي", partial: `عجز دائم جزئي ${Number(percent) || 0}٪`, death: "وفاة" }[kind] || "أُلغيت النتيجة";
-    emp.fileLog = [{ text: `إصابة عمل — النتيجة: ${label}`, by, at: new Date().toISOString().slice(0, 16).replace("T", " "), dot: kind ? "#8A1C2B" : "#3C7D50" }, ...(emp.fileLog || [])].slice(0, 40);
+    emp.fileLog = [{ text: `إصابة عمل — النتيجة: ${label}`, by, at: new Date().toISOString().slice(0, 16).replace("T", " "), dot: kind ? "#8A1C2B" : "#3C7D50" }, ...(emp.fileLog || [])].slice(0, 200);
     if (endContract && (kind === "total" || kind === "death")) {
       emp.profile = {
         ...(emp.profile || {}),
         contractExit: { ...(emp.profile?.contractExit || {}), reason: kind === "death" ? "death" : "disability", article: "79", effectiveDate: today, recordedBy: by, source: "work_injury", requestId },
       };
-      emp.fileLog = [{ text: `إنهاء العقد — ${kind === "death" ? "وفاة العامل" : "عجز عن أداء العمل بشهادة طبية"} (المادة 79)`, by, at: new Date().toISOString().slice(0, 16).replace("T", " "), dot: "#8A1C2B" }, ...(emp.fileLog || [])].slice(0, 40);
+      emp.fileLog = [{ text: `إنهاء العقد — ${kind === "death" ? "وفاة العامل" : "عجز عن أداء العمل بشهادة طبية"} (المادة 79)`, by, at: new Date().toISOString().slice(0, 16).replace("T", " "), dot: "#8A1C2B" }, ...(emp.fileLog || [])].slice(0, 200);
     }
   });
   return hit ? { ok: true } : { ok: false, error: "NOT_FOUND" };
@@ -4973,7 +4991,7 @@ export function recordGosiAction(companyId, { kind, employeeId, injuryDate = "",
       if ((kind === "register" || kind === "wage") && wage != null) acts.wage = { wage: Number(wage) || 0, at: day, ref: reference, by };
       emp.profile = { ...(emp.profile || {}), gosiActions: acts };
     }
-    emp.fileLog = [{ text: `${label}${reference ? ` — مرجع ${reference}` : ""} · ${day}`, by, at: stamp, dot: "#3C7D50" }, ...(emp.fileLog || [])].slice(0, 40);
+    emp.fileLog = [{ text: `${label}${reference ? ` — مرجع ${reference}` : ""} · ${day}`, by, at: stamp, dot: "#3C7D50" }, ...(emp.fileLog || [])].slice(0, 200);
   });
   return hit ? { ok: true } : { ok: false, error: "NOT_FOUND" };
 }
@@ -5009,7 +5027,7 @@ export function setInjuryGosiStatus(companyId, employeeId, injuryDate, status, {
     }
     if (n) {
       const label = status === "rejected" ? "رفضت التأمينات إصابة العمل — حُوِّلت أيامها إلى إجازة مرضية (المادة 117)" : status === "approved" ? "اعتمدت التأمينات إصابة العمل" : "إصابة العمل بانتظار قرار التأمينات";
-      emp.fileLog = [{ text: `${label} · ${injuryDate}`, by, at: new Date().toISOString().slice(0, 16).replace("T", " "), dot: status === "rejected" ? "#8A1C2B" : "#3C7D50" }, ...(emp.fileLog || [])].slice(0, 40);
+      emp.fileLog = [{ text: `${label} · ${injuryDate}`, by, at: new Date().toISOString().slice(0, 16).replace("T", " "), dot: status === "rejected" ? "#8A1C2B" : "#3C7D50" }, ...(emp.fileLog || [])].slice(0, 200);
     }
   });
   return n ? { ok: true, rows: n } : { ok: false, error: "NOT_FOUND" };

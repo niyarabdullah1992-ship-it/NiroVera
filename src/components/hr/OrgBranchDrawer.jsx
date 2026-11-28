@@ -583,7 +583,9 @@ export function OrgBranchDrawer({
                   ? (ar ? "سجّل الموعد من شهادة السجل لتنبّهك المنصة قبله بثلاثين يومًا. التأخر تسعين يومًا يعلّق السجل ومعه كل التراخيص (م15)." : "Record it from the register certificate; the platform warns 30 days ahead. Ninety days late suspends the register with all licences (art. 15).")
                   : annual.days >= 0
                     ? (ar ? `باقٍ ${annual.days} يومًا على التأكيد السنوي.` : `${annual.days} day(s) to the annual confirmation.`)
-                    : (ar ? `فات الموعد منذ ${-annual.days} يومًا — بعد 90 يومًا يُعلَّق السجل ومعه كل التراخيص (م15).` : `${-annual.days} day(s) late — after 90 days the register and all licences are suspended (art. 15).`)}
+                    : annual.state === "suspendable"
+                      ? (ar ? `فات الموعد منذ ${-annual.days} يومًا — تجاوز التسعين يومًا، والسجل معرَّض للتعليق مع كل التراخيص (م15).` : `${-annual.days} day(s) late — past 90 days; the register is liable to suspension with all licences (art. 15).`)
+                      : (ar ? `فات الموعد منذ ${-annual.days} يومًا — بعد 90 يومًا يُعلَّق السجل ومعه كل التراخيص (م15).` : `${-annual.days} day(s) late — after 90 days the register and all licences are suspended (art. 15).`)}
               </span>
               <button type="button" onClick={saveAnnualDue} style={actionButton("var(--nv-navy)")}>{ar ? "حفظ الموعد" : "Save date"}</button>
             </>

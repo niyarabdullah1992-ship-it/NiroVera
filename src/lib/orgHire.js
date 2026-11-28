@@ -251,6 +251,13 @@ export function syncStationManagersFromSeats(data) {
       String(seat.stationId) === String(station.id) && isBranchManagerTitle(seat.title)
     );
     if (!managerSeat) return;
+    // a manager picked by name over the seat holder stays while they are still the branch's live manager
+    const pinned = String(station.managerPickedId || "");
+    if (pinned) {
+      const person = (data.employees || []).find((item) => String(item.id) === pinned);
+      if (pinned === String(station.managerId || "") && person && person.active !== false) return;
+      delete station.managerPickedId;
+    }
     station.managerId = managerSeat.employeeId || null;
   });
   applyWorkplaceManagerRule(data);
@@ -1290,7 +1297,12 @@ export function placeExistingEmployee(companyId, employeeId, input) {
       nationalId: nationalId || employee.profile?.nationalId || "",
       phone,
       baseSalary: salary ?? employee.profile?.baseSalary ?? "",
-      leaveTotals: { ...(employee.profile?.leaveTotals || {}), annual: leaveDays },
+      // A transfer is not a new hire: the annual entitlement already on file (contract or a raised
+      // balance) stays — the hire-year pro-rata only fills a file that has none.
+      leaveTotals: {
+        ...(employee.profile?.leaveTotals || {}),
+        annual: Number(employee.profile?.leaveTotals?.annual) > 0 ? employee.profile.leaveTotals.annual : leaveDays,
+      },
       leaveBalance: {
         ...(employee.profile?.leaveBalance || {}),
         annual: employee.profile?.leaveBalance?.annual != null ? employee.profile.leaveBalance.annual : leaveDays,

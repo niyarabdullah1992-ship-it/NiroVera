@@ -111,7 +111,9 @@ export function registerDisplayPlaces(stations = []) {
 export function checkRegisterAnnualDueGate(value) {
   const next = String(value ?? "").trim();
   if (!next) return { ok: true, value: "" };
-  if (!DATE_RE.test(next) || Number.isNaN(Date.parse(next))) {
+  // Date.parse("2026-02-30") is a valid time in V8 — the date must read back as itself
+  const parsed = new Date(`${next}T00:00:00Z`);
+  if (!DATE_RE.test(next) || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== next) {
     return { ok: false, error: "CR_DUE_DATE", reason: "اكتب موعد التأكيد السنوي تاريخًا صحيحًا.", reasonEn: "Enter the annual confirmation due date as a valid date." };
   }
   return { ok: true, value: next };

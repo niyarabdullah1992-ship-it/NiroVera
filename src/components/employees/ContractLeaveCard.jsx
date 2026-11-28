@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from "react";
 import ContractLeaveFields from "@/components/hr/ContractLeaveFields";
-import { ANNUAL_MIN, applyContractLeave, contractLeaveOf, restDefaults, restWord } from "@/lib/contractLeave";
+import { ANNUAL_MIN, applyContractLeave, contractLeaveDefaultsFor, contractLeaveOf, restWord } from "@/lib/contractLeave";
 
 /** «الإجازات والراحة في العقد» — in «العقد والأجر»: what was written, and HR can raise it (never below the law). */
 export default function ContractLeaveCard({ employee, companyId, canEdit = false, fileEditing = false, onTermsChange }) {
   const now = contractLeaveOf(employee);
-  const annual = now.annual || ANNUAL_MIN;
-  const count = now.restCount || 1;
-  const dows = now.restDows.length ? now.restDows : restDefaults(count);
+  // the entitlement in force (law or contract, whichever is higher) and the rest the roster reads now
+  const { annual, restCount: count, restDows: dows } = contractLeaveDefaultsFor(companyId, employee);
   const [editing, setEditing] = useState(false);
   const [terms, setTerms] = useState({ annual, restCount: count, restDows: dows });
   // «تحرير الملف» opens this card too — one edit mode for the whole file.
@@ -42,7 +41,7 @@ export default function ContractLeaveCard({ employee, companyId, canEdit = false
         </>
       ) : (
         <div>
-          {row("الإجازة السنوية", `${annual} يوماً`, now.annual ? (annual > ANNUAL_MIN ? `أعلى من الحد النظامي (${ANNUAL_MIN}) بـ ${annual - ANNUAL_MIN}` : "الحد النظامي") : "لم تُحدَّد في العقد — يُطبَّق الحد النظامي")}
+          {row("الإجازة السنوية", `${annual} يوماً`, now.annual && now.annual >= annual ? (annual > ANNUAL_MIN ? `أعلى من الحد النظامي (${ANNUAL_MIN}) بـ ${annual - ANNUAL_MIN}` : "الحد النظامي") : now.annual ? "الحد النظامي بعد خمس سنوات خدمة أعلى مما في العقد" : "لم تُحدَّد في العقد — يُطبَّق الحد النظامي")}
           {row("الراحة الأسبوعية", restWord(count), "الأيام تُحدَّد في جدول الدوام")}
           {row("الرصيد في «طلباتي»", `${annual} يوماً في السنة`, "يُحسب منه المكتسب والمتبقي")}
         </div>

@@ -24,7 +24,7 @@ export function addTrainingRecord(companyId, record, by = "") {
   if (!gate.ok) return gate;
   return patchEmployee(companyId, record.employeeId, (emp) => {
     emp.trainings = [...(emp.trainings || []), { ...record, id: uid("trn"), cost: Number(record.cost) || 0, hours: Number(record.hours) || 0, by, at: new Date().toISOString() }];
-    emp.fileLog = [{ text: `سُجّل تدريب: ${record.course} (${record.hours} ساعة)`, by, at: stamp(), dot: "#3C7D50" }, ...(emp.fileLog || [])].slice(0, 40);
+    emp.fileLog = [{ text: `سُجّل تدريب: ${record.course} (${record.hours} ساعة)`, by, at: stamp(), dot: "#3C7D50" }, ...(emp.fileLog || [])].slice(0, 200);
   });
 }
 
@@ -38,7 +38,7 @@ export function markTrainingDocumented(companyId, employeeId, trainingId, at, by
 export function setOccupationalExposure(companyId, employeeId, hazard = "", by = "") {
   return patchEmployee(companyId, employeeId, (emp) => {
     emp.profile = { ...(emp.profile || {}), occupationalExposure: Boolean(String(hazard).trim()), exposureHazard: String(hazard).trim() };
-    emp.fileLog = [{ text: hazard ? `معرّض لخطر مهني: ${hazard} — فحص طبي سنوي (المادة 143)` : "أُزيل التعرض المهني", by, at: stamp(), dot: "#A57F2C" }, ...(emp.fileLog || [])].slice(0, 40);
+    emp.fileLog = [{ text: hazard ? `معرّض لخطر مهني: ${hazard} — فحص طبي سنوي (المادة 143)` : "أُزيل التعرض المهني", by, at: stamp(), dot: "#A57F2C" }, ...(emp.fileLog || [])].slice(0, 200);
   });
 }
 
@@ -47,7 +47,7 @@ export function addMedicalExam(companyId, employeeId, exam, by = "") {
   if (!gate.ok) return gate;
   return patchEmployee(companyId, employeeId, (emp) => {
     emp.medicalExams = [...(emp.medicalExams || []), { ...exam, id: uid("mex"), by }];
-    emp.fileLog = [{ text: `فحص طبي دوري ${exam.at}: ${exam.result}`, by, at: stamp(), dot: "#3C7D50" }, ...(emp.fileLog || [])].slice(0, 40);
+    emp.fileLog = [{ text: `فحص طبي دوري ${exam.at}: ${exam.result}`, by, at: stamp(), dot: "#3C7D50" }, ...(emp.fileLog || [])].slice(0, 200);
   });
 }
 
@@ -63,6 +63,6 @@ export function returnHeldDocument(companyId, employeeId, docId, at, by = "") {
   return patchEmployee(companyId, employeeId, (emp) => {
     const list = (emp.profile?.heldDocuments || []).map((d) => (d.id === docId ? { ...d, returnedAt: String(at).slice(0, 10), returnedBy: by } : d));
     emp.profile = { ...(emp.profile || {}), heldDocuments: list };
-    emp.fileLog = [{ text: "أُعيدت وثيقة إلى العامل (اللائحة م6 · المادة 64/2)", by, at: stamp(), dot: "#3C7D50" }, ...(emp.fileLog || [])].slice(0, 40);
+    emp.fileLog = [{ text: "أُعيدت وثيقة إلى العامل (اللائحة م6 · المادة 64/2)", by, at: stamp(), dot: "#3C7D50" }, ...(emp.fileLog || [])].slice(0, 200);
   });
 }

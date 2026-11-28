@@ -15,17 +15,29 @@ export default function TrialExpiryGate({ company, children }) {
   const [checkedCompanyId, setCheckedCompanyId] = useState(null);
   useEffect(() => {
     if (!company?.id) return;
-    if (isLocalPreviewActive() || company.id === LOCAL_PREVIEW_COMPANY_ID || company.subscriptionExempt) {
+    if (company.id === LOCAL_PREVIEW_COMPANY_ID || company.subscriptionExempt) {
       setAccess({ exists: true, subscriptionExempt: true });
       setCheckedCompanyId(company.id);
       return;
     }
     let active = true;
+    // Local run: the demo workspace is open, but another company on this device is held to what the
+    // platform owner set on it (a freeze closes it) — it used to pass as if it were the demo too.
+    if (isLocalPreviewActive()) {
+      import("@/lib/localSubscriptionFallback").then(({ localAccountAccess }) => {
+        if (active) { setAccess(localAccountAccess(company.id)); setCheckedCompanyId(company.id); }
+      });
+      return () => { active = false; };
+    }
     setAccess(null);
     setCheckedCompanyId(null);
     base44.functions.invoke("companyDirectory", { action: "accountExists", companyId: company.id })
       .then((res) => { if (active) { setAccess(res.data); setCheckedCompanyId(company.id); } })
-      .catch(() => { if (active) { setAccess({ exists: true }); setCheckedCompanyId(company.id); } });
+      // no server (local run): the platform owner's freeze on this device still closes the company
+      .catch(async () => {
+        const { localAccountAccess } = await import("@/lib/localSubscriptionFallback");
+        if (active) { setAccess(localAccountAccess(company.id)); setCheckedCompanyId(company.id); }
+      });
     return () => { active = false; };
   }, [company?.id, company?.subscriptionExempt]);
 

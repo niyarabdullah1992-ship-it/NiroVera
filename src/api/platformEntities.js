@@ -25,20 +25,32 @@ export function listCompanyAccounts() {
 
 /* -------------------------- باقات الاشتراك --------------------------- */
 
+// The plan catalogue falls back to this device's copy when the server is not there (local run),
+// as the owner board's subscription desk does (lib/localSubscriptionFallback).
+const offline = (error) => {
+  const status = error?.response?.status ?? error?.status;
+  return !status || status === 404;
+};
+const localPlanApi = () => import("@/lib/localSubscriptionFallback");
+
 export function listSubscriptionPlans() {
-  return base44.entities.SubscriptionPlan.list("sortOrder", PLAN_LIMIT);
+  return base44.entities.SubscriptionPlan.list("sortOrder", PLAN_LIMIT)
+    .catch(async (error) => { if (!offline(error)) throw error; return (await localPlanApi()).localPlans(); });
 }
 
 export function createSubscriptionPlan(plan) {
-  return base44.entities.SubscriptionPlan.create(plan);
+  return base44.entities.SubscriptionPlan.create(plan)
+    .catch(async (error) => { if (!offline(error)) throw error; return (await localPlanApi()).localPlanWrite("create", plan); });
 }
 
 export function updateSubscriptionPlan(id, patch) {
-  return base44.entities.SubscriptionPlan.update(id, patch);
+  return base44.entities.SubscriptionPlan.update(id, patch)
+    .catch(async (error) => { if (!offline(error)) throw error; return (await localPlanApi()).localPlanWrite("update", id, patch); });
 }
 
 export function deleteSubscriptionPlan(id) {
-  return base44.entities.SubscriptionPlan.delete(id);
+  return base44.entities.SubscriptionPlan.delete(id)
+    .catch(async (error) => { if (!offline(error)) throw error; return (await localPlanApi()).localPlanWrite("delete", id); });
 }
 
 /* --------------------------- تقييمات المنتج --------------------------- */

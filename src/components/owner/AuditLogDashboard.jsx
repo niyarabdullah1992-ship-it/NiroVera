@@ -17,9 +17,12 @@ export default function AuditLogDashboard({ ar, companies = [] }) {
     ]).then(([res, companyAccounts]) => {
       setLogs(res.data.logs || []);
       setAccounts(companyAccounts);
-    }).catch(() => {
-      setLogs([]);
-      setError(true);
+    }).catch(async () => {
+      // no server (local run): the subscription changes made on this device are still a trail
+      const { localPlatformAudit } = await import("@/lib/localSubscriptionFallback");
+      const local = localPlatformAudit();
+      setLogs(local);
+      setError(!local.length);
     });
   }, []);
 

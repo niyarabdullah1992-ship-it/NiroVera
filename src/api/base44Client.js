@@ -80,5 +80,17 @@ powercareFunctions.invoke = (name, payload, ...rest) => {
       // no session yet — the backend rejects unauthorized calls
     }
   }
+  // The platform owner's subscription desk works on this device when the server is not there
+  // (local run: the function answers 404, or nothing answers). A real refusal (403, 400) is not
+  // replaced — it reaches the board as the error it is.
+  if (name === "subscriptionOverview" || name === "subscriberEmails") {
+    return rawInvoke(name, payload, ...rest).catch(async (error) => {
+      const status = error?.response?.status ?? error?.status;
+      if (status && status !== 404) throw error;
+      if (name === "subscriberEmails") return { data: { ok: true, local: true, sent: false } };
+      const { localSubscriptionOverview } = await import("@/lib/localSubscriptionFallback");
+      return { data: localSubscriptionOverview(payload || {}) };
+    });
+  }
   return rawInvoke(name, payload, ...rest);
 };

@@ -223,12 +223,14 @@ export function payrollStages(ctx = {}, ar = true) {
   const approved = status === "approved" || status === "sent";
   const sent = status === "sent";
   const hasRun = !!run && items.length > 0;
+  // Arabic counted noun: 1 «مرحلة واحدة», 2 «مرحلتان», 3–10 «مراحل», 11+ «مرحلةً» — «4 مرحلة» read wrong.
+  const arN = (n, one, two, few, many) => (n === 1 ? one : n === 2 ? two : n <= 10 ? `${n} ${few}` : `${n} ${many}`);
   const before = [
     { id: "att", tab: "att", ar: "إقفال الحضور", en: "Lock attendance", count: attGaps, noteAr: attGaps ? `${attGaps} بلا حضور مكتمل` : "مكتمل", noteEn: attGaps ? `${attGaps} with gaps` : "Complete" },
-    { id: "lines", tab: "lines", ar: "مراجعة البنود", en: "Review lines", count: issueCount, noteAr: issueCount ? `${issueCount} بنداً فيه خلل` : "سليمة", noteEn: issueCount ? `${issueCount} with issues` : "Clean" },
+    { id: "lines", tab: "lines", ar: "مراجعة البنود", en: "Review lines", count: issueCount, noteAr: issueCount ? `${arN(issueCount, "بند واحد", "بندان", "بنود", "بنداً")} فيه خلل` : "سليمة", noteEn: issueCount ? `${issueCount} with issues` : "Clean" },
     { id: "deduct", tab: "deduct", ar: "الخصومات بسند", en: "Deductions with an instrument", count: deductionGaps, noteAr: deductionGaps ? `${deductionGaps} بلا سند` : "كلها بسند", noteEn: deductionGaps ? `${deductionGaps} without an instrument` : "All documented" },
     { id: "gosi", tab: "gosi", ar: "التأمينات", en: "GOSI", count: gosiOpen, noteAr: gosiOpen ? `${gosiOpen} بلا جنسية أو نسبة مثبتة` : "محسوبة", noteEn: gosiOpen ? `${gosiOpen} without nationality or rate` : "Computed" },
-    { id: "wpscheck", tab: "run", ar: "فحص حماية الأجور", en: "Wage-protection check", count: wps.blocked, noteAr: wps.blocked ? `${wps.blocked} صفاً لن يقبله الملف` : "جاهز", noteEn: wps.blocked ? `${wps.blocked} rows the file will refuse` : "Ready" },
+    { id: "wpscheck", tab: "run", ar: "فحص حماية الأجور", en: "Wage-protection check", count: wps.blocked, noteAr: wps.blocked ? `${arN(wps.blocked, "صف واحد", "صفّان", "صفوف", "صفاً")} لن يقبله الملف` : "جاهز", noteEn: wps.blocked ? `${wps.blocked} rows the file will refuse` : "Ready" },
     { id: "review", tab: "run", ar: "مقارنة بالشهر الماضي", en: "Against last month", count: variance.flagged, soft: true, noteAr: variance.flagged ? `${variance.flagged} يحتاج نظرة` : "لا فروق لافتة", noteEn: variance.flagged ? `${variance.flagged} to look at` : "No notable change" },
   ];
   const blocking = before.filter((s) => !s.soft && s.count > 0).length;
@@ -237,7 +239,7 @@ export function payrollStages(ctx = {}, ar = true) {
     id: "approve", tab: "run", ar: "الاعتماد", en: "Approval",
     state: approved ? "done" : !hasRun || blocking ? "wait" : "todo",
     count: 0,
-    noteAr: approved ? "معتمد" : blocking ? `بعد ${blocking} مرحلة` : "جاهز للاعتماد",
+    noteAr: approved ? "معتمد" : blocking ? `بعد ${arN(blocking, "مرحلة واحدة", "مرحلتين", "مراحل", "مرحلة")}` : "جاهز للاعتماد",
     noteEn: approved ? "Approved" : blocking ? `After ${blocking} stage(s)` : "Ready to approve",
   });
   stages.push({

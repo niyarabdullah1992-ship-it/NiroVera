@@ -850,7 +850,7 @@ export function migratePreviewOwnerGosiIdentity(data) {
     if (String(run.month || "") < openMonth) continue;
     for (const item of run.items || []) {
       if (String(item.employeeId) !== String(owner.id) || item.paid || item.settledNet != null) continue;
-      const patch = derivePayrollWagePatch(item, owner, { otDecisions: data.otDecisions, month: run.month });
+      const patch = derivePayrollWagePatch(item, owner, { otDecisions: data.otDecisions, month: run.month, company: data });
       if (!patch) continue;
       const snap = (row) => JSON.stringify({
         base: row.base,

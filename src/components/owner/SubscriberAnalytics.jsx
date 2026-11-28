@@ -1,15 +1,35 @@
 ﻿import React from "react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
-import { DollarSign, TrendingUp } from "lucide-react";
-import { OWNER_MONO, OwnerSectionHead, ownerPaper, ownerStack } from "@/components/owner/ownerUi";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
+import { PieChart as PieIcon, TrendingUp } from "lucide-react";
+import { DEFAULT_SUBSCRIPTION_PLANS } from "@/lib/subscriptionPlans";
+import { OWNER_MONO, OwnerCard } from "@/components/owner/ownerUi";
 
 const PLAN_COLORS = {
-  Free: "var(--nv-mute-fill)",
-  Starter: "var(--nv-accent)",
-  Professional: "var(--nv-navy)",
-  Enterprise: "#0F1F3A",
-  Custom: "#5A6B85",
+  free: "#B9C6BE",
+  starter: "#5FA27A",
+  professional: "#1F5C3A",
+  enterprise: "#C8A45A",
+  custom: "#5A6B85",
 };
+
+/** Arabic/English display name for a plan key as stored on an account ("Enterprise", "enterprise", …). */
+export function planLabel(plan, ar) {
+  const key = String(plan || "Free").toLowerCase();
+  const row = DEFAULT_SUBSCRIPTION_PLANS.find((p) => p.slug === key || String(p.nameEn).toLowerCase() === key);
+  if (row) return ar ? row.nameAr : row.nameEn;
+  if (key === "custom") return ar ? "مخصّصة" : "Custom";
+  return plan || "—";
+}
+
+function monthLabel(month, ar) {
+  const [y, m] = String(month || "").split("-").map(Number);
+  if (!y || !m) return month;
+  try {
+    return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(ar ? "ar-SA-u-ca-gregory" : "en-US", { month: "short", year: "2-digit", timeZone: "UTC" });
+  } catch {
+    return month;
+  }
+}
 
 export default function SubscriberAnalytics({ data, ar }) {
   const summary = data?.summary;
@@ -18,70 +38,83 @@ export default function SubscriberAnalytics({ data, ar }) {
   const rows = [...(data.subscriptions || []), ...(data.companiesWithoutSubscription || [])];
   const planCounts = {};
   rows.forEach((row) => {
-    const plan = row.plan || "Free";
-    planCounts[plan] = (planCounts[plan] || 0) + 1;
+    const key = String(row.plan || "Free").toLowerCase();
+    planCounts[key] = (planCounts[key] || 0) + 1;
   });
-  const planData = Object.entries(planCounts).map(([name, value]) => ({ name, value }));
-  const growth = data.growth || [];
+  const planData = Object.entries(planCounts).map(([key, value]) => ({ key, name: planLabel(key, ar), value }));
+  const total = planData.reduce((sum, row) => sum + row.value, 0);
+
+  // a single month draws a lone dot — pad back to six months so growth reads as a line
+  const raw = data.growth || [];
+  const byMonth = new Map(raw.map((row) => [row.month, row.count]));
+  const last = raw.length ? raw[raw.length - 1].month : new Date().toISOString().slice(0, 7);
+  const [ly, lm] = last.split("-").map(Number);
+  const growth = [];
+  let running = 0;
+  const before = raw.filter((row) => {
+    const [y, m] = row.month.split("-").map(Number);
+    return (y * 12 + m) <= (ly * 12 + lm - 6);
+  }).reduce((sum, row) => sum + row.count, 0);
+  running = before;
+  for (let i = 5; i >= 0; i -= 1) {
+    const idx = ly * 12 + (lm - 1) - i;
+    const month = `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, "0")}`;
+    const added = byMonth.get(month) || 0;
+    running += added;
+    growth.push({ month: monthLabel(month, ar), added, total: running });
+  }
 
   return (
-    <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-      <div style={{ ...ownerPaper("ok"), padding: 16, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 6 }}>
-        <span style={{ width: 40, height: 40, borderRadius: 10, background: "var(--nv-soft)", color: "var(--nv-accent)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-          <DollarSign className="w-5 h-5" />
-        </span>
-        <p dir="ltr" style={{ ...OWNER_MONO, margin: 0, fontSize: 32, fontWeight: 500, color: "var(--nv-ink)", lineHeight: 1.05 }}>${summary.mrr ?? 0}</p>
-        <p style={{ margin: 0, fontSize: 12, color: "var(--nv-muted)" }}>
-          {ar ? "الإيراد الشهري المتكرر (MRR)" : "Monthly Recurring Revenue (MRR)"}
-        </p>
-        <p style={{ margin: 0, fontSize: 11, color: "var(--nv-muted)" }}>
-          {ar ? `${summary.activeSubscriptions} اشتراك نشط` : `${summary.activeSubscriptions} active subscriptions`}
-        </p>
-      </div>
+    <div style={{ display: "grid", gap: 14, gridTemplateColumns: "minmax(0, 2fr) minmax(260px, 1fr)" }} data-owner-split="">
+      <OwnerCard title={ar ? "نمو الشركات — آخر 6 أشهر" : "Company growth — last 6 months"} icon={TrendingUp}>
+        <div style={{ height: 230, direction: "ltr" }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={growth} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+              <defs>
+                <linearGradient id="nvOwnerGrowth" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#2F7A4D" stopOpacity={0.28} />
+                  <stop offset="100%" stopColor="#2F7A4D" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--nv-line)" vertical={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: "var(--nv-muted)" }} axisLine={false} tickLine={false} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "var(--nv-muted)" }} axisLine={false} tickLine={false} />
+              <Tooltip
+                contentStyle={{ borderRadius: 10, border: "1px solid var(--nv-line)", fontSize: 12, direction: ar ? "rtl" : "ltr" }}
+                formatter={(value, name) => [value, name === "total" ? (ar ? "إجمالي الشركات" : "Total companies") : (ar ? "جديدة" : "New")]}
+              />
+              <Area type="monotone" dataKey="total" stroke="#2F7A4D" strokeWidth={2.4} fill="url(#nvOwnerGrowth)" dot={{ r: 3, fill: "#2F7A4D", strokeWidth: 0 }} activeDot={{ r: 5 }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </OwnerCard>
 
-      <div style={{ ...ownerPaper("mute"), padding: 16, ...ownerStack, gap: 8 }}>
-        <OwnerSectionHead title={ar ? "توزيع الباقات" : "Plan distribution"} />
-        <div style={{ height: 176 }}>
+      <OwnerCard title={ar ? "توزيع الباقات" : "Plan distribution"} icon={PieIcon}>
+        <div style={{ position: "relative", height: 170 }}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
-              <Pie data={planData} dataKey="value" nameKey="name" innerRadius={40} outerRadius={65} paddingAngle={3}>
-                {planData.map((row) => <Cell key={row.name} fill={PLAN_COLORS[row.name] || "#5A6B85"} />)}
+              <Pie data={planData} dataKey="value" nameKey="name" innerRadius={52} outerRadius={74} paddingAngle={planData.length > 1 ? 3 : 0} stroke="none">
+                {planData.map((row) => <Cell key={row.key} fill={PLAN_COLORS[row.key] || "#5A6B85"} />)}
               </Pie>
-              <Tooltip />
+              <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid var(--nv-line)", fontSize: 12 }} />
             </PieChart>
           </ResponsiveContainer>
+          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+            <strong style={{ ...OWNER_MONO, fontSize: 24, color: "var(--nv-ink)" }}>{total}</strong>
+            <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{ar ? "شركة" : "companies"}</span>
+          </div>
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 12px", justifyContent: "center", fontSize: 11, color: "var(--nv-ink2)" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {planData.map((row) => (
-            <span key={row.name} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: PLAN_COLORS[row.name] || "#5A6B85" }} />
-              {row.name}: <strong>{row.value}</strong>
-            </span>
+            <div key={row.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 3, background: PLAN_COLORS[row.key] || "#5A6B85", flexShrink: 0 }} />
+              <span style={{ flex: 1, color: "var(--nv-ink2)" }}>{row.name}</span>
+              <strong style={OWNER_MONO}>{row.value}</strong>
+              <span style={{ color: "var(--nv-muted)", fontSize: 11.5, minWidth: 38, textAlign: "end" }}>{total ? Math.round((row.value / total) * 100) : 0}%</span>
+            </div>
           ))}
         </div>
-      </div>
-
-      <div style={{ ...ownerPaper("mute"), padding: 16, ...ownerStack, gap: 8 }}>
-        <OwnerSectionHead
-          title={(
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <TrendingUp className="w-4 h-4" style={{ color: "var(--nv-accent)" }} />
-              {ar ? "نمو الشركات (شهريًا)" : "Company growth (monthly)"}
-            </span>
-          )}
-        />
-        <div style={{ height: 208 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={growth} margin={{ top: 8, right: 8, left: -22, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--nv-line)" />
-              <XAxis dataKey="month" tick={{ fontSize: 10, fill: "var(--nv-muted)" }} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "var(--nv-muted)" }} />
-              <Tooltip />
-              <Line type="monotone" dataKey="count" stroke="var(--nv-navy)" strokeWidth={2} dot={{ r: 3, fill: "var(--nv-accent)" }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+      </OwnerCard>
     </div>
   );
 }

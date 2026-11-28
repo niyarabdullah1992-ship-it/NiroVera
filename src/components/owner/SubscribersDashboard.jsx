@@ -1,18 +1,15 @@
 ﻿import React, { useEffect, useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { RefreshCw, Loader2, Search } from "lucide-react";
+import { RefreshCw, Loader2, Search, Building2, Users, FlaskConical, AlertTriangle, Snowflake } from "lucide-react";
 import SubscriberRow from "@/components/owner/SubscriberRow";
-import SubscriberAnalytics from "@/components/owner/SubscriberAnalytics";
 import SubscriptionRevenueSummary from "@/components/owner/SubscriptionRevenueSummary";
 import SubscriptionBulkExport from "@/components/owner/SubscriptionBulkExport";
 import { subscriptionTotals, subscriptionBillableAmount, formatSubscriptionMoney } from "@/lib/subscriptionTax";
 import {
-  OwnerSectionHead,
-  OwnerStatTile,
+  OwnerKpi,
   ownerChip,
   ownerField,
   ownerGhostBtn,
-  ownerGrid,
   ownerPaper,
   ownerStack,
 } from "@/components/owner/ownerUi";
@@ -51,11 +48,11 @@ export default function SubscribersDashboard({ ar }) {
   });
   const tableTotals = subscriptionTotals(rows.reduce((sum, row) => sum + subscriptionBillableAmount(row), 0));
   const stats = summary ? [
-    { label: ar ? "الشركات المسجلة" : "Registered companies", value: summary.totalCompanies },
-    { label: ar ? "اشتراكات نشطة" : "Active subscriptions", value: summary.activeSubscriptions },
-    { label: ar ? "تجريبي" : "Trialing", value: summary.trialing },
-    { label: ar ? "متأخر الدفع" : "Past due", value: summary.pastDue, warn: summary.pastDue > 0, flag: ar ? "يحتاج تحصيلاً" : "Needs collection" },
-    { label: ar ? "الاشتراكات المجمّدة" : "Frozen subscriptions", value: summary.frozen || 0, warn: summary.frozen > 0, flag: ar ? "الوصول موقوف" : "Access paused" },
+    { icon: Building2, label: ar ? "الشركات المسجلة" : "Registered companies", value: summary.totalCompanies, tone: "ok" },
+    { icon: Users, label: ar ? "اشتراكات نشطة" : "Active subscriptions", value: summary.activeSubscriptions, tone: "ok" },
+    { icon: FlaskConical, label: ar ? "تجريبي" : "Trialing", value: summary.trialing || 0, tone: "mute" },
+    { icon: AlertTriangle, label: ar ? "متأخر الدفع" : "Past due", value: summary.pastDue || 0, tone: summary.pastDue > 0 ? "warn" : "mute", sub: summary.pastDue > 0 ? (ar ? "يحتاج تحصيلاً" : "Needs collection") : "" },
+    { icon: Snowflake, label: ar ? "مجمّدة" : "Frozen", value: summary.frozen || 0, tone: summary.frozen > 0 ? "bad" : "mute", sub: summary.frozen > 0 ? (ar ? "الوصول موقوف" : "Access paused") : "" },
   ] : [];
 
   const filters = [
@@ -68,16 +65,6 @@ export default function SubscribersDashboard({ ar }) {
 
   return (
     <div style={ownerStack}>
-      <OwnerSectionHead
-        kicker={ar ? "مركز العمليات المالية" : "Financial operations"}
-        title={ar ? "إدارة الاشتراكات" : "Subscription management"}
-        meta={(
-          <button type="button" onClick={load} disabled={loading} title={ar ? "تحديث" : "Refresh"} style={ownerGhostBtn()}>
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
-        )}
-      />
-
       {loading && !data ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "24px 0", fontSize: 13, color: "var(--nv-muted)" }}>
           <Loader2 className="w-4 h-4 animate-spin" /> {ar ? "جارٍ التحميل…" : "Loading…"}
@@ -87,43 +74,41 @@ export default function SubscribersDashboard({ ar }) {
 
       {summary ? (
         <>
-          <div style={ownerGrid}>
+          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))" }}>
             {stats.map((stat) => (
-              <OwnerStatTile key={stat.label} label={stat.label} value={stat.value} warn={stat.warn} state={stat.warn ? "warn" : "mute"} flag={stat.flag} ar={ar} />
+              <OwnerKpi key={stat.label} icon={stat.icon} label={stat.label} value={stat.value} tone={stat.tone} sub={stat.sub} />
             ))}
           </div>
 
           <SubscriptionRevenueSummary amount={summary.mrr} ar={ar} />
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <SubscriptionBulkExport rows={allRows} ar={ar} />
-          </div>
-          <SubscriberAnalytics data={data} ar={ar} />
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ position: "relative" }}>
-              <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: "var(--nv-muted)" }} />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={ar ? "بحث باسم الشركة أو الإيميل…" : "Search by company or email…"}
-                style={{ ...ownerField(), paddingInlineStart: 36, "--nv-input-start": "36px" }}
-              />
-            </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {filters.map((filter) => (
-                <button
-                  key={filter.key}
-                  type="button"
-                  onClick={() => setStatusFilter(filter.key)}
-                  style={ownerChip(statusFilter === filter.key)}
-                >
-                  {ar ? filter.ar : filter.en}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div style={{ ...ownerPaper("mute"), overflow: "hidden", padding: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "14px 16px", borderBottom: "1px solid var(--nv-line)" }}>
+              <div style={{ position: "relative", flex: "1 1 260px" }}>
+                <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: "var(--nv-muted)" }} />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder={ar ? "بحث باسم الشركة أو الإيميل…" : "Search by company or email…"}
+                  style={{ ...ownerField(), paddingInlineStart: 36, "--nv-input-start": "36px" }}
+                />
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {filters.map((filter) => (
+                  <button
+                    key={filter.key}
+                    type="button"
+                    onClick={() => setStatusFilter(filter.key)}
+                    style={ownerChip(statusFilter === filter.key)}
+                  >
+                    {ar ? filter.ar : filter.en}
+                  </button>
+                ))}
+              </div>
+              <SubscriptionBulkExport rows={allRows} ar={ar} />
+              <button type="button" onClick={load} disabled={loading} title={ar ? "تحديث" : "Refresh"} style={ownerGhostBtn()}>
+                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              </button>
+            </div>
             <table className="w-full text-sm mobile-cards" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--nv-line)", background: "var(--nv-soft)", textAlign: "start", fontSize: 11, color: "var(--nv-muted)" }}>

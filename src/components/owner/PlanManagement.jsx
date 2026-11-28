@@ -83,7 +83,7 @@ export default function PlanManagement({ ar }) {
       />
       {ownerGateBanner(gate, ar)}
       {editing ? <PlanForm value={editing} onChange={setEditing} onSave={save} onCancel={() => setEditing(null)} ar={ar} /> : null}
-      <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+      <div style={{ display: "grid", gap: 16, paddingTop: 10, gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", alignItems: "stretch" }}>
         {plans.map((plan) => (
           <PlanCard key={plan.id} plan={plan} ar={ar} onEdit={() => setEditing({ ...plan })} onToggle={() => toggle(plan)} onDelete={() => remove(plan)} />
         ))}

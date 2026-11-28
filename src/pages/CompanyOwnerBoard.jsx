@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogIn, Plus, ShieldAlert, Trash2 } from "lucide-react";
+import { Building2, LogIn, Plus, ShieldAlert, Trash2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { listCompanyAccounts } from "@/api/platformEntities";
 import { useI18n } from "@/lib/i18n";
@@ -21,14 +21,13 @@ import OwnerBoardFrame from "@/components/owner/OwnerBoardFrame";
 import IdentityCard from "@/components/shared/IdentityCard";
 import { MUTED, SURFACE, ui } from "@/lib/platformStyles";
 import {
+  OwnerCard,
   ownerField,
   ownerGhostBtn,
-  ownerInset,
-  ownerPaper,
   ownerPrimaryBtn,
-  OwnerSectionHead,
-  ownerStack,
+  ownerStatusChip,
 } from "@/components/owner/ownerUi";
+import { planLabel } from "@/components/owner/SubscriberAnalytics";
 import NewsBroadcast from "@/components/owner/NewsBroadcast";
 import SubscribersDashboard from "@/components/owner/SubscribersDashboard";
 import SaasAnalyticsDashboard from "@/components/owner/SaasAnalyticsDashboard";
@@ -182,72 +181,92 @@ export default function CompanyOwnerBoard() {
         onLogout={() => base44.auth.logout("/")}
         onOpenApp={() => navigate("/app")}
       >
-        {tab === "glance" ? <SaasAnalyticsDashboard key={`glance-${refreshKey}`} lang={lang} /> : null}
+        {tab === "glance" ? <SaasAnalyticsDashboard key={`glance-${refreshKey}`} lang={lang} onTab={setTab} /> : null}
 
         {tab === "companies" ? (
-          <>
-            <div style={{ ...ownerPaper("mute"), padding: 16, ...ownerStack }}>
-              <OwnerSectionHead
-                title={ar ? `الشركات (${companies.length})` : `Companies (${companies.length})`}
-              />
-              <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.7 }}>
-                {ar ? "دخول الشركة يفتح /app بجلسة مالكها. الحذف نهائي من السجل المحلي." : "Entering a company opens /app as its owner session. Delete is permanent from the local registry."}
-              </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }}>
-                  {companies.length === 0 ? (
-                    <p style={{ margin: 0, fontSize: 13, color: MUTED }}>{ar ? "لا شركات بعد." : "No companies yet."}</p>
-                  ) : null}
-                  {companies.map((company) => (
-                    <div
-                      key={company.id}
-                      style={{
-                        ...ownerInset(),
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 12,
-                      }}
-                    >
+          <div data-owner-split="" style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 1.6fr) minmax(300px, 1fr)", alignItems: "start" }}>
+            <OwnerCard
+              padding={0}
+              style={{ gap: 0 }}
+            >
+              <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "16px 18px" }}>
+                <h3 className="nv-h" style={{ margin: 0, fontSize: 15, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <Building2 size={16} style={{ color: "var(--nv-accent)" }} />
+                  {ar ? "الشركات المسجلة" : "Registered companies"}
+                  <span style={{ ...ownerStatusChip("mute"), marginInlineStart: 4 }}>{companies.length}</span>
+                </h3>
+              </header>
+              {companies.length === 0 ? (
+                <p style={{ margin: 0, padding: "8px 18px 22px", fontSize: 13, color: MUTED }}>{ar ? "لا شركات بعد. أنشئ أول شركة من النموذج." : "No companies yet. Create the first one."}</p>
+              ) : null}
+              {companies.map((company) => {
+                const tone = company.frozen ? "bad" : company.subscriptionExempt ? "mute" : "ok";
+                const text = company.frozen ? (ar ? "مجمّدة" : "Frozen") : company.subscriptionExempt ? (ar ? "معفاة" : "Exempt") : (ar ? "نشطة" : "Active");
+                return (
+                  <div key={company.id} data-owner="company-row" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", alignItems: "center", gap: 14, padding: "14px 18px", borderTop: "1px solid var(--nv-line)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                      <span style={{ width: 40, height: 40, borderRadius: 11, background: "var(--nv-accent-soft)", color: "var(--nv-accent-deep)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 15, flexShrink: 0 }}>
+                        {String(company.name || "?").trim().charAt(0).toUpperCase()}
+                      </span>
                       <div style={{ minWidth: 0 }}>
-                        <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--nv-ink)" }}>{company.name}</p>
-                        <p style={{ margin: "2px 0 0", fontSize: 11, color: MUTED }}>{company.ownerEmail} · {company.plan}</p>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                        <button type="button" onClick={() => handleEnter(company.id)} title={ar ? "دخول" : "Enter"} style={ownerGhostBtn()}>
-                          <LogIn className="h-4 w-4" strokeWidth={1.75} />
-                        </button>
-                        <ConfirmDeleteDialog
-                          onConfirm={() => handleDelete(company.id)}
-                          trigger={(
-                            <button type="button" style={{ ...ownerGhostBtn(), color: "var(--nv-bad-ink, #DC2626)" }}>
-                              <Trash2 className="h-4 w-4" strokeWidth={1.75} />
-                            </button>
-                          )}
-                        />
+                        <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "var(--nv-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{company.name}</p>
+                        <p style={{ margin: "2px 0 0", fontSize: 12, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {company.ownerEmail || "—"} · {ar ? "باقة" : "Plan"} {planLabel(company.plan, ar)}
+                        </p>
                       </div>
                     </div>
-                  ))}
-                </div>
+                    <span style={ownerStatusChip(tone)}>{text}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                      <button type="button" onClick={() => handleEnter(company.id)} style={ownerGhostBtn()}>
+                        <LogIn className="h-4 w-4" strokeWidth={1.75} /> {ar ? "دخول" : "Enter"}
+                      </button>
+                      <ConfirmDeleteDialog
+                        onConfirm={() => handleDelete(company.id)}
+                        trigger={(
+                          <button type="button" title={ar ? "حذف" : "Delete"} style={{ ...ownerGhostBtn(), color: "var(--nv-bad-ink, #DC2626)", padding: "8px 10px" }}>
+                            <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                          </button>
+                        )}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+              <p style={{ margin: 0, padding: "12px 18px", fontSize: 11.5, color: MUTED, borderTop: "1px solid var(--nv-line)", background: "var(--nv-soft)", borderRadius: "0 0 12px 12px" }}>
+                {ar ? "«دخول» يفتح منصة الشركة بجلسة مالكها. الحذف نهائي ولا يمكن التراجع عنه." : "Enter opens the company app as its owner. Delete is permanent."}
+              </p>
+            </OwnerCard>
 
-                <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: 10, paddingTop: 12, borderTop: "1px solid var(--nv-line)" }}>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--nv-ink)", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    <Plus className="h-4 w-4" /> {t("createCompany")}
-                  </p>
-                  <input style={ownerField()} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder={t("companyName")} required />
-                  <input style={ownerField()} value={form.ownerEmail} onChange={(event) => setForm({ ...form, ownerEmail: event.target.value })} placeholder={t("email")} required />
-                  <input style={ownerField()} type="password" value={form.ownerPassword} onChange={(event) => setForm({ ...form, ownerPassword: event.target.value })} placeholder={t("password")} required />
+            <OwnerCard title={t("createCompany")} icon={Plus} style={{ position: "sticky", top: 108 }}>
+              <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {[
+                  ["name", t("companyName"), "text", true, ar ? "مثال: شركة الأفق" : "e.g. Horizon Co."],
+                  ["ownerEmail", ar ? "بريد مالك الشركة" : "Owner email", "email", true, "owner@company.com"],
+                  ["ownerPassword", t("password"), "password", true, ""],
+                ].map(([key, label, type, required, placeholder]) => (
+                  <label key={key} style={fieldLabel}>
+                    <span>{label}</span>
+                    <input style={ownerField()} type={type} value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} placeholder={placeholder} required={required} />
+                  </label>
+                ))}
+                <label style={fieldLabel}>
+                  <span>{ar ? "الباقة" : "Plan"}</span>
                   <select style={ownerField()} value={form.plan} onChange={(event) => setForm({ ...form, plan: event.target.value })}>
                     {DEFAULT_SUBSCRIPTION_PLANS.filter((plan) => plan.slug !== "free").map((plan) => (
-                      <option key={plan.slug} value={plan.nameEn}>{planDisplayName(plan, ar ? "ar" : "en")}</option>
+                      <option key={plan.slug} value={plan.nameEn}>{planDisplayName(plan, ar ? "ar" : "en")} — {plan.monthlyPrice} {plan.currency}</option>
                     ))}
                   </select>
-                  <input style={ownerField()} value={form.allowedEmailDomain} onChange={(event) => setForm({ ...form, allowedEmailDomain: event.target.value })} placeholder={`${t("allowedEmailDomain")} (e.g. @acwa.com)`} />
-                  <button type="submit" style={ownerPrimaryBtn()}>{t("createCompany")}</button>
-                </form>
-              </div>
-            </div>
-          </>
+                </label>
+                <label style={fieldLabel}>
+                  <span>{t("allowedEmailDomain")} <em style={{ fontStyle: "normal", color: MUTED, fontWeight: 400 }}>({ar ? "اختياري" : "optional"})</em></span>
+                  <input style={ownerField()} value={form.allowedEmailDomain} onChange={(event) => setForm({ ...form, allowedEmailDomain: event.target.value })} placeholder="@company.com" />
+                </label>
+                <button type="submit" style={{ ...ownerPrimaryBtn(), height: 42, marginTop: 4 }}>
+                  <Plus className="h-4 w-4" /> {t("createCompany")}
+                </button>
+              </form>
+            </OwnerCard>
+          </div>
         ) : null}
 
         {tab === "rulings" ? (
@@ -294,3 +313,12 @@ export default function CompanyOwnerBoard() {
     </OwnerBoardFrame>
   );
 }
+
+const fieldLabel = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  fontSize: 12.5,
+  fontWeight: 600,
+  color: "var(--nv-ink2)",
+};

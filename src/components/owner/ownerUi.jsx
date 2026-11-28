@@ -182,3 +182,70 @@ export function OwnerSectionHead({ kicker, title, meta, ar: _ar }) {
     </div>
   );
 }
+
+const KPI_TONES = {
+  ok: { fg: "var(--nv-accent-deep, #2E6640)", bg: "var(--nv-accent-soft, #EEF5F0)" },
+  gold: { fg: "#8A6A24", bg: "#F8F1E1" },
+  warn: { fg: "var(--nv-warn-ink, #8A5A00)", bg: "var(--nv-warn-soft, #FFF5DE)" },
+  bad: { fg: "var(--nv-bad-ink, #B42318)", bg: "var(--nv-bad-soft, #FDECEA)" },
+  mute: { fg: "var(--nv-ink2, #3B4450)", bg: "var(--nv-inset, #F1F4F2)" },
+};
+
+/** Headline figure card: icon chip, label, big number, optional sub-line. Clickable when onClick is given. */
+export function OwnerKpi({ icon: Icon, label, value, sub, tone = "mute", onClick, big = false }) {
+  const t = KPI_TONES[tone] || KPI_TONES.mute;
+  const Tag = onClick ? "button" : "div";
+  return (
+    <Tag
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      data-owner-kpi=""
+      style={{
+        ...ownerPaper(),
+        fontFamily: "inherit",
+        textAlign: "start",
+        padding: big ? "18px 20px" : "16px 18px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        minWidth: 0,
+        cursor: onClick ? "pointer" : "default",
+        color: "inherit",
+        transition: "border-color .15s ease, transform .15s ease, box-shadow .15s ease",
+      }}
+    >
+      <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--nv-ink2)" }}>{label}</span>
+        {Icon ? (
+          <span style={{ width: 32, height: 32, borderRadius: 9, background: t.bg, color: t.fg, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Icon size={16} strokeWidth={2} />
+          </span>
+        ) : null}
+      </span>
+      <span dir="ltr" style={{ ...OWNER_MONO, fontSize: big ? 30 : 26, fontWeight: 600, color: "var(--nv-ink)", lineHeight: 1, alignSelf: "flex-start" }}>{value}</span>
+      {sub ? <span style={{ fontSize: 11.5, color: tone === "bad" || tone === "warn" ? t.fg : "var(--nv-muted)", lineHeight: 1.5 }}>{sub}</span> : null}
+    </Tag>
+  );
+}
+
+/** A titled card shell for owner sections. */
+export function OwnerCard({ title, icon: Icon, action, children, padding = 18, style }) {
+  return (
+    <section style={{ ...ownerPaper(), padding, display: "flex", flexDirection: "column", gap: 14, minWidth: 0, ...style }}>
+      {title ? (
+        <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <h3 className="nv-h" style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--nv-ink)", display: "inline-flex", alignItems: "center", gap: 8 }}>
+            {Icon ? <Icon size={16} style={{ color: "var(--nv-accent)" }} /> : null}
+            {title}
+          </h3>
+          {action || null}
+        </header>
+      ) : null}
+      {children}
+    </section>
+  );
+}
+
+export const ownerKpiCss = `
+  [data-owner-kpi]:is(button):hover { border-color: var(--nv-accent-border, #B9D3C2) !important; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(16, 40, 28, .08) !important; }
+`;

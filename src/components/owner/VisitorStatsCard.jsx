@@ -28,6 +28,9 @@ export default function VisitorStatsCard({ lang }) {
 
   const maxDay = stats ? Math.max(1, ...stats.days.map((d) => d.visits)) : 1;
 
+  // بلا خادم الزوار لا تُعرض بطاقة خطأ في وسط النظرة — تختفي البطاقة حتى تتوفر الإحصائيات.
+  if (error) return null;
+
   return (
     <div style={{ ...ownerPaper("mute"), padding: 16, ...ownerStack, gap: 14 }}>
       <OwnerSectionHead

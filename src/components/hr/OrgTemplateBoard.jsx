@@ -97,6 +97,9 @@ export default function OrgTemplateBoard({
   focusId = "",
   branchId = "",
   onBranchConsumed,
+  fixedView = "",
+  scopeIds = null,
+  initialFlag = "",
 }) {
   const ar = lang === "ar";
   const { company, data, currentUser } = useAuth();
@@ -104,7 +107,8 @@ export default function OrgTemplateBoard({
   const [branchParentId, setBranchParentId] = useState("");
   const [branchFocusId, setBranchFocusId] = useState("");
   const [queryLocal, setQueryLocal] = useState("");
-  const [chartView, setChartView] = useState("people");
+  const [chartViewState, setChartView] = useState("people");
+  const chartView = fixedView || chartViewState;
   const [reveal, setReveal] = useState(null);
   const query = typeof queryProp === "string" ? queryProp : queryLocal;
   const setQuery = onQueryChange || setQueryLocal;
@@ -271,7 +275,7 @@ export default function OrgTemplateBoard({
     <>
       <OrgChartUpkeep lang={lang} />
       <OrgPanel ar={ar} fullscreen={false} embedded={embedded}>
-        {embedded ? (
+        {embedded && fixedView ? null : embedded ? (
           <div className="nv-org-stage-bar">
             <div style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
               {[
@@ -353,6 +357,8 @@ export default function OrgTemplateBoard({
             companyId={company?.id || ""}
             actor={currentUser}
             onHire={onHire}
+            initialFlag={initialFlag}
+            scopeIds={scopeIds}
             onManage={(employee) => {
               setPreviewVacant(null);
               setPreviewEmployee(employee);

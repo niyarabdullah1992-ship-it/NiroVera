@@ -355,10 +355,10 @@ export function buildBranchTree(data, { viewerId = "", scope = "mine", ar = true
     };
     nodes.set(key, node);
     addChildren(id, key, level);
-    // «أشخاص الفرع»: the manager's people (employees: only in their own branch, from their pruned tree)
+    // The manager's people hang straight under the branch card — no extra «أشخاص الفرع» card
+    // (employees: only in their own branch, from their pruned tree). Sub-branches come first.
     const showPeople = scope === "all" || id === viewerBranchId;
     if (showPeople) {
-      const group = branchPeopleKey(id);
       let top = [];
       if (mgr.key && people.nodes.has(mgr.key)) top = people.nodes.get(mgr.key).childKeys;
       else {
@@ -368,31 +368,13 @@ export function buildBranchTree(data, { viewerId = "", scope = "mine", ar = true
           if (!p || str(p.stationId) !== id) top.push(n.key);
         });
       }
-      const made = [];
-      top.forEach((k) => { const m = addPerson(k, group); if (m) made.push(m); });
-      if (made.length) {
-        nodes.set(group, {
-          key: group,
-          kind: "people",
-          order: PEOPLE_ORDER,
-          id: group,
-          stationId: id,
-          seatId: "",
-          employeeId: "",
-          name: ar ? `أشخاص ${node.name}` : `${node.name} people`,
-          title: mgr.name ? (ar ? `تحت إدارة ${mgr.name}` : `Under ${mgr.name}`) : (ar ? "فريق الفرع" : "Branch team"),
-          unit: "",
-          seatCode: "",
-          state: "filled",
-          vacant: false,
-          isMe: false,
-          avatarUrl: "",
-          peopleCount: made.length,
-          parentKey: key,
-          childKeys: made,
-        });
-        node.childKeys.push(group);
-      }
+      top.forEach((k) => {
+        const made = addPerson(k, key);
+        if (!made) return;
+        nodes.get(made).order = PEOPLE_ORDER;
+        node.childKeys.push(made);
+      });
+      node.peopleCount = top.filter((k) => nodes.get(k)?.parentKey === key).length;
     }
     return key;
   };
@@ -460,7 +442,6 @@ export function orgBranchActions(node, { canWrite = false, data = null, user = n
         : null,
     });
   }
-  add("health", "صحة الهيكل", "Structure health", "look", { count: Number(node.findings || 0) });
   add("authority", "الصلاحيات", "Authority", "look");
   return out;
 }

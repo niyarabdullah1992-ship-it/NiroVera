@@ -7,6 +7,7 @@ import {
   sendPresenceHeartbeat,
 } from "./store";
 import { keepLocalOverEmptyServer } from "./syncLaw";
+import { setOrgLogActor } from "./orgStructureLog";
 import { flushDisciplineOutbox } from "./disciplineServer";
 import { base44 } from "@/api/base44Client";
 import { DEFAULT_SUBSCRIPTION_PLANS, planConfigForName } from "@/lib/subscriptionPlans";
@@ -339,6 +340,7 @@ export function AuthProvider({ children }) {
   const currentUser = data && session?.userId
     ? (data.employees || []).find((e) => e.id === session.userId || e.employeeId === session.userId)
     : null;
+  setOrgLogActor(currentUser);
   const companyWithPlan = useMemo(() => company ? { ...company, planConfig } : company, [company, planConfig]);
 
   return (

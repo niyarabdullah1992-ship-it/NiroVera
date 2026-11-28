@@ -381,8 +381,8 @@ export default function ComplianceMhrsdBoard({ ministry = "records" } = {}) {
         {
           heading: ar ? "الجاهزية المشتقة من السجل" : "Readiness derived from the register",
           headers: ar
-            ? ["الفرع", "الجاهزية", "الحالة", "الطاقم", "التوطين", "أسباب المنع"]
-            : ["Station", "Readiness", "State", "Crew", "Saudization", "Blocking reasons"],
+            ? ["الفرع", "الجاهزية", "الحالة", "الطاقم", "توطين الفرع (للاطلاع — النطاق للمنشأة كلها)", "أسباب المنع"]
+            : ["Station", "Readiness", "State", "Crew", "Branch Saudization (info — Nitaqat is company-wide)", "Blocking reasons"],
           rows: readinessRows.map(({ station, readiness }) => [
             station.name || station.id,
             `${readiness.score}%`,
@@ -674,8 +674,8 @@ export default function ComplianceMhrsdBoard({ ministry = "records" } = {}) {
                       {station.name || station.id}
                     </div>
                     <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px" }}>
-                      {readinessLabel(readiness.level, ar)} · {ar ? "الطاقم" : "crew"} {readiness.crew} · {ar ? "التوطين" : "Saudization"}{" "}
-                      <span dir="ltr">{readiness.saudiRate}%</span>
+                      {readinessLabel(readiness.level, ar)} · {ar ? "الطاقم" : "crew"} {readiness.crew} · {ar ? "توطين الفرع" : "branch Saudization"}{" "}
+                      <span dir="ltr">{readiness.saudiRate}%</span>{" "}{ar ? "(للاطلاع)" : "(info)"}
                     </div>
                     {clear ? (
                       <div style={{ fontSize: "11px", color: MUTED, marginTop: "6px" }}>

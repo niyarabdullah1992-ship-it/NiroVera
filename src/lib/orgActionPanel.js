@@ -16,7 +16,7 @@ import {
 } from "./stationTree.js";
 import { buildBranchTree } from "./orgBranches.js";
 import { orderKeys } from "./orgFocus.js";
-import { EDIT_BLOCK, HIRE_BLOCK, ledStation } from "./orgChartActions.js";
+import { EDIT_BLOCK, FIXED_UNIT, HIRE_BLOCK, fixedUnitHead, ledStation } from "./orgChartActions.js";
 
 const str = (value) => String(value ?? "").trim();
 
@@ -35,7 +35,8 @@ export const NO_STRUCTURE_RIGHT = {
 export function structureRights(user, data) {
   if (!user || !data) return { canManage: false, canEditSeats: false, reason: NO_STRUCTURE_RIGHT };
   const seats = canEditOrgDesign(user, data);
-  const manage = seats || str(user.id) === str(data.ownerId) || STRUCTURE_ROLES.includes(user.role);
+  // the structure is HR's: the owner and the HR staff he names (managers only assign acting cover)
+  const manage = seats || str(user.id) === str(data.ownerId) || user.role === "owner";
   return { canManage: manage, canEditSeats: seats, reason: manage ? null : NO_STRUCTURE_RIGHT };
 }
 
@@ -99,13 +100,14 @@ export function panelActions(node, { data, user } = {}) {
     add("edit", { id: "rename", ar: "الاسم", en: "Name", fn: root ? "renameCompany" : "renameOrgBranch", form: "rename", blocked: deny || (hr ? HR_FIXED : null) });
     add("edit", { id: "location", ar: "الموقع (الدولة والمدينة)", en: "Location (country and city)", fn: "setStationLocation", form: "location", blocked: deny });
     add("edit", { id: "unitKind", ar: "النوع: فرع أو إدارة منطقة", en: "Kind: branch or region", fn: "setOrgUnitKind", form: "unitKind", blocked: deny || fixed });
-    add("remove", { id: "closeUnit", ar: "إغلاق الوحدة بقرار", en: "Close the unit by decision", fn: "«التغييرات» closeUnit", form: "confirmClose", destructive: true, blocked: deny || fixed });
-    add("remove", { id: "deleteBranch", ar: "إزالة الفرع ونقل ما فيه للأعلى", en: "Remove the branch, its content moves up", fn: "deleteStationWithData (transfer)", form: "confirmDelete", destructive: true, blocked: deny || fixed });
+    if (false) add("remove", { id: "closeUnit", ar: "إغلاق الوحدة بقرار", en: "Close the unit by decision", fn: "«التغييرات» closeUnit", form: "confirmClose", destructive: true, blocked: deny || fixed });
+    add("remove", { id: "deleteBranch", ar: "إغلاق الفرع ونقل ما فيه للأعلى", en: "Remove the branch, its content moves up", fn: "deleteStationWithData (transfer)", form: "confirmDelete", destructive: true, blocked: deny || fixed });
   } else {
     const hasSeat = Boolean(node.seatId);
     const filled = !node.vacant;
     const led = ledStation(data, node);
     const homeUnit = led || station;
+    const fixedHead = fixedUnitHead(data, node) ? FIXED_UNIT : null;
     if (filled) {
       add("add", { id: "addSeatUnder", ar: "منصب شاغر تحته", en: "Open seat under", fn: "createVacantSeatsUnderManager", form: "addSeat", blocked: deny || (hasSeat ? null : NO_SEAT) });
       add("add", { id: "hireHere", ar: "موظف جديد في وحدته", en: "New person in their unit", fn: "onHire (createOrgSeat · hireFromSeat)", stationId: str(homeUnit?.id), blocked: deny || (homeUnit && isManagerUnit(homeUnit) ? HIRE_BLOCK : null) });
@@ -114,18 +116,22 @@ export function panelActions(node, { data, user } = {}) {
       add("add", { id: "hire", ar: "تعيين موظف على المنصب", en: "Hire into this seat", fn: "onHire", blocked: deny || (node.state !== "vacant" ? { ar: "المنصب مجمّد أو مخطط — لا يُعيَّن عليه الآن.", en: "Frozen or planned — no hiring now." } : null) });
       add("add", { id: "hireHere", ar: "منصب آخر في الوحدة", en: "Another seat in the unit", fn: "onHire (createOrgSeat)", stationId: str(station?.id), blocked: deny || (station && isManagerUnit(station) ? HIRE_BLOCK : null) });
     }
-    add("assign", { id: "acting", ar: "إنابة (تكليف بالمنصب)", en: "Acting cover", fn: "setActingAssignment", form: "acting", blocked: deny || (hasSeat ? null : NO_SEAT) });
-    add("assign", { id: "deputy", ar: "النائب والخط المنقّط", en: "Deputy and dotted line", fn: "patchSeatDesign", form: "deputy", blocked: hasSeat ? seatDeny : NO_SEAT });
-    add("move", { id: "moveManager", ar: "إلى مدير آخر", en: "To another manager", fn: "«التغييرات» moveSeat (المادة 58)", form: "moveSheet", blocked: hasSeat ? seatDeny : NO_SEAT });
+    if (led) add("assign", { id: "acting", ar: "تكليف بإدارة الفرع", en: "Acting branch head", fn: "setActingAssignment", form: "acting", blocked: deny || (hasSeat ? null : NO_SEAT) });
     if (filled) {
-      add("move", { id: "moveBranch", ar: "إلى فرع آخر", en: "To another branch", fn: "transferEmployeeBetweenStations", form: "transfer", blocked: deny });
+      add("move", { id: "moveBranch", ar: "إلى فرع آخر", en: "To another branch", fn: "transferEmployeeBetweenStations", form: "transfer", blocked: deny || fixedHead });
       add("move", { id: "changeHolder", ar: "تغيير الشاغل", en: "Change the holder", fn: "placeExistingEmployee", form: "file", blocked: deny });
     } else {
-      add("move", { id: "moveBranch", ar: "إلى فرع آخر", en: "To another branch", fn: "«التغييرات» moveSeat", form: "seatToBranch", blocked: hasSeat ? seatDeny : NO_SEAT });
+      add("move", { id: "moveBranch", ar: "إلى فرع آخر", en: "To another branch", fn: "«التغييرات» moveSeat", form: "seatToBranch", blocked: hasSeat ? (seatDeny || fixedHead) : NO_SEAT });
     }
     add("edit", { id: "seatEdit", ar: "الرمز والمسمى في قوى والحالة", en: "Code, Qiwa title, state", fn: "patchSeatDesign", form: "seatEdit", blocked: hasSeat ? seatDeny : NO_SEAT });
     if (filled) add("edit", { id: "grade", ar: "الدرجة وصلاحيات المقعد وموقع العمل", en: "Grade, seat access, work site", fn: "assignHolderGrade · cycleSeatAccess · setActualWorkSite", form: "file", blocked: deny });
-    if (filled) add("remove", { id: "vacate", ar: "إخلاء المنصب", en: "Vacate the seat", fn: "endSeatTenure", form: "confirmVacate", destructive: true, blocked: deny || (hasSeat ? null : NO_SEAT) });
+    if (filled) add("remove", { id: "vacate", ar: "إخلاء المنصب", en: "Vacate the seat", fn: "endSeatTenure", form: "confirmVacate", destructive: true, blocked: deny || fixedHead || (hasSeat ? null : NO_SEAT) });
+    if (!filled && hasSeat && str(node.hrPost) !== "director") {
+      add("remove", { id: "removeSeat", ar: "حذف المنصب الشاغر", en: "Remove the vacant seat", fn: "removeVacantSeat", form: "confirmRemoveSeat", destructive: true, blocked: seatDeny });
+    }
+    if (!filled && str(node.hrPost) === "director") {
+      add("assign", { id: "pickDirector", ar: "تعيين موظف حالي مديراً للموارد البشرية", en: "Appoint an existing employee", fn: "setStationManager", form: "branchDrawer", blocked: deny });
+    }
     const frozen = node.state === "frozen";
     add("remove", {
       id: "freeze",
@@ -134,9 +140,8 @@ export function panelActions(node, { data, user } = {}) {
       fn: "patchSeatDesign",
       form: "confirmFreeze",
       destructive: !frozen,
-      blocked: !hasSeat ? NO_SEAT : (seatDeny || (filled ? FILLED_FREEZE : null)),
+      blocked: !hasSeat ? NO_SEAT : (seatDeny || fixedHead || (filled ? FILLED_FREEZE : null)),
     });
-    add("remove", { id: "freezeDecision", ar: "إغلاق المنصب بقرار (تجميد)", en: "Close the seat by decision (freeze)", fn: "«التغييرات» freezeSeat", form: "decision", destructive: true, blocked: !hasSeat ? NO_SEAT : (seatDeny || (filled ? FILLED_FREEZE : null)) });
   }
   return PANEL_GROUPS.map((g) => ({ ...g, items: groups[g.id] })).filter((g) => g.items.length);
 }

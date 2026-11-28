@@ -58,7 +58,16 @@ export default function GosiFollowUpBoard({ data, companyId, ar = true, by = "",
   };
   const dueChip = (t) => {
     if (t.done) return <span style={chip("ok")}>{ar ? `نُفِّذ ${iso(t.doneAt || "")}` : `Done ${t.doneAt || ""}`}</span>;
-    if (t.overdue) return <span style={chip("bad")}>{ar ? `فات موعده بـ${daysAr(t.left)}` : `${Math.abs(t.left)} days late`}</span>;
+    if (t.overdue) {
+      // Past a year the day count says nothing — say it in years.
+      const late = Math.abs(Number(t.left) || 0);
+      if (late > 365) {
+        const years = Math.floor(late / 365);
+        const word = years === 1 ? "سنة" : years === 2 ? "سنتين" : years <= 10 ? `${years} سنوات` : `${years} سنة`;
+        return <span style={chip("bad")} title={iso(t.due)}>{ar ? `متأخر أكثر من ${word}` : `Over ${years} year${years === 1 ? "" : "s"} late`}</span>;
+      }
+      return <span style={chip("bad")}>{ar ? `فات موعده بـ${daysAr(t.left)}` : `${late} days late`}</span>;
+    }
     if (t.left === 0) return <span style={chip("warn")}>{ar ? "اليوم" : "Today"}</span>;
     return <span style={chip(t.soon ? "warn" : "mute")}>{ar ? `باقي ${daysAr(t.left)} · ${iso(t.due)}` : `${t.left} days · ${t.due}`}</span>;
   };

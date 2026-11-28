@@ -6,7 +6,7 @@
 
 import { buildPeopleTree } from "./peopleTreeGraph.js";
 import { isCompanyRootStation, isManagerUnit } from "./stationTree.js";
-import { coordinateLine, hrManagerForStation, isHrDirector, isHrUnit, isRegionalHr, regionalSeatLine, servedStationIds } from "./hrTree.js";
+import { branchManagerOver, coordinateLine, hrManagerForStation, isHrDirector, isHrStaff, isHrUnit, isRegionalHr, regionalSeatLine, servedStationIds } from "./hrTree.js";
 import { productGradeIndex, productGradeLabel } from "./jobGradeTitles.js";
 
 function todayKey() {
@@ -378,6 +378,31 @@ export function buildWorkforceSeatChart(data, { ar = true, meId = "" } = {}) {
     parent.children.push(node);
   });
 
+  // HR staff belong inside the HR unit: while the director seat is vacant they hang under it,
+  // not loose beside the field managers.
+  const directorSeat = flattenSeatChart(roots).find((node) => node.vacant && node.hrPost === "director");
+  if (directorSeat) {
+    const ownerOf = new Map();
+    const index = (list, parent) => (list || []).forEach((item) => { ownerOf.set(item, parent); index(item.children, item); });
+    index(roots, null);
+    flattenSeatChart(roots).forEach((node) => {
+      if (node.vacant || !node.employeeId) return;
+      const employee = byEmployee.get(String(node.employeeId));
+      if (!employee || isHrDirector(employee, data) || !isHrStaff(employee, data)) return;
+      if (!isRegionalHr(employee, data) && branchManagerOver(data, employee)) return;
+      const parent = ownerOf.get(node) || null;
+      if (parent === directorSeat) return;
+      const parentEmployee = parent?.employeeId ? byEmployee.get(String(parent.employeeId)) : null;
+      if (parentEmployee && isHrStaff(parentEmployee, data)) return;
+      const list = parent ? parent.children : roots;
+      const at = list.indexOf(node);
+      if (at < 0) return;
+      list.splice(at, 1);
+      directorSeat.children.push(node);
+      ownerOf.set(node, directorSeat);
+    });
+  }
+
   stations.forEach((station) => {
     if (!station?.id || station.managerId || isCompanyRootStation(station) || isHrStation(station)) return;
     const already = flattenSeatChart(roots).some((node) => node.vacant && String(node.stationId) === String(station.id) && /مدير|شاغر/.test(node.title || ""));
@@ -418,6 +443,21 @@ export function buildWorkforceSeatChart(data, { ar = true, meId = "" } = {}) {
     else roots.push(node);
     byId.set(node.id, node);
   });
+
+  // The HR unit hangs straight under the head office, first in line — never wrapped under a region.
+  const hrHead = flattenSeatChart(roots).find((node) => (
+    (node.vacant && node.hrPost === "director")
+    || (node.employeeId && isHrDirector(byEmployee.get(String(node.employeeId)), data))
+  ));
+  if (hrHead) {
+    hrHead.hrHead = true;
+    const lists = [roots, ...flattenSeatChart(roots).map((node) => node.children)];
+    const owner = lists.find((list) => list.includes(hrHead));
+    if (owner && owner.indexOf(hrHead) > 0) {
+      owner.splice(owner.indexOf(hrHead), 1);
+      owner.unshift(hrHead);
+    }
+  }
 
   roots.forEach((node) => rollup(node));
   return { roots, flat: flattenSeatChart(roots) };

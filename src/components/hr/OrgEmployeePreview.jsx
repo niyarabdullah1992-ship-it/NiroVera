@@ -1,3 +1,5 @@
+import { MANAGE_SECTIONS } from "@/lib/manageSections";
+import { saveSmartPosition } from "@/lib/smartPositions";
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import HrServesPanel from "@/components/hr/HrServesPanel";
@@ -22,14 +24,16 @@ import {
   jobTitleCatalog,
   occupantTitle,
   placeExistingEmployee,
-  SEAT_ACCESS_ROWS,
   seatAccessOf,
   seatDrawerReason,
   seatForEmployee,
   setActingAssignment,
   setActualWorkSite,
 } from "@/lib/orgHire";
-import { assignHolderGrade, employeeJobGrade, gradeRank, gradeSalaryRange, gradesForTitle, ladderBands, orderedJobGrades } from "@/lib/jobGrades";
+import { gradeCategories, personLevel, setPersonLevel } from "@/lib/gradeCategories";
+import { applyContractLeave, contractLeaveOf } from "@/lib/contractLeave";
+import ContractLeaveFields from "@/components/hr/ContractLeaveFields";
+import { employeeJobGrade, gradeRank, gradeSalaryRange, gradesForTitle, ladderBands, orderedJobGrades } from "@/lib/jobGrades";
 import { gradeBadge, OrgLockMark } from "@/components/hr/orgUi";
 import { buildPeopleTree, explainWorkplaceManager, pathToPerson } from "@/lib/peopleTree";
 import { isCompanyRootStation, isHrUnit, isManagerUnit, stationParentId, workplaceStations } from "@/lib/stationTree";
@@ -605,70 +609,75 @@ function gradeOutOfOrder(employee, data) {
   });
 }
 
-function GradeSeatEditor({ employee, data, companyId, ar }) {
-  const seat = seatForEmployee(data, employee?.id);
-  const title = seat?.title || employee?.profile?.position || employee?.jobTitle || "";
-  const grades = title ? gradesForTitle(data, title) : [];
-  const current = liveGrade(employee, data);
+function ContractLeaveEditor({ employee, companyId }) {
+  const now = contractLeaveOf(employee);
+  const [terms, setTerms] = useState({ annual: now.annual || 21, restCount: now.restCount || 1, restDows: now.restDows.length ? now.restDows : [5] });
+  const [saved, setSaved] = useState(false);
   return (
     <>
-      <SectionLabel>{ar ? "درجة الوظيفة" : "Seat grade"}</SectionLabel>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", border: "1px solid var(--nv-line)", borderRadius: 12, fontSize: 11.5 }}>
-        {grades.length ? (
+      <SectionLabel>الإجازات في العقد</SectionLabel>
+      <ContractLeaveFields hideTitle value={terms} onChange={(v) => { setTerms(v); setSaved(false); }} />
+      <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <button
+          type="button"
+          onClick={() => { applyContractLeave(companyId, employee.id, terms); setSaved(true); }}
+          style={{ height: 30, padding: "0 12px", borderRadius: 8, border: "1px solid var(--nv-navy)", background: "var(--nv-navy)", color: "var(--nv-btn-ink, #fff)", fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+        >
+          حفظ
+        </button>
+        <span style={{ fontSize: 11, color: saved ? "var(--nv-ok-ink)" : "var(--nv-ink3)" }}>
+          {saved ? "حُفظ — صار رصيده في «طلباتي» بهذا العدد، ويُكتب في سجل الأحداث باسمك." : (now.annual ? `الحالي: ${now.annual} يوماً` : "لم تُحدَّد بعد — يُطبَّق الحد النظامي.")}
+        </span>
+      </span>
+    </>
+  );
+}
+
+function GradeSeatEditor({ employee, data, companyId, ar }) {
+  // the simple ladder: a category, then a level inside it
+  const cats = gradeCategories(data);
+  const now = personLevel(data, employee);
+  const [catId, setCatId] = useState(now?.category.id || "");
+  const cat = cats.find((c) => c.id === catId) || null;
+  return (
+    <>
+      <SectionLabel>{ar ? "الدرجة الوظيفية" : "Job grade"}</SectionLabel>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", border: "1px solid var(--nv-line)", borderRadius: 12, fontSize: 11.5 }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--nv-muted)" }}>{ar ? "الفئة" : "Category"}</span>
+          <select className="nv-od-select" value={catId} onChange={(e) => setCatId(e.target.value)}>
+            <option value="">{ar ? "— اختر الفئة —" : "— pick —"}</option>
+            {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </label>
+        {cat ? (
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-            {grades.map((grade) => {
-              const on = current && String(current.id) === String(grade.id);
+            {cat.levels.map((lvl, i) => {
+              const on = now && now.category.id === cat.id && now.level.id === lvl.id;
               return (
                 <button
-                  key={grade.id}
+                  key={lvl.id}
                   type="button"
-                  onClick={() => assignHolderGrade(companyId, {
-                    employeeId: employee.id,
-                    seatId: seat?.id || "",
-                    gradeId: grade.id,
-                  })}
+                  onClick={() => setPersonLevel(companyId, data, employee.id, cat.id, lvl.id)}
                   style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    height: 28,
-                    minWidth: 40,
-                    padding: "0 8px",
-                    borderRadius: 8,
-                    fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)",
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    cursor: "pointer",
+                    height: 28, padding: "0 10px", borderRadius: 8, fontFamily: "inherit", fontSize: 11.5, fontWeight: 600, cursor: "pointer",
                     ...(on
                       ? { color: "var(--nv-btn-ink, #fff)", background: "var(--nv-navy)", border: "1px solid var(--nv-navy)" }
                       : { color: "var(--nv-ink2)", background: "var(--nv-card)", border: "1px solid var(--nv-line)" }),
                   }}
                 >
-                  <span dir="ltr" style={{ unicodeBidi: "isolate" }}>{grade.gradeNumber || "—"}</span>
+                  {`${i + 1} · ${lvl.name}`}
                 </button>
               );
             })}
-      </div>
-        ) : (
-          <span style={{ fontSize: 11, color: "var(--nv-ink3)" }}>
-            {title
-              ? (ar ? "هذا المسمّى بلا درجات على سلّمه." : "This title has no grades on its ladder.")
-              : (ar ? "لا مسمّى على هذه الوظيفة بعد." : "This seat has no title yet.")}
-          </span>
-        )}
-        {gradeOutOfOrder(employee, data) ? (
-          <span style={{ fontSize: 11, color: "var(--nv-bad-ink)", background: "var(--nv-bad-soft)", border: "1px solid var(--nv-bad-line)", borderRadius: 8, padding: "7px 9px" }}>
-            {ar
-              ? "تنبيه: الدرجة تساوي أو تتجاوز درجة المدير المباشر، أو توجد وظيفة تابعة بدرجة مساوية أو أعلى."
-              : "The grade matches or exceeds the manager, or a report holds an equal or higher grade."}
-          </span>
+          </div>
         ) : null}
         <span style={{ fontSize: 10.5, color: "var(--nv-ink3)" }}>
-          {ar
-            ? "تغيير الدرجة يسري على شاغل الوظيفة ومن يشغلها لاحقاً، ويُسجَّل في سجل الأحداث."
-            : "Changing the grade applies to the current holder and whoever fills the seat next."}
+          {now
+            ? (ar ? `الحالية: ${now.category.name} — ${now.level.name}. أي تغيير يُكتب في سجل الأحداث باسمك.` : `Now: ${now.category.name} — ${now.level.name}.`)
+            : (ar ? "لم يوضع على السلّم بعد." : "Not on the ladder yet.")}
         </span>
-    </div>
+      </div>
     </>
   );
 }
@@ -688,9 +697,8 @@ function accessPill(value) {
 }
 
 function accessWord(value, ar) {
-  if (value === "manage") return ar ? "إدارة" : "Manage";
-  if (value === "hidden") return ar ? "بلا وصول" : "No access";
-  return ar ? "عرض" : "View";
+  if (value === "manage") return ar ? "يدير" : "Manages";
+  return ar ? "لا يدير" : "No";
 }
 
 function titleChipStyle(on) {
@@ -803,6 +811,16 @@ function ManagerSeatActions({ employee, data, companyId, ar, ownerMode, onVacate
     setQty(1);
   };
 
+  const smartRow = (data?.smartPositions || []).find((item) => String(item.employeeId) === String(employee?.id || ""));
+  const sectionGrants = smartRow?.permissions || {};
+  const toggleSection = (row) => {
+    if (!companyId || !employee) return;
+    if (row.ownerOnly && !ownerMode) return;
+    const next = sectionGrants[row.id] === "manage" ? "hidden" : "manage";
+    const title = smartRow?.title || employee.profile?.position || employee.jobTitle || row.ar;
+    saveSmartPosition(companyId, employee.id, title, { ...sectionGrants, [row.id]: next }, Boolean(smartRow?.titleManual));
+    setErr("");
+  };
   const cycle = (row) => {
     if (!companyId) return;
     const result = cycleSeatAccess(companyId, employee.id, row.id, { owner: ownerMode });
@@ -1064,6 +1082,7 @@ function ManagerSeatActions({ employee, data, companyId, ar, ownerMode, onVacate
         </div>
       ) : null}
       <GradeSeatEditor employee={employee} data={data} companyId={companyId} ar={ar} />
+      <ContractLeaveEditor employee={employee} companyId={companyId} />
       {branch ? (
         <button
           type="button"
@@ -1113,11 +1132,12 @@ function ManagerSeatActions({ employee, data, companyId, ar, ownerMode, onVacate
             </span>
           </div>
       </>
-      <SectionLabel>{ar ? "صلاحيات الإدارة — ما يديره صاحب هذه الوظيفة" : "Admin access — what this seat holder manages"}</SectionLabel>
+      <SectionLabel>{ar ? "الأقسام الإدارية — ما يديره هذا الموظف" : "Management sections — what this person manages"}</SectionLabel>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {SEAT_ACCESS_ROWS.map((row) => {
-          const value = access[row.id] || "view";
-          const lockedRow = Boolean(row.ownerOnly && !ownerMode);
+        {MANAGE_SECTIONS.map((row) => {
+          const isOwnerEmp = String(employee?.id || "") === String(data?.ownerId || "") || employee?.role === "owner";
+          const value = isOwnerEmp || sectionGrants[row.id] === "manage" ? "manage" : "hidden";
+          const lockedRow = isOwnerEmp || Boolean(row.ownerOnly && !ownerMode);
   return (
             <div key={row.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", border: "1px solid var(--nv-line)", borderRadius: 12 }}>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -1127,7 +1147,7 @@ function ManagerSeatActions({ employee, data, companyId, ar, ownerMode, onVacate
               <button
                 type="button"
                 disabled={lockedRow}
-                onClick={() => cycle(row)}
+                onClick={() => toggleSection(row)}
       style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -1152,7 +1172,7 @@ function ManagerSeatActions({ employee, data, companyId, ar, ownerMode, onVacate
       </div>
       <span style={{ fontSize: 10.5, color: "var(--nv-ink3)", lineHeight: 1.8 }}>
         {ar
-          ? "«إدارة» تمنح الاعتماد والتعديل في القسم، و«عرض» تمنح القراءة فقط. الصلاحية على الوظيفة لا الشخص، فتنتقل إلى المكلَّف مدة تكليفه. طلباتي والحضور والجدول بوابة حضور واحدة، والجزاءات تُفتح مع الهيكل لأن لا منحة جزاءات مستقلة. كل تغيير يُسجَّل في سجل الأحداث."
+          ? "«يدير» يُظهر القسم للموظف في جانب «الإدارة»، و«لا يدير» يخفيه. صوت الموظف والمال يمنحهما المالك فقط. كل تغيير يُسجَّل في سجل الأحداث."
           : "Manage grants approval and edits. View is read-only. The grant sits on the seat, follows an acting holder, and each change is logged."}
       </span>
     </>
@@ -1205,7 +1225,7 @@ function VacantPositionDrawer({ node, data, ar, canWrite, companyId, onHire, onC
         onMouseDown={(event) => event.stopPropagation()}
         style={{
           position: "relative",
-          width: "min(94vw, 300px)",
+          width: "min(94vw, 340px)",
           height: "100%",
           background: "var(--nv-card, #fff)",
           border: "1px solid var(--nv-line, #D5DCD8)",
@@ -1259,7 +1279,7 @@ function VacantPositionDrawer({ node, data, ar, canWrite, companyId, onHire, onC
               onClick={() => onHire?.({ stationId: node?.stationId || "", seatId: node?.seatId || "" })}
               style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 34, borderRadius: 8, background: "var(--nv-btn-fill)", color: "var(--nv-btn-ink, #fff)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid var(--nv-btn-fill)", fontFamily: "inherit" }}
             >
-              {ar ? "توظيف على هذه الوظيفة" : "Hire into this seat"}
+              {ar ? "تعيين على هذه الوظيفة" : "Assign to this seat"}
             </button>
           </div>
         ) : null}
@@ -1281,6 +1301,7 @@ export default function OrgEmployeePreview({
   onOpenBranch,
   onHire,
   onClose,
+  initialTab = "profile",
 }) {
   const { currentUser } = useAuth();
   const ownerMode = Boolean(currentUser && (
@@ -1299,11 +1320,11 @@ export default function OrgEmployeePreview({
 
   useEffect(() => {
     if (!open) return;
-    setTab("profile");
+    setTab(initialTab || "profile");
     setFormErr("");
     setAct({ person: "", from: todayKey(), to: plusDays(30) });
     setChg({ person: "", from: todayKey() });
-  }, [open, live?.id]);
+  }, [open, live?.id, initialTab]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -1344,6 +1365,8 @@ export default function OrgEmployeePreview({
   }
 
   const headerName = live?.name || (ar ? "شاغرة" : "Vacant");
+  // تكليف is for whoever runs a branch; everyone else's file has no acting step
+  const leadsBranch = Boolean(live && (data?.stations || []).some((s) => !s.closedAt && String(s.managerId || "") === String(live.id)));
   const vacantSub = vacantHint || (ar ? "الوظيفة بلا شاغل" : "This seat is empty");
   const pickTab = (next) => {
     setTab(next);
@@ -1461,6 +1484,7 @@ export default function OrgEmployeePreview({
         style={{ position: "absolute", inset: 0, background: "color-mix(in oklab, var(--nv-navy) 26%, transparent)" }}
       />
       <aside
+        className="nv-pp-sheet"
         role="dialog"
         aria-modal="true"
         aria-label={live
@@ -1468,7 +1492,7 @@ export default function OrgEmployeePreview({
           : (ar ? "مقعد بلا موظف" : "Vacant seat")}
         style={{
           position: "relative",
-          width: "min(94vw, 300px)",
+          width: "min(94vw, 340px)",
           margin: 12,
           height: "calc(100% - 24px)",
           background: "var(--nv-card, #fff)",
@@ -1481,62 +1505,34 @@ export default function OrgEmployeePreview({
         }}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div
-          style={{
-            padding: 14,
-            borderBottom: "1px solid var(--nv-line, #E4E9E6)",
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-          }}
-        >
-          <span style={{ width: 44, height: 44, borderRadius: "50%", flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 600, background: "var(--nv-soft)", border: "1px solid var(--nv-line)", color: "var(--nv-ink2)" }}>
+        <div className="nv-pp-hero">
+          <div className="nv-pp-cover" aria-hidden />
+          <button type="button" className="nv-pp-close" onClick={onClose} aria-label={ar ? "إغلاق" : "Close"}>
+            <NvIcon name="cross" size={13} />
+          </button>
+          <span className="nv-pp-avatar" aria-hidden>
             {String(headerName || "—").trim().split(/\s+/).slice(0, 2).map((part) => part.slice(0, 1)).join("") || "—"}
           </span>
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-            <strong style={{ fontSize: 14, color: "var(--nv-ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {headerName}
-            </strong>
-          {live && panel?.sub && panel.sub !== live.name ? (
-            <span style={{ fontSize: 11.5, color: "var(--nv-ink3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{panel.sub}</span>
-          ) : null}
-          {panel?.chain ? (
-            <span style={{ fontSize: 11, color: "var(--nv-ink3)" }}>{panel.chain}</span>
-          ) : (!live ? (
-            <span style={{ fontSize: 11.5, color: "var(--nv-ink3)" }}>{vacantSub}</span>
-          ) : null)}
+          <div className="nv-pp-id">
+            <strong className="nv-pp-name">{headerName}</strong>
+            {live && panel?.sub && panel.sub !== live.name ? <span className="nv-pp-sub">{panel.sub}</span> : null}
+            {panel?.chain ? <span className="nv-pp-chain">{panel.chain}</span> : (!live ? <span className="nv-pp-sub">{vacantSub}</span> : null)}
           </div>
-            <button
-              type="button"
-              onClick={onClose}
-            aria-label={ar ? "إغلاق" : "Close"}
-              style={{
-              width: 28,
-              height: 28,
-              border: "1px solid var(--nv-line, #D5DCD8)",
-              borderRadius: 8,
-              background: "var(--nv-card)",
-              color: "var(--nv-ink)",
-                cursor: "pointer",
-                fontFamily: "inherit",
-              flex: "none",
-              }}
-            >
-            <NvIcon name="cross" size={13} />
-            </button>
         </div>
 
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           {panel ? (
             <>
               {canWrite ? (
-                <div role="tablist" aria-label={ar ? "ملف الموظف" : "Employee file"} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                <div role="tablist" aria-label={ar ? "ملف الموظف" : "Employee file"} style={{ display: "grid", gridTemplateColumns: leadsBranch ? "1fr 1fr 1fr" : "1fr 1fr", gap: 6 }}>
                   <button type="button" role="tab" aria-selected={tab === "profile"} onClick={() => pickTab("profile")} style={tabButtonStyle(tab === "profile")}>
                     {ar ? "الملف" : "File"}
                   </button>
+                  {leadsBranch ? (
                   <button type="button" role="tab" aria-selected={tab === "acting"} onClick={() => pickTab("acting")} style={tabButtonStyle(tab === "acting")}>
                     {ar ? "تكليف" : "Acting"}
                   </button>
+                  ) : null}
                   <button type="button" role="tab" aria-selected={tab === "change"} onClick={() => pickTab("change")} style={tabButtonStyle(tab === "change")}>
                     {ar ? "تغيير نهائي" : "Permanent change"}
               </button>
@@ -1651,7 +1647,7 @@ export default function OrgEmployeePreview({
               )}
               </>
                 ) : null}
-              {tab === "acting" ? (
+              {tab === "acting" && leadsBranch ? (
                 <>
                   <div style={NOTE}>
                     {ar

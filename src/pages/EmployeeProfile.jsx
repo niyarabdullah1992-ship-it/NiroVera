@@ -1,5 +1,6 @@
+import { applyContractLeave } from "@/lib/contractLeave";
 import React, { useEffect, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams, useLocation } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import {
@@ -37,6 +38,7 @@ import EmployerDutiesCard from "@/components/employees/EmployerDutiesCard";
 import { contractHint, fileAlertHint } from "@/lib/rightHints.disc";
 import ContractLawPanel from "@/components/employees/ContractLawPanel";
 import ContractTab from "@/components/employees/ContractTab";
+import ContractLeaveCard from "@/components/employees/ContractLeaveCard";
 import FileArchiveTab from "@/components/employees/FileArchiveTab";
 import { checkHiringAgeGate } from "@/lib/employerDuties";
 import EmployeeFileGrowthBoard from "@/components/employees/EmployeeFileGrowthBoard";
@@ -46,7 +48,8 @@ import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { BORDER, CARD, MUTED, NAVY } from "@/lib/platformStyles";
 import SectionBackLink from "@/components/shared/SectionBackLink";
 import IdentityCard from "@/components/shared/IdentityCard";
-import { applyDueLaborRules, openDueNightRotateCycles, patchEmployeeFile, updateCompany } from "@/lib/store";
+import { appendEmployeeFileLog, applyDueLaborRules, openDueNightRotateCycles, patchEmployeeFile, updateCompany } from "@/lib/store";
+import { describeFileChanges, fileChangeLogText } from "@/lib/fileChangeTrail";
 import { checkFileChangeConsentGate, necessityDaysUsed, NECESSITY_CAP_DAYS, spendConsent } from "@/lib/consentEffects";
 import { toast } from "@/components/ui/use-toast";
 import PlatformDateField from "@/components/shared/PlatformDateField";
@@ -58,18 +61,20 @@ const TABS = [
   { key: "summary", ar: "ملخّص الملف", en: "File summary" },
   { key: "identity", ar: "الهوية والتوظيف", en: "Identity and employment" },
   { key: "contract", ar: "العقد والأجر", en: "Contract and wage" },
-  { key: "duty", ar: "ما يُحفظ على الملف", en: "Kept on the file" },
   { key: "compliance", ar: "الالتزام والمنصات", en: "Compliance and platforms" },
   { key: "growth", ar: "التدرّج والجزاءات", en: "Progression and sanctions" },
-  { key: "docs", ar: "العهد", en: "Custody" },
   { key: "archive", ar: "أرشيف الملف", en: "File archive" },
 ];
 
 const LEGACY_TAB = {
   professionalInfo: "identity",
   salary: "contract",
-  hours: "duty",
-  schedule: "duty",
+  // «ما يُحفظ على الملف» repeated the contract — its hours basis now sits in العقد والأجر.
+  hours: "contract",
+  schedule: "contract",
+  duty: "contract",
+  // «العهد» was removed from the file.
+  docs: "summary",
   certificates: "identity",
   // Leave lives in طلباتي and the payslip in قسيمتي — the file does not repeat them.
   leave: "summary",
@@ -104,8 +109,12 @@ export default function EmployeeProfile() {
   const wantComplete = searchParams.get("complete") === "1";
   const requested = searchParams.get("tab") || "summary";
   const [tab, setTab] = useState(LEGACY_TAB[requested] || requested);
+  // A link inside the file (e.g. «تعديلها من العقد والأجر») changes ?tab= — follow it.
+  const routeKey = useLocation().key;
+  useEffect(() => { setTab(LEGACY_TAB[requested] || requested); }, [requested, routeKey]);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
+  const [leaveDraft, setLeaveDraft] = useState(null);
   const [positionChange, setPositionChange] = useState("");
   const [necessityUntil, setNecessityUntil] = useState("");
 
@@ -172,15 +181,18 @@ export default function EmployeeProfile() {
 
   const openTab = (next) => setTab(next);
   const setDraftField = (field, value) => setDraft((prev) => ({ ...prev, [field]: value }));
-  const dirty = editing && JSON.stringify(draft) !== JSON.stringify(employeeFileDraftSeed(employee));
+  const fieldsDirty = editing && JSON.stringify(draft) !== JSON.stringify(employeeFileDraftSeed(employee));
+  const dirty = fieldsDirty || (editing && Boolean(leaveDraft));
 
   const startEdit = () => {
     setDraft(employeeFileDraftSeed(employee));
+    setLeaveDraft(null);
     setEditing(true);
   };
   const cancelEdit = () => {
     setEditing(false);
     setDraft({});
+    setLeaveDraft(null);
     setPositionChange("");
     setNecessityUntil("");
   };
@@ -188,6 +200,25 @@ export default function EmployeeProfile() {
   const positionChanged = editing && String(seed.position || "").trim() && String(draft.position ?? seed.position).trim() !== String(seed.position || "").trim();
   const saveEdit = () => {
     if (!canEditFile || !dirty) return;
+    // «الإجازات والراحة في العقد» saves with the file — one save in the top bar.
+    if (leaveDraft) {
+      applyContractLeave(company.id, employee.id, leaveDraft);
+      appendEmployeeFileLog(company.id, employee.id, {
+        text: ar ? "تعديل الإجازات والراحة في العقد" : "Contract leave and rest updated",
+        by: currentUser.name || currentUser.email,
+        kind: ar ? "الإجازات" : "Leave",
+        changes: [
+          ...(leaveDraft.annual != null ? [{ label: ar ? "الإجازة السنوية" : "Annual leave", from: "", to: ar ? `${leaveDraft.annual} يوماً` : `${leaveDraft.annual} days` }] : []),
+          ...(leaveDraft.restCount != null ? [{ label: ar ? "أيام الراحة الأسبوعية" : "Weekly rest days", from: "", to: String(leaveDraft.restCount) }] : []),
+        ],
+      });
+    }
+    if (!fieldsDirty) {
+      setEditing(false);
+      setDraft({});
+      setLeaveDraft(null);
+      return;
+    }
     const { profile, name, phone } = splitEmployeeFileDraft(draft);
     // Arts. 59–60 — a move off the monthly wage, or substantially different work, needs the worker's
     // signed consent (spent by this save); incidental necessity is dated and capped at 30 days a year.
@@ -232,12 +263,16 @@ export default function EmployeeProfile() {
       profile,
       name,
       phone,
-      log: {
-        text: ar ? "تعديل بيانات الملف" : "File fields updated",
-        by: currentUser.name || currentUser.email,
-        at: new Date().toISOString().slice(0, 16).replace("T", " "),
-        dot: "#3C7D50",
-      },
+      log: (() => {
+        const changes = describeFileChanges(seed, { ...profile, ...(name != null ? { name } : {}), ...(phone != null ? { phone } : {}) }, ar);
+        return {
+          text: fileChangeLogText(changes, ar),
+          by: currentUser.name || currentUser.email,
+          at: new Date().toISOString().slice(0, 16).replace("T", " "),
+          dot: "#3C7D50",
+          changes,
+        };
+      })(),
     });
     if (consentGate.spend.length || consentGate.necessity) {
       updateCompany(company.id, (d) => {
@@ -255,6 +290,7 @@ export default function EmployeeProfile() {
     syncEmployeeSalaryToPayroll(company.id, employee.id);
     setEditing(false);
     setDraft({});
+    setLeaveDraft(null);
     setPositionChange("");
     setNecessityUntil("");
   };
@@ -300,10 +336,6 @@ export default function EmployeeProfile() {
   return (
       <div dir={ar ? "rtl" : "ltr"} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {company?.id && employee?.id ? <ApplyLaborOnFile companyId={company.id} employeeId={employee.id} canEditFile={canEditFile} /> : null}
-
-        {!isSelf ? (
-          <SectionBackLink ar={ar} label={ar ? "الموارد البشرية" : "HR"} to="/app/hr?tab=people" />
-        ) : null}
 
         <ProfileHero
           employee={employee}
@@ -459,6 +491,7 @@ export default function EmployeeProfile() {
                 note: view.eosNote,
               }}
             />
+            <ContractLeaveCard employee={employee} companyId={company.id} canEdit={canEditFile && (!isSelf || isCompanyOwner(currentUser, data))} fileEditing={editing} onTermsChange={setLeaveDraft} />
             <EmployeeFileWageCard
               title={ar ? "الأجر" : "Wage"}
               what={ar ? "الأجر الأساسي والبدلات؛ الإجمالي مشتق لا مُدخَل. تاريخ التسجيل في التأمينات يُكتب هنا." : "Base and allowances; the total is derived, not typed. The GOSI registration date is entered here."}
@@ -476,9 +509,10 @@ export default function EmployeeProfile() {
         )}
         {tab === "contract" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {canEditContract || isSelf ? <ContractTab employee={employee} companyId={company.id} canEdit={canEditContract && !isSelf} viewerId={currentUser.id} /> : null}
+            {canEditContract || isSelf ? <ContractTab employee={employee} companyId={company.id} canEdit={canEditContract && (!isSelf || isCompanyOwner(currentUser, data))} viewerId={currentUser.id} viewerName={currentUser.name || currentUser.email || ""} /> : null}
             {canEditContract || isSelf ? <ContractLawPanel employee={employee} ar={ar} lane={isSelf ? "employee" : "manage"} /> : null}
             {/* The leaving worker's read-only twin of «أنظمة الوزارة — نهاية الخدمة» (the case view sits in OffboardingTab). */}
+            <HoursOnFile employee={employee} data={data} lang={lang} inContract />
             {isSelf && hasRecordedExit(employee) ? <OffboardingLawPanel employee={employee} ar={ar} self /> : null}
             <AllowanceLedgerCard employee={employee} ar={ar} />
             <SiteConditionsCard

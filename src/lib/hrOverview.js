@@ -215,21 +215,7 @@ export function deriveHrOverview(data, { today = localDateKey(), ar = true, scop
     to: orgTo("health"),
   }));
 
-  const pending = (orgDesignOf(data).changes || []).filter((c) => c?.status === "pending");
-  check({
-    id: "changes",
-    label: T(ar, "طلبات تغيير في الهيكل بانتظار الاعتماد", "Structure change requests awaiting approval"),
-    count: pending.length,
-    note: T(ar, "اعتمد أو ارفض بسبب مكتوب — تُنشر في تاريخ السريان.", "Approve or reject with a written reason — published on the effective date."),
-    to: orgTo("changes"),
-  });
-  pending.forEach((c) => decisions.push({
-    id: `change:${c.id}`,
-    kind: "change",
-    title: T(ar, `تغيير في الهيكل — ${str(c.title) || "بلا عنوان"}`, `Structure change — ${str(c.title) || "untitled"}`),
-    due: str(c.effectiveDate).slice(0, 10) || today,
-    to: orgTo("changes"),
-  }));
+  // structure changes apply directly (HR management), so no approval queue is listed here
 
   /* 7 — GOSI registration (the same rule as «أنظمة الوزارة — السجلات») */
   const noGosi = staff.filter((e) => !hasGosi(e)).length;
@@ -250,17 +236,6 @@ export function deriveHrOverview(data, { today = localDateKey(), ar = true, scop
     count: gaps,
     note: T(ar, "نسخة العقد، قوى، رقم التأمينات، الفحص الطبي، بيانات الوظيفة.", "Contract copy, Qiwa, GOSI number, medical, job data."),
     to: hrHref("people", { filter: "incomplete" }),
-  });
-
-  /* 9 — the rest of the structure health findings */
-  const other = findings.filter((i) => (i.tone === "bad" || i.tone === "warn") && i.kind !== "VACANT" && i.kind !== "ACTING_OVER_LIMIT");
-  check({
-    id: "health",
-    label: T(ar, "ملاحظات صحة الهيكل", "Structure health findings"),
-    count: other.length,
-    tone: other.some((i) => i.tone === "bad") ? "bad" : "warn",
-    note: other[0] ? (ar ? other[0].ar : other[0].en) : T(ar, "نطاق الإشراف والطبقات والدورات في التبعية.", "Span, layers and reporting cycles."),
-    to: orgTo("health"),
   });
 
   /* Saudization — a note, never a decision on its own */
@@ -301,6 +276,13 @@ export function dueWord(days, ar = true) {
   if (days == null) return "";
   if (days === 0) return ar ? "اليوم" : "Today";
   const n = Math.abs(days);
-  if (days < 0) return ar ? `متأخر ${n} يوماً` : `${n} day${n === 1 ? "" : "s"} overdue`;
+  // Past two months a day count says little — months, then years.
+  const span = (k) => {
+    if (k >= 365) { const y = Math.floor(k / 365); return y === 1 ? "سنة" : y === 2 ? "سنتين" : y <= 10 ? `${y} سنوات` : `${y} سنة`; }
+    if (k >= 60) { const m = Math.floor(k / 30); return m <= 10 ? `${m} أشهر` : `${m} شهراً`; }
+    return k === 1 ? "يوم" : k === 2 ? "يومين" : k <= 10 ? `${k} أيام` : `${k} يوماً`;
+  };
+  if (days < 0) return ar ? (n >= 60 ? `متأخر أكثر من ${span(n)}` : `متأخر ${span(n)}`) : `${n} day${n === 1 ? "" : "s"} overdue`;
+  if (ar) return `خلال ${span(n)}`;
   return ar ? `خلال ${n} يوماً` : `in ${n} day${n === 1 ? "" : "s"}`;
 }

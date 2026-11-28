@@ -34,7 +34,7 @@ const shape = (h, word) => {
 const lanes = (kind, ctx) => {
   const { e, m } = both(kind, ctx);
   shape(e, "حقك");
-  shape(m, "التزامك");
+  shape(m, "حقّ نظامي");
   return { e, m };
 };
 

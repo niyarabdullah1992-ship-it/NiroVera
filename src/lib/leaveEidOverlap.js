@@ -15,13 +15,13 @@ function postingOf(company) {
 }
 
 /**
- * The rest days HR set on this person's file (0 = Sunday … 6 = Saturday): the first is the Art. 104 day,
- * the second (optional) the company rest. Empty → the establishment default applies.
+ * The rest days set in the contract on this person's file (0 = Sunday … 6 = Saturday): the first is the
+ * Art. 104 day, the rest are added by the establishment (up to six). Empty → the establishment default applies.
  */
 export function fileOffDows(employee) {
   const raw = employee?.profile?.weeklyOffDows;
   if (!Array.isArray(raw)) return [];
-  return [...new Set(raw.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))].slice(0, 2);
+  return [...new Set(raw.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))].slice(0, 6);
 }
 
 /** Art. 104 weekly rest weekday — the file's first rest day, else the establishment's, else Friday. */
@@ -50,6 +50,8 @@ function countOneOrTwo(raw) {
 export function weeklyRestDayCountOf(company, employee) {
   const own = fileOffDows(employee);
   if (own.length) return own.length;
+  const contract = Number(employee?.profile?.weeklyRestCount);
+  if (Number.isInteger(contract) && contract >= 1 && contract <= 6) return contract;
   const fromFile = countOneOrTwo(employee?.profile?.weeklyRestDayCount ?? employee?.weeklyRestDayCount);
   if (fromFile) return fromFile;
   const fromCompany = countOneOrTwo(postingOf(company).weeklyRestDayCount ?? postingOf(company).companyRestDays);
@@ -63,21 +65,26 @@ export function weeklyRestDayCountOf(company, employee) {
   return fromCompany || 2;
 }
 
-/** Weekdays that must not be charged against Article 109 for this employee. */
+/** Rest weekdays by count around the statutory day: Friday, then Saturday, Thursday, Sunday… */
+function restAround(statutory, count) {
+  const order = [0, 1, -1, 2, -2, 3, -3].map((step) => (((statutory + step) % 7) + 7) % 7);
+  return order.slice(0, Math.max(1, Math.min(6, count))).sort((x, y) => x - y);
+}
+
+/** Weekdays that must not be charged against Article 109 for this employee — as many as his file's rest count. */
 export function weeklyOffDows(company, employee) {
   const own = fileOffDows(employee);
   if (own.length) return own;
+  const count = weeklyRestDayCountOf(company, employee);
   const posting = postingOf(company);
   const listed = posting.weeklyOffDows || posting.companyRestDows;
+  const statutory = weeklyRestDowOf(company);
   if (Array.isArray(listed) && listed.length) {
     const days = [...new Set(listed.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))];
-    // A file set to one rest day keeps only the statutory (first) day the management chose.
-    const fromFile = countOneOrTwo(employee?.profile?.weeklyRestDayCount ?? employee?.weeklyRestDayCount);
-    return fromFile === 1 ? days.slice(0, 1) : days;
+    if (days.length >= count) return days.slice(0, count);
+    return [...new Set([...days, ...restAround(days[0] ?? statutory, 7)])].slice(0, count).sort((x, y) => x - y);
   }
-  const statutory = weeklyRestDowOf(company);
-  if (weeklyRestDayCountOf(company, employee) <= 1) return [statutory];
-  return [statutory, (statutory + 1) % 7];
+  return restAround(statutory, count);
 }
 
 /** Sunday-start week of a date key — the roster's week. */
@@ -341,10 +348,12 @@ export function eidDaysInRange(start, end, calendar) {
   return n;
 }
 
-export function weeklyRestDaysInsideEid(start, end, company, calendar) {
+export function weeklyRestDaysInsideEid(start, end, company, calendar, employee = null) {
   const days = [];
   eachInclusiveDay(start, end, (day) => {
-    if (isEidHoliday(day, calendar) && isWeeklyRestOn(day, company)) days.push(day);
+    // His own rest days (roster, else his rest count) — an Eid day on any of them is compensated.
+    const rest = employee ? isWeeklyOffDay(day, company, employee) : isWeeklyRestOn(day, company);
+    if (isEidHoliday(day, calendar) && rest) days.push(day);
   });
   return days;
 }
@@ -438,7 +447,7 @@ export function deriveEidOverlap({ start, end, type, company, calendar, employee
   const cite = citeRule("leave.eid.overlap.cite", from) || citeRule("leave.eid.cite", from);
   const holidayDays = officialHolidayDaysInRange(from, to, calendar);
   const eidDays = eidDaysInRange(from, to, calendar);
-  const restDays = weeklyRestDaysInsideEid(from, to, company, calendar);
+  const restDays = weeklyRestDaysInsideEid(from, to, company, calendar, employee);
   let civicAbsorbed = 0;
   eachInclusiveDay(from, to, (day) => {
     const hit = officialHolidayOn(day, calendar);

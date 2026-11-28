@@ -394,8 +394,35 @@ export function deriveAutoBranchEscalationChain(stationId, data) {
 /**
  * Per-branch escalation: custom order if edited, otherwise the tree path.
  */
-export function deriveBranchEscalationChain(stationId, data) {
+/**
+ * Escalation routes set in «سلسلة التصعيد»: tasks and the named complaint start with the direct manager
+ * (from the structure) and end in HR; HR may stack several levels so a higher one receives what the lower
+ * one left. Voice channels (suggestion, confidential, open report, harassment) start in HR — see voicePrivacy.
+ */
+export const ESCALATION_ROUTES = ["tasks", "complaint", "voice"];
+export function escalationRouteLevels(data, route) {
+  const rows = data?.escalationRoutes?.[route]?.hr;
+  return Array.isArray(rows) ? rows.filter((row) => row && row.employeeId) : [];
+}
+
+export function deriveBranchEscalationChain(stationId, data, route = "tasks") {
   const sid = stationId ? String(stationId) : "";
+  const hrLevels = route === "voice" ? [] : escalationRouteLevels(data, route);
+  if (hrLevels.length) {
+    // the direct manager first (the branch line's first step), then the HR levels in order
+    const empById = employeeIndex(data?.employees);
+    const head = deriveAutoBranchEscalationChain(sid, data).slice(0, 1);
+    const seen = new Set(head.map((step) => String(step.employeeId)));
+    const tail = [];
+    for (const row of hrLevels) {
+      const id = String(row.employeeId);
+      const emp = empById.get(id);
+      if (!emp || seen.has(id)) continue;
+      seen.add(id);
+      tail.push({ ...stepFromEmp(emp), hr: true, hours: Number(row.hours) || 24 });
+    }
+    return [...head, ...tail];
+  }
   const manual = manualBranchEscalationIds(sid, data);
   if (!manual) return deriveAutoBranchEscalationChain(sid, data);
   const empById = employeeIndex(data?.employees);

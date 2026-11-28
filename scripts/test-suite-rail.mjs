@@ -127,8 +127,8 @@ const manageSide = managed.find((row) => row.id === "manage");
 assert.deepEqual(managed.map((row) => row.id), ["employee", "manage"]);
 assert.equal(employeeSide.label, "الموظف");
 assert.equal(manageSide.label, "الإدارة");
-assert.equal(employeeSide.subtitle, "ما يخصّك: بصمتك ومهامك وطلباتك وتوقيعاتك.");
-assert.equal(manageSide.subtitle, "التشغيل والقرار والامتثال لكل الفروع.");
+assert.equal(employeeSide.subtitle, "", "no line under the side switch");
+assert.equal(manageSide.subtitle, "", "no line under the side switch");
 assert.deepEqual(
   employeeSide.groups.map((group) => ({ label: group.label, items: group.items.map((item) => item.label) })),
   [
@@ -146,7 +146,8 @@ assert.deepEqual(
     // «الهيكل والفروع» and «المحطات التي أديرها» are one section now: «الموارد البشرية».
     { label: "الموظفون", items: ["الموارد البشرية", "الطلبات", "الجزاءات", "صوت الموظف", "الأداء"] },
     // «الامتثال الوزاري» is a pane of الموارد البشرية now — not its own rail entry.
-    { label: "المال والتوقيع", items: ["المال والرواتب", "التوقيع الرقمي"] },
+    // signing is the employee's «توقيعاتي»; the management rail keeps money only
+    { label: "المال", items: ["المال والرواتب"] },
   ],
 );
 assert.equal(sideItems(employeeSide).some((item) => item.label === "ملفي" || item.section === "file"), false, "the personal file opens from the identity bar");
@@ -173,7 +174,7 @@ assert.equal(sideItems(employeeSide).find((item) => item.section === "daily").la
 assert.equal(sideItems(manageSide).find((item) => item.section === "daily").to, "/app/tasks?lane=manage");
 assert.equal(sideItems(employeeSide).find((item) => item.section === "org").to, "/app/org");
 assert.equal(sideItems(manageSide).some((item) => item.section === "ministry"), false, "ministry compliance lives inside HR, not on the rail");
-assert.equal(sideItems(manageSide).find((item) => item.section === "signing").to, "/app/signing?lane=manage");
+assert.equal(sideItems(manageSide).some((item) => item.section === "signing"), false, "signing lives on الموظف «توقيعاتي»");
 assert.equal(sideItems(manageSide).find((item) => item.section === "hse").to, "/app/safety?lane=manage");
 assert.equal(sideItems(manageSide).some((item) => item.section === "files"), false, "files and the assistant stay off the company rail");
 assert.equal(sideItems(employeeSide).find((item) => item.section === "payslip").to, "/app/payroll?view=self&tab=payslip");

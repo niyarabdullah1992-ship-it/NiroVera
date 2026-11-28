@@ -78,7 +78,7 @@ function pack(c, { law, employee, manager, due }) {
   const lane = isManager ? manager : employee;
   return {
     view: isManager ? "manager" : "employee",
-    word: c.ar ? (isManager ? "التزامك" : "حقك") : (isManager ? "Your duty" : "Your right"),
+    word: c.ar ? (isManager ? "حقّ نظامي" : "حقك") : (isManager ? "Statutory right" : "Your right"),
     right: lane.right,
     ifNot: lane.ifNot,
     action: lane.action,

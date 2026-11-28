@@ -11,7 +11,6 @@ import { toast } from "@/components/ui/use-toast";
 import { renameCompany } from "@/lib/companySettings";
 import { ACCENT, MUTED, NAVY, pageCol, ui, field, CARD, SURFACE } from "@/lib/platformStyles";
 import { ChromeBox } from "@/components/shared/IdentityCard";
-import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import SettingsPermDelegation from "@/components/hr/SettingsPermDelegation";
 import { canEditOwnerBoard } from "@/lib/ownerBoard";

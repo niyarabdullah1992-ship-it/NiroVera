@@ -541,7 +541,7 @@ export default function Layout({ children }) {
   const routeSide = routeRailSide(railClusters, activeRailKey, location.pathname);
 
   return (
-    <RailSideProvider routeSide={routeSide}>
+    <RailSideProvider routeSide={routeSide} hasManage={railClusters.some((side) => side.id === "manage")}>
     <div className="powercare-shell flex h-dvh max-h-dvh min-h-0 overflow-hidden" dir={dir}>
       <SuiteRail
         sides={railClusters}

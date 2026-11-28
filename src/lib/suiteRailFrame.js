@@ -7,6 +7,7 @@
  */
 import { isWorkplaceStation, scopedStationIdsForUser } from "./stationTree.js";
 import { SUITE_APPS, suiteAppOnSide } from "./suiteApps.js";
+import { MANAGE_SECTIONS } from "./manageSections.js";
 import { isVoiceHrReceiver } from "./voicePrivacy.js";
 
 export const RAIL_SIDES = [
@@ -31,7 +32,7 @@ const MANAGE_GROUPS = [
   { id: "home", ar: "الرئيسية", en: "Home", sections: ["decide"] },
   { id: "daily", ar: "العمل اليومي", en: "Daily work", sections: ["duty", "daily", "hse"] },
   { id: "staff", ar: "الموظفون", en: "People", sections: ["hr", "requests", "discipline", "complaints", "performance"] },
-  { id: "money", ar: "المال والتوقيع", en: "Pay and signing", sections: ["money", "signing"] },
+  { id: "money", ar: "المال", en: "Pay", sections: ["money"] },
 ];
 
 const ROLE_RANK = {
@@ -598,6 +599,25 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
     }
   }
 
+  // «صلاحيات الإدارة»: an explicit «يدير» adds the section, an explicit «لا يدير» removes it;
+  // with no grant set the role decides, as before. The owner manages everything.
+  if (user && !isOwner(user, data)) {
+    for (const sec of MANAGE_SECTIONS) {
+      const grant = departmentGrant(user, data, sec.id);
+      if (grant === "hidden") manage.delete(sec.rail);
+      else if (grant === "manage" && !manage.has(sec.rail)) {
+        manage.set(sec.rail, faceItem({
+          section: sec.rail,
+          lane: "manage",
+          iconKey: sec.rail === "hr" ? "workforce" : sec.rail === "daily" ? "tasks" : sec.rail,
+          label: ar ? sec.ar : sec.en,
+          to: sec.to,
+          signal: ownedSignal(null, sec.id, false),
+        }));
+      }
+    }
+  }
+
   const sides = [];
   const employeeGroups = grouped(EMPLOYEE_GROUPS, employee, lang);
   const manageGroups = grouped(MANAGE_GROUPS, manage, lang);
@@ -605,7 +625,7 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
     sides.push({
       id: "employee",
       label: ar ? "الموظف" : "Employee",
-      subtitle: ar ? "ما يخصّك: بصمتك ومهامك وطلباتك وتوقيعاتك." : "Yours: your punch, tasks, requests, and signatures.",
+      subtitle: "",
       groups: employeeGroups,
     });
   }
@@ -613,7 +633,7 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
     sides.push({
       id: "manage",
       label: ar ? "الإدارة" : "Manage",
-      subtitle: ar ? "التشغيل والقرار والامتثال لكل الفروع." : "Operations, decisions, and compliance for every branch.",
+      subtitle: "",
       groups: manageGroups,
     });
   }

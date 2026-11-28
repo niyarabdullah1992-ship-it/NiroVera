@@ -1,7 +1,7 @@
 /**
  * The org chart layout — one tree for /app/org/chart and the people tree in «الفروع والدليل».
  *
- * SAP SuccessFactors-style: the manager chain to the focus as a vertical stack, every other team
+ * the manager chain to the focus as a vertical stack, every other team
  * as a dense grid block under one drop; the viewer opens any number of cards, and opening one
  * never closes another.
  *
@@ -17,7 +17,7 @@ import { focusCard, orderKeys } from "./orgFocus.js";
 export const TREE_GEOMETRY = Object.freeze({
   cardW: 248,
   compactCardW: 212,
-  gap: 12,
+  gap: 4,
   chainW: 264,
   colGap: 40,
   maxCols: 4,
@@ -100,7 +100,7 @@ export function pathTo(tree, key) {
  */
 
 /**
- * Opened by default (SAP): the chain above the focus stands as a vertical stack — one card per
+ * Opened by default: the chain above the focus stands as a vertical stack — one card per
  * level, peers folded — and the focus shows its own team. A manager's count opens the peers.
  */
 export function defaultExpanded(tree, key) {
@@ -114,7 +114,7 @@ export function defaultExpanded(tree, key) {
 }
 
 /**
- * Auto-fit (SAP): the zoom that keeps the whole chart inside the viewport after a move — never
+ * Auto-fit: the zoom that keeps the whole chart inside the viewport after a move — never
  * above 1, never below `floor` (cards stay readable; beyond that the viewer scrolls).
  */
 export function fitZoom({ width, height, availW, availH, floor = 0.55, ceiling = 1 } = {}) {
@@ -195,7 +195,7 @@ export function gridCols(n, cap = TREE_GEOMETRY.maxCols) {
 }
 
 /**
- * SAP-style layout of every visible card.
+ * Layout of every visible card.
  *
  * Under an opened card, its reports split in two: those that are themselves opened, or on the
  * path to the focus, stand as their own columns (their teams below them); all the others are
@@ -342,7 +342,7 @@ export function layoutOrgTree(tree, expanded = new Set(), {
   };
 
   const allRoots = orderKeys(tree, (tree?.roots || []).filter((k) => tree.nodes.has(k)));
-  // SAP keeps one tree. Seats that answer to nobody (no manager, no team, not on the focus path) would
+  // One tree. Seats that answer to nobody (no manager, no team, not on the focus path) would
   // each open a column of their own and push the real tree aside, so they fold into one «+n بلا مدير»
   // card beside it; the card opens them as a small block (showAll has ORPHAN_KEY).
   const isLoose = (k) => {

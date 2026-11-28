@@ -1,15 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import StatusFilterPills from "@/components/shared/StatusFilterPills";
 import { chip, mono, slab } from "@/components/schedules/scheduleChrome";
 import { OrgAddBranchDrawer, OrgBranchDrawer } from "@/components/hr/OrgBranchDrawer";
 import { ui } from "@/lib/platformStyles";
-import { deriveStationReadiness, readinessLabel } from "@/lib/stationReadiness";
+import { deriveStationReadiness } from "@/lib/stationReadiness";
 import { HR_BRANCH_FILTERS, hrBranchMatches, hrBranchRows } from "@/lib/hrSection";
 import { foldOrgLookup } from "@/lib/orgLookup";
 
-// every branch row is the link itself — no separate «افتح» (the «طلباتي» list pattern)
-const rowLink = { display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderTop: "1px solid var(--nv-line2, #EEF2F7)", flexWrap: "wrap", minWidth: 0, textDecoration: "none", color: "inherit" };
 
 const FILTER_LABELS = {
   all: { ar: "الكل", en: "All" },
@@ -17,6 +15,17 @@ const FILTER_LABELS = {
   no_manager: { ar: "بلا مدير", en: "No manager" },
   no_city: { ar: "بلا مدينة", en: "No city" },
 };
+
+// one table instead of a city-by-city stack: every branch is one row, sortable by any column
+const COLS = [
+  { id: "name", ar: "الفرع", en: "Branch", get: (r) => r.name },
+  { id: "city", ar: "المدينة", en: "City", get: (r) => r.city },
+  { id: "manager", ar: "المدير", en: "Manager", get: (r) => r.managerName },
+  { id: "people", ar: "الموظفون", en: "People", num: true, get: (r) => r.headcount },
+  { id: "seats", ar: "المناصب", en: "Seats", num: true, get: (r) => r.seats },
+  { id: "vacant", ar: "شاغرة", en: "Vacant", num: true, get: (r) => r.vacant },
+  { id: "status", ar: "الحالة", en: "Status", num: true, get: (r) => (r.noManager ? 2 : (r.readiness?.level && r.readiness.level !== "ready" ? 1 : 0)) },
+];
 
 function Num({ children }) {
   return <b dir="ltr" style={{ ...mono, fontWeight: 600, color: "var(--nv-ink)", unicodeBidi: "isolate" }}>{children}</b>;
@@ -39,7 +48,9 @@ export default function HrBranchesBoard({
   onBranchConsumed,
   initialQuery = "",
 }) {
+  const navigate = useNavigate();
   const [filter, setFilter] = useState("all");
+  const [sort, setSort] = useState({ key: "name", dir: 1 });
   const [query, setQuery] = useState(initialQuery);
   const [focusId, setFocusId] = useState("");
   const [adding, setAdding] = useState(false);
@@ -65,9 +76,17 @@ export default function HrBranchesBoard({
     label: ar ? FILTER_LABELS[id].ar : FILTER_LABELS[id].en,
     n: view.rows.filter((row) => hrBranchMatches(row, id)).length,
   }));
-  const groups = view.groups
-    .map((g) => ({ ...g, rows: g.rows.filter((row) => hrBranchMatches(row, filter) && matchesQuery(row)) }))
-    .filter((g) => g.rows.length);
+  const rows = view.rows
+    .filter((row) => hrBranchMatches(row, filter) && matchesQuery(row))
+    .slice()
+    .sort((x, y) => {
+      const col = COLS.find((c) => c.id === sort.key) || COLS[0];
+      const a = col.get(x); const b = col.get(y);
+      if (col.num) return (Number(a || 0) - Number(b || 0)) * sort.dir;
+      if (!a && b) return 1;
+      if (a && !b) return -1;
+      return String(a || "").localeCompare(String(b || ""), "ar") * sort.dir;
+    });
   const station = focusId ? (data?.stations || []).find((s) => String(s.id) === String(focusId)) : null;
 
   return (
@@ -99,56 +118,50 @@ export default function HrBranchesBoard({
         />
       </StatusFilterPills>
 
-      <section style={{ ...slab, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      {groups.length ? groups.map((g) => (
-        <div key={g.key} data-hr-city={g.noCity ? "none" : g.city} style={{ display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "9px 18px", background: "var(--nv-soft, #F6F8FA)", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-            <b style={{ fontSize: 12.5, color: g.noCity ? "var(--nv-muted)" : "var(--nv-ink)" }}>{g.city}</b>
-            {g.region || g.country ? <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{[g.region, g.country].filter(Boolean).join(" · ")}</span> : null}
-            <span style={{ fontSize: 11.5, color: "var(--nv-muted)", marginInlineStart: "auto" }}>
-              {ar ? "فروع " : "branches "}<Num>{g.rows.length}</Num>
-            </span>
-          </div>
-          {g.rows.map((row) => {
-            const held = row.readiness && row.readiness.level === "blocked";
-            return canWrite ? (
-                <button type="button" key={row.id} data-hr-branch={row.id} className="nv-hr-row" onClick={() => setFocusId(row.id)} style={{ ...rowLink, fontFamily: "inherit", width: "100%", border: "none", borderTop: "1px solid var(--nv-line2, #EEF2F7)", background: "transparent", cursor: "pointer", textAlign: "start" }}>
-                <span style={{ display: "flex", flexDirection: "column", gap: 2, flex: "1 1 220px", minWidth: 0 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <b style={{ fontSize: 13, color: "var(--nv-ink)" }}>{row.name}</b>
-                    {row.noManager ? <span style={chip("warn")}>{ar ? "بلا مدير" : "No manager"}</span> : null}
-                    {held ? <span style={chip("bad")}>{readinessLabel("blocked", ar)}</span> : null}
-                  </span>
-                  <span style={{ fontSize: 12, color: "var(--nv-muted)", lineHeight: 1.7 }}>
-                    {row.managerName ? <>{ar ? "المدير: " : "Manager: "}{row.managerName} · </> : null}
-                    {ar ? "موظفون " : "people "}<Num>{row.headcount}</Num>
-                    {row.seats ? <> · {ar ? "مناصب " : "seats "}<Num>{row.seats}</Num>{row.vacant ? <> · {ar ? "شاغرة " : "vacant "}<Num>{row.vacant}</Num></> : null}</> : null}
-                    {row.readiness?.top && row.readiness.level !== "ready" ? <> · {ar ? row.readiness.top.ar : row.readiness.top.en}</> : null}
-                  </span>
-                </span>
-                  <span aria-hidden style={{ fontSize: 15, lineHeight: 1, color: "var(--nv-muted)", flexShrink: 0 }}>›</span>
-                </button>
-              ) : (
-                <Link key={row.id} data-hr-branch={row.id} className="nv-hr-row" to="/app/org/chart?view=branches&lane=manage" state={{ from: "/app/hr?tab=branches" }} style={rowLink}>
-                <span style={{ display: "flex", flexDirection: "column", gap: 2, flex: "1 1 220px", minWidth: 0 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <b style={{ fontSize: 13, color: "var(--nv-ink)" }}>{row.name}</b>
-                    {row.noManager ? <span style={chip("warn")}>{ar ? "بلا مدير" : "No manager"}</span> : null}
-                    {held ? <span style={chip("bad")}>{readinessLabel("blocked", ar)}</span> : null}
-                  </span>
-                  <span style={{ fontSize: 12, color: "var(--nv-muted)", lineHeight: 1.7 }}>
-                    {row.managerName ? <>{ar ? "المدير: " : "Manager: "}{row.managerName} · </> : null}
-                    {ar ? "موظفون " : "people "}<Num>{row.headcount}</Num>
-                    {row.seats ? <> · {ar ? "مناصب " : "seats "}<Num>{row.seats}</Num>{row.vacant ? <> · {ar ? "شاغرة " : "vacant "}<Num>{row.vacant}</Num></> : null}</> : null}
-                    {row.readiness?.top && row.readiness.level !== "ready" ? <> · {ar ? row.readiness.top.ar : row.readiness.top.en}</> : null}
-                  </span>
-                </span>
-                  <span aria-hidden style={{ fontSize: 15, lineHeight: 1, color: "var(--nv-muted)", flexShrink: 0 }}>›</span>
-                </Link>
-              );
-          })}
+      <section style={{ ...slab, overflow: "hidden" }}>
+      {rows.length ? (
+        <div style={{ overflowX: "auto" }}>
+          <table data-hr-branch-table="1" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 640 }}>
+            <thead>
+              <tr style={{ background: "var(--nv-soft, #F6F8FA)" }}>
+                {COLS.map((c) => (
+                  <th key={c.id} scope="col" aria-sort={sort.key === c.id ? (sort.dir > 0 ? "ascending" : "descending") : "none"}
+                    style={{ padding: 0, textAlign: c.num ? "center" : "start", fontWeight: 700, color: "var(--nv-ink2, var(--nv-muted))", whiteSpace: "nowrap" }}>
+                    <button type="button" onClick={() => setSort((cur) => ({ key: c.id, dir: cur.key === c.id ? -cur.dir : 1 }))}
+                      style={{ fontFamily: "inherit", fontSize: 11.5, fontWeight: 700, color: "inherit", background: "none", border: "none", cursor: "pointer", padding: "10px 14px", width: "100%", textAlign: "inherit" }}>
+                      {ar ? c.ar : c.en}{sort.key === c.id ? (sort.dir > 0 ? " ▲" : " ▼") : ""}
+                    </button>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const open = () => (canWrite ? setFocusId(row.id) : navigate("/app/org/chart?view=branches&lane=manage", { state: { from: "/app/hr?tab=branches" } }));
+                const status = row.noManager
+                  ? <span style={chip("warn")}>{ar ? "بلا مدير" : "No manager"}</span>
+                  : (row.readiness?.top && row.readiness.level !== "ready"
+                    ? <span style={chip(row.readiness.level === "blocked" ? "bad" : "warn")}>{ar ? "تنبيه" : "Alert"}</span>
+                    : <span style={{ color: "var(--nv-muted)" }}>—</span>);
+                const td = { padding: "10px 14px", borderTop: "1px solid var(--nv-line2, #EEF2F7)", whiteSpace: "nowrap" };
+                return (
+                  <tr key={row.id} data-hr-branch={row.id} className="nv-hr-row" tabIndex={0} onClick={open}
+                    onKeyDown={(e) => { if (e.key === "Enter") open(); }} style={{ cursor: "pointer" }}
+                    title={row.readiness?.top && row.readiness.level !== "ready" ? (ar ? row.readiness.top.ar : row.readiness.top.en) : undefined}>
+                    <td style={{ ...td, fontWeight: 700, color: "var(--nv-ink)" }}>{row.name}</td>
+                    <td style={{ ...td, color: row.city ? "var(--nv-ink)" : "var(--nv-muted)" }}>{row.city || (ar ? "بلا مدينة" : "No city")}</td>
+                    <td style={{ ...td, color: row.managerName ? "var(--nv-ink)" : "var(--nv-muted)" }}>{row.managerName || "—"}</td>
+                    <td style={{ ...td, textAlign: "center" }}><Num>{row.headcount || 0}</Num></td>
+                    <td style={{ ...td, textAlign: "center" }}><Num>{row.seats || 0}</Num></td>
+                    <td style={{ ...td, textAlign: "center" }}>{row.vacant ? <Num>{row.vacant}</Num> : <span style={{ color: "var(--nv-muted)" }}>—</span>}</td>
+                    <td style={{ ...td, textAlign: "center" }}>{status}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      )) : (
+      ) : (
         <p style={{ margin: 0, padding: "16px 18px", fontSize: 12.5, color: "var(--nv-muted)" }}>
           {view.rows.length
             ? (ar ? "لا فرع يطابق هذا الفلتر." : "No branch matches this filter.")

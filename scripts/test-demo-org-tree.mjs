@@ -14,9 +14,9 @@ assert.equal(plan.find((item) => item.name === "ميناء الدمام")?.paren
 assert.equal(plan.filter((item) => !item.parent).length, 2);
 
 const rows = demoOrgHireRows();
-assert.equal(rows.length, 91);
-assert.equal(rows.filter((row) => row.branch === "فرع جدة").length, 18);
-assert.equal(rows.filter((row) => row.branch === "فرع الخفجي").length, 22);
+assert.equal(rows.length, 94, "91 field staff + 3 branch HR officers");
+assert.equal(rows.filter((row) => row.branch === "فرع جدة").length, 19);
+assert.equal(rows.filter((row) => row.branch === "فرع الخفجي").length, 23);
 assert.equal(rows.filter((row) => row.branch === "المكتب الرئيسي").length, 25);
 assert.equal(rows.filter((row) => row.branch === "ميناء الدمام").length, 19);
 assert.equal(rows.filter((row) => row.onCompanyRoot).length, 4);

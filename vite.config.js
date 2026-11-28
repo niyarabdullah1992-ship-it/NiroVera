@@ -75,6 +75,7 @@ export default defineConfig({
     hardenDevProxy(),
     react(),
   ],
+  build: { rollupOptions: { output: { experimentalMinChunkSize: 300000 } } },
   optimizeDeps: {
     include: ["qrcode"],
   },

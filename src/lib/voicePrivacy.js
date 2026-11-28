@@ -62,6 +62,8 @@ export function isVoiceHrReceiver(user, data) {
   if (!user) return false;
   if (isCompanyAdmin(user, data)) return true;
   if (["hr", "hr_manager"].includes(user.role)) return true;
+  const routed = data?.escalationRoutes?.voice?.hr;
+  if (Array.isArray(routed) && routed.some((row) => str(row?.employeeId) === str(user.id))) return true;
   const perms = levelOf(user, data)?.permissions || [];
   return HR_VOICE_PERMISSIONS.some((p) => perms.includes(p));
 }

@@ -9,7 +9,7 @@
  */
 
 import { canEditOrgDesign, checkOrgChangeGate, deriveChangeImpact, deriveOrgHealth, orgDesignOf, todayKey } from "./orgDesign.js";
-import { isHrUnit, isManagerUnit } from "./stationTree.js";
+import { isCompanyRootStation, isHrUnit, isManagerUnit } from "./stationTree.js";
 
 const str = (value) => String(value ?? "").trim();
 
@@ -52,6 +52,22 @@ export function seatAuthorityCount(data, seatId) {
   return orgDesignOf(data).doa.filter((row) => str(row.approverSeatId) === id || str(row.escalateToSeatId) === id).length;
 }
 
+/**
+ * The head seat of a fixed unit — the head office (HQ) or HR: never removed, ended or moved; only its
+ * holder changes (or someone is assigned acting). Returns the unit, or null.
+ */
+export function fixedUnitHead(data, card) {
+  const id = str(card?.employeeId);
+  const stations = (data?.stations || []).filter((s) => !s.closedAt);
+  const fixed = (s) => isCompanyRootStation(s) || isHrUnit(s);
+  if (id && !card?.vacant) return stations.find((s) => fixed(s) && str(s.managerId) === id) || null;
+  const st = stations.find((s) => str(s.id) === str(card?.stationId));
+  // A vacant seat in the HR unit is fixed only when it is the director's seat; its other posts can go.
+  if (st && isHrUnit(st)) return !st.managerId && str(card?.hrPost) === "director" ? st : null;
+  return st && fixed(st) && !st.managerId ? st : null;
+}
+export const FIXED_UNIT = { ar: "وحدة ثابتة (المقر الرئيسي أو الموارد البشرية) — لا تُحذف ولا تُنهى ولا تُنقل؛ يتغيّر الشاغل فقط.", en: "A fixed unit (HQ or HR) — not removed, ended or moved; only the holder changes." };
+
 /** The unit a person leads (a new seat there reports to them), or null. */
 export function ledStation(data, card) {
   const id = str(card?.employeeId);
@@ -84,24 +100,22 @@ export function orgCardActions(card, { data, user, canWrite = false, health = nu
   const out = [];
   const add = (id, ar, en, group, extra = {}) => out.push({ id, ar, en, group, blocked: null, ...extra });
 
-  if (card.employeeId && !card.vacant) add("file", "ملف الموظف", "Employee file", "open");
-  if (card.seatId) add("seat", "بطاقة المنصب", "Seat card", "open");
-  if (card.vacant && card.state === "vacant") add("hire", "تعيين على المنصب", "Hire into this seat", "seat");
-  if (card.vacant && card.seatId) {
-    add("acting", "تكليف بالإنابة", "Acting cover", "seat", { blocked });
-    add("freeze", "تجميد المنصب بقرار", "Freeze by decision", "decide", { blocked });
-  }
-  if (card.seatId) {
-    add("moveUnder", "نقل تحت…", "Move under…", "decide", { blocked });
-    add("move", "نقل المنصب أو تغيير التبعية بقرار", "Move / change reporting by decision", "decide", { blocked });
-    add("dotted", "خط منقّط بقرار", "Dotted line by decision", "decide", { blocked });
-  }
-  const station = (data?.stations || []).find((s) => str(s.id) === str(card.stationId));
-  if (station && !station.closedAt && !isHrUnit(station)) add("branch", "الفرع والوحدة", "Branch / unit", "open");
+  // one card, one set of actions: file · move (branch to branch) · edit · acting (branch heads only) ·
+  // access; hire when vacant; create a seat under a head; end the seat
   const led = ledStation(data, card);
-  if (led) add("addSeat", "إضافة منصب تحته", "Add a seat under", "seat", { stationId: str(led.id), blocked: isManagerUnit(led) ? HIRE_BLOCK : null });
-  if (card.seatId) add("authority", "الصلاحيات", "Authority", "look", { count: seatAuthorityCount(data, card.seatId) });
-  add("health", "صحة الهيكل", "Structure health", "look", { count: Number(health?.findings || 0) });
+  const filled = Boolean(card.employeeId && !card.vacant);
+  const fixedHead = fixedUnitHead(data, card);
+  if (filled) add("file", "ملف الموظف", "Employee file", "open");
+  if (card.vacant && card.state === "vacant") add("hire", card.hrPost === "director" ? "تعيين مدير للموارد البشرية" : "تعيين على المنصب", card.hrPost === "director" ? "Assign the HR director" : "Hire into this seat", "seat");
+  if (card.vacant && card.hrPost === "director") add("pickDirector", "تعيين موظف حالي مديراً للموارد البشرية", "Appoint an existing employee", "seat", { blocked, stationId: str(card.stationId) });
+  if (filled && !fixedHead) add("transfer", "نقل إلى فرع آخر", "Move to another branch", "seat", { blocked });
+  if (card.seatId) add("seatEdit", "تعديل", "Edit", "seat", { blocked });
+  if (led && card.seatId) add("acting", "تكليف بإدارة الفرع", "Acting branch head", "seat", { blocked });
+  if (filled) add("perms", "الصلاحيات", "Access", "seat");
+  if (led) add("addSeat", "إنشاء منصب تحته", "Create a seat under", "decide", { stationId: str(led.id), blocked: isManagerUnit(led) ? HIRE_BLOCK : null });
+  if (card.seatId && filled && !fixedHead) add("vacate", "إنهاء التعيين في المنصب", "End the assignment", "decide", { blocked });
+  if (card.seatId && card.vacant && !fixedHead && card.hrPost !== "director") add("removeSeat", "حذف المنصب الشاغر", "Remove the vacant seat", "decide", { blocked, destructive: true });
+  if (card.seatId && card.vacant && !fixedHead) add("freeze", card.state === "frozen" ? "إعادة فتح المنصب" : "إنهاء المنصب", card.state === "frozen" ? "Reopen the seat" : "End the seat", "decide", { blocked });
   return out;
 }
 

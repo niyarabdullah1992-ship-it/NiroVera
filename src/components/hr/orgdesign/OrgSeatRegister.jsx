@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { deriveSeatRegister, SEAT_STATES, SEAT_STATE_LABELS, todayKey } from "@/lib/orgDesign";
 import { patchSeatDesign } from "@/lib/orgDesignStore";
 import { endActingAssignment, openHireDrawer, setActingAssignment } from "@/lib/orgHire";
-import { DrawerHead, EmptyInvite, Face, GateLine, Note, OkLine, OrgDrawer, Slab, SlabBar, StateChip, SubHead, ToneChip, btnGhost, btnPrimary, filterChip, fmtDay, initialsOf, levelLabel, seatOptionLabel } from "./orgDesignUi";
+import { DrawerHead, EmptyInvite, Face, GateLine, Note, OkLine, OrgDrawer, Slab, SlabBar, StateChip, SubHead, ToneChip, btnGhost, btnPrimary, filterChip, fmtDay, initialsOf, levelLabel } from "./orgDesignUi";
 
 const NAT = {
   saudi: { ar: "سعودي", en: "Saudi" },
@@ -19,7 +19,7 @@ const ACTING_ERRORS = {
 
 /**
  * «المناصب» — the establishment table: positions separate from people. Filters by unit, grade,
- * state and nationality; one seat opens its card (code, Qiwa title, Saudi-only, deputy, dotted
+ * state and nationality; one seat opens its card (code, Qiwa title, Saudi-only,
  * line, frozen/planned, acting cover). Structural moves go through «التغييرات».
  */
 export default function OrgSeatRegister({ ar, data, actor, companyId, canEdit, onOpenChanges, focusSeat = "", onFocusConsumed }) {
@@ -31,7 +31,7 @@ export default function OrgSeatRegister({ ar, data, actor, companyId, canEdit, o
   const [state, setState] = useState("");
   const [nat, setNat] = useState("");
   const [selected, setSelected] = useState("");
-  // «افتح المنصب» from صحة الهيكل lands here with that seat's card open
+  // «افتح المنصب» lands here with that seat's card open
   useEffect(() => {
     if (!focusSeat) return;
     setSelected(String(focusSeat));
@@ -134,7 +134,6 @@ export default function OrgSeatRegister({ ar, data, actor, companyId, canEdit, o
                     <td data-label={ar ? "المنصب" : "Seat"}>
                       <span style={{ fontWeight: 600 }}>{r.title}</span>
                       {r.saudiOnly ? <span className="nv-od-muted" style={{ fontSize: 11 }}> · {ar ? "للسعوديين" : "Saudi-only"}</span> : null}
-                      {r.dottedTitle ? <div className="nv-od-muted" style={{ fontSize: 11 }}>┄ {r.dottedTitle}</div> : null}
                     </td>
                     <td data-label={ar ? "الشاغل" : "Holder"}>
                       <Face
@@ -234,18 +233,6 @@ function SeatCard({ ar, row, rows, data, actor, companyId, canEdit, onClose, onO
           <label className="nv-od-field">{ar ? "المسمى في قوى" : "Qiwa job title"}
             <input className="nv-od-input" value={form.qiwaTitle} onChange={set("qiwaTitle")} disabled={!canEdit} placeholder={row.title} />
           </label>
-          <label className="nv-od-field nv-od-field--wide">{ar ? "النائب (التعاقب)" : "Deputy (succession)"}
-            <select className="nv-od-select" value={form.deputySeatId} onChange={set("deputySeatId")} disabled={!canEdit}>
-              <option value="">{ar ? "— بلا نائب —" : "— none —"}</option>
-              {others.map((r) => <option key={r.seatId} value={r.seatId}>{seatOptionLabel(r, ar)}</option>)}
-            </select>
-          </label>
-          <label className="nv-od-field nv-od-field--wide">{ar ? "خط منقّط (تبعية فنية)" : "Dotted line"}
-            <select className="nv-od-select" value={form.dottedToSeatId} onChange={set("dottedToSeatId")} disabled={!canEdit}>
-              <option value="">{ar ? "— لا يوجد —" : "— none —"}</option>
-              {others.map((r) => <option key={r.seatId} value={r.seatId}>{seatOptionLabel(r, ar)}</option>)}
-            </select>
-          </label>
           <label className="nv-od-field">{ar ? "حالة المنصب الشاغر" : "Vacant seat state"}
             <select className="nv-od-select" value={form.state} onChange={set("state")} disabled={!canEdit || Boolean(row.holderId)}>
               <option value="">{ar ? "شاغر مفتوح للتعيين" : "Open vacancy"}</option>
@@ -265,7 +252,7 @@ function SeatCard({ ar, row, rows, data, actor, companyId, canEdit, onClose, onO
         </div>
         {row.holderId ? <Note>{ar ? "المنصب مشغول — حالته تتبع شاغله، ولا يُجمَّد قبل إخلائه." : "Filled — its state follows the holder; it cannot be frozen before it is vacated."}</Note> : null}
         <GateLine gate={gate} ar={ar} />
-        {saved ? <OkLine>{ar ? "حُفظ — ويظهر في صحة الهيكل ومصفوفة الصلاحيات فوراً." : "Saved — health and the authority matrix use it right away."}</OkLine> : null}
+        {saved ? <OkLine>{ar ? "حُفظ." : "Saved — health and the authority matrix use it right away."}</OkLine> : null}
         {canEdit ? (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" style={btnPrimary()} onClick={save}>{ar ? "حفظ بيانات المنصب" : "Save seat"}</button>

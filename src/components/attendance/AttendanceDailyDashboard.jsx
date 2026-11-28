@@ -442,7 +442,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
     : (lang === "ar" ? "ما ينكسر من حلقات اليوم يصل هنا، وكل قرار يُسجَّل باسمك." : "Today's broken links land here; every decision is recorded in your name.");
   const queueInsight = attentionCount
     ? (lang === "ar" ? "الهدف أن تفضى القائمة كل يوم." : "Aim to clear this list every day.")
-    : (lang === "ar" ? "ما فيه شي ينتظرك." : "Nothing waiting on you.");
+    : (lang === "ar" ? "لا شيء بانتظارك." : "Nothing waiting on you.");
 
   const tiles = (
     <FigureRow
@@ -614,8 +614,8 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
   const queuePanel = queueClear ? (
     <div ref={queueRef} id="nv-team-queue" data-decision-queue data-queue-empty className="nv-all-clear" style={{ scrollMarginTop: 88 }}>
       <span aria-hidden className="nv-all-clear__dot"><NvIcon name="check" size={14} strokeWidth={2.2} inline={false} /></span>
-      <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--nv-ok-ink)" }}>{ar ? "ما فيه بصمات تنتظر مراجعتك" : "No punches waiting for your review"}</span>
-      <span style={{ fontSize: 12.5, color: MUTED }}>{ar ? "كل بصمات اليوم انحسمت تلقائياً أو بقرار." : "Every punch today closed automatically or by a decision."}</span>
+      <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--nv-ok-ink)" }}>{ar ? "لا توجد بصمات بانتظار مراجعتك" : "No punches waiting for your review"}</span>
+      <span style={{ fontSize: 12.5, color: MUTED }}>{ar ? "حُسمت جميع بصمات اليوم تلقائياً أو بقرار." : "Every punch today closed automatically or by a decision."}</span>
     </div>
   ) : (
     <div ref={queueRef} id="nv-team-queue" className="nv-list-stack" data-decision-queue style={{ scrollMarginTop: 88 }}>
@@ -654,7 +654,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
         <div data-queue-empty style={{ padding: "22px 18px", display: "flex", alignItems: "center", gap: 12 }}>
           <span aria-hidden style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--nv-ok-soft)", border: "1px solid var(--nv-ok-line)", color: "var(--nv-ok-ink)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 700, flexShrink: 0 }}><NvIcon name="check" size={16} strokeWidth={2} inline={false} /></span>
           <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--nv-ok-ink)" }}>{lang === "ar" ? "ما فيه شي ينتظرك" : "Nothing waiting"}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--nv-ok-ink)" }}>{lang === "ar" ? "لا شيء بانتظارك" : "Nothing waiting"}</span>
             <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>{lang === "ar" ? "كل يوم أُغلق تلقائياً أو بقرار موقّع." : "Every day closed automatically or by a signed decision."}</span>
           </span>
         </div>

@@ -2,15 +2,16 @@ import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Logo from "@/components/Logo";
 import LegalCertificatesStrip from "@/components/landing/LegalCertificatesStrip";
-import {
-  ON_NAVY,
-  ON_NAVY_MUTED,
-  SURFACE,
-  usePublicPlatformTheme,
-} from "@/lib/publicChrome";
+import { SURFACE, usePublicPlatformTheme } from "@/lib/publicChrome";
+import { nv7Tab } from "@/components/shared/Nv7SectionHead";
 import { isBase44BackendConfigured, openApp, PREVIEW_ACCOUNTS, previewLogin } from "@/lib/localPreview";
 
 const PAD = { paddingLeft: 48, paddingRight: 48 };
+
+/* The public chrome wears the inside's parts: a white top card like the app's header on the paper page,
+ * and a deep-green footer like the sidebar rail (gold group labels, white links). */
+const RAIL_GOLD = "#E2C57E";
+const RAIL_TEXT = "#D6E6DC";
 
 const NAV = [
   { href: "/#how", ar: "سلسلة الإثبات", en: "Proof chain" },
@@ -32,7 +33,7 @@ const FOOT_COMPANY = [
 
 function FootLink({ item, ar }) {
   const label = ar ? item.ar : item.en;
-  const style = { fontSize: 13, color: ON_NAVY_MUTED, textDecoration: "none", lineHeight: 1.7 };
+  const style = { fontSize: 13, color: RAIL_TEXT, textDecoration: "none", lineHeight: 1.9 };
   if (item.to) return <Link to={item.to} style={style}>{label}</Link>;
   return <a href={item.href} style={style}>{label}</a>;
 }
@@ -55,13 +56,13 @@ function HeaderSignIn({ ar, loggedIn }) {
     document.addEventListener("keydown", esc);
     return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
   }, [open]);
-  const linkStyle = { fontSize: 13, color: "#E7F0EA", fontWeight: 600, textDecoration: "none", padding: "0 4px" };
+  const linkStyle = { ...nv7Tab(true), minWidth: 0, textDecoration: "none" };
   if (loggedIn || !preview) {
     return <Link to={loggedIn ? "/app" : "/login"} style={linkStyle}>{loggedIn ? T("حسابي", "My account") : T("تسجيل الدخول", "Sign in")}</Link>;
   }
   return (
     <div ref={box} style={{ position: "relative" }}>
-      <button type="button" data-header-signin="1" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((v) => !v)} style={{ ...linkStyle, fontFamily: "inherit", background: "transparent", border: "none", cursor: "pointer", height: 34, display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <button type="button" data-header-signin="1" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((v) => !v)} style={linkStyle}>
         {T("تسجيل الدخول", "Sign in")}
         <span aria-hidden style={{ fontSize: 10, opacity: 0.8, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s ease" }}>▾</span>
       </button>
@@ -101,35 +102,37 @@ function HeaderSignIn({ ar, loggedIn }) {
 export function MarketingHeader({ ar, loggedIn, onToggleLang }) {
   const T = (a, e) => (ar ? a : e);
   return (
-    <header
-      data-nv="pad"
-      style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 50,
-        background: "#0B3D27",
-        borderBottom: "1px solid rgba(255,255,255,.08)",
-        ...PAD,
-        paddingTop: 0,
-        paddingBottom: 0,
-      }}
-    >
-      <div style={{ maxWidth: 1240, margin: "0 auto", height: 68, display: "flex", alignItems: "center", gap: 20 }}>
+    <header data-nv="pad" style={{ position: "sticky", top: 0, zIndex: 50, background: SURFACE, padding: "12px 24px 0" }}>
+      <div
+        style={{
+          maxWidth: 1192,
+          margin: "0 auto",
+          minHeight: 64,
+          display: "flex",
+          alignItems: "center",
+          gap: 20,
+          padding: "0 18px",
+          background: "#FFFFFF",
+          border: "1px solid #E4E9E6",
+          borderRadius: 12,
+          boxShadow: "0 1px 2px rgba(12,20,16,.06)",
+        }}
+      >
         <Link to="/" style={{ display: "flex", alignItems: "center", color: "inherit", textDecoration: "none", flexShrink: 0 }}>
-          <Logo size={28} onDark />
+          <Logo size={34} />
         </Link>
-        <nav data-nv="navlinks" style={{ flex: 1, display: "flex", alignItems: "center", gap: 22, minWidth: 0 }}>
+        <nav data-nv="navlinks" style={{ flex: 1, display: "flex", alignItems: "center", gap: 20, minWidth: 0 }}>
           {NAV.map((l) =>
             l.to ? (
-              <Link key={l.to} to={l.to} style={{ fontSize: 13, color: "#D6E6DC", textDecoration: "none", whiteSpace: "nowrap" }}>{T(l.ar, l.en)}</Link>
+              <Link key={l.to} to={l.to} style={{ fontSize: 13, color: "#3A4048", textDecoration: "none", whiteSpace: "nowrap" }}>{T(l.ar, l.en)}</Link>
             ) : (
-              <a key={l.href} href={l.href} style={{ fontSize: 13, color: "#D6E6DC", textDecoration: "none", whiteSpace: "nowrap" }}>{T(l.ar, l.en)}</a>
+              <a key={l.href} href={l.href} style={{ fontSize: 13, color: "#3A4048", textDecoration: "none", whiteSpace: "nowrap" }}>{T(l.ar, l.en)}</a>
             )
           )}
         </nav>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginInlineStart: "auto" }}>
           {onToggleLang ? (
-            <button type="button" onClick={onToggleLang} style={{ height: 34, padding: "0 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,.28)", background: "transparent", color: "#E7F0EA", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
+            <button type="button" onClick={onToggleLang} style={{ height: 34, minWidth: 40, padding: "0 10px", borderRadius: 8, border: "1px solid #E4E9E6", background: "#FFFFFF", color: "#111418", fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
               {ar ? "EN" : "ع"}
             </button>
           ) : null}
@@ -144,17 +147,17 @@ export function MarketingHeader({ ar, loggedIn, onToggleLang }) {
 export function MarketingFooter({ ar, lang }) {
   const T = (a, e) => (ar ? a : e);
   return (
-    <footer data-nv="pad" style={{ padding: "36px 48px 28px", background: "#0A2E1E", color: "#A9CDB8" }}>
-      <div style={{ maxWidth: 1240, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32 }}>
+    <footer data-nv="pad" style={{ padding: "0 24px 18px", background: SURFACE }}>
+      <div style={{ maxWidth: 1192, margin: "0 auto", background: "#0B3D27", borderRadius: 12, padding: "28px 28px 18px", color: RAIL_TEXT, display: "flex", flexDirection: "column", gap: 26 }}>
         <div data-nv="foot-grid" style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 36, alignItems: "start" }}>
           <div>
-            <Logo size={24} onDark />
-            <p style={{ margin: "14px 0 0", fontSize: 13, lineHeight: 1.7, color: ON_NAVY_MUTED, maxWidth: 320 }}>
+            <Logo size={26} onDark />
+            <p style={{ margin: "14px 0 0", fontSize: 13, lineHeight: 1.8, color: RAIL_TEXT, maxWidth: 340 }}>
               {T("منصة تشغيل مؤسسية تثبت العمل قبل الحكم — تطبيقات مترابطة في مساحة شركة واحدة.", "An institutional ops suite that proves work before judgment — connected apps in one company space.")}
             </p>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ fontSize: 11, letterSpacing: "0.1em", fontWeight: 600, color: ON_NAVY, marginBottom: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: RAIL_GOLD, marginBottom: 6 }}>
               {T("روابط", "Links")}
             </div>
             {FOOT_COMPANY.map((item) => (
@@ -165,7 +168,7 @@ export function MarketingFooter({ ar, lang }) {
 
         {lang ? <LegalCertificatesStrip lang={lang} /> : null}
 
-        <div style={{ borderTop: "1px solid rgba(255,255,255,.1)", paddingTop: 18, fontSize: 12, color: ON_NAVY_MUTED }}>
+        <div style={{ borderTop: "1px solid rgba(255,255,255,.1)", paddingTop: 14, fontSize: 12, color: "#A9CDB8" }}>
           {T("© 2026 NiroVera — نيار عبدالله سويلم الرنياوي · جميع الحقوق محفوظة", "© 2026 NiroVera — Niyar Abdullah Sweilem Al-Raniawi · All rights reserved")}
         </div>
       </div>
@@ -181,6 +184,9 @@ export default function MarketingChrome({ ar, lang, loggedIn, onToggleLang, chil
       dir={ar ? "rtl" : "ltr"}
       style={{
         background: SURFACE,
+        /* The inside's structure green, whatever navy the legacy public theme put on <html>. */
+        "--nv-navy": "#0B3D27",
+        "--nv-accent": "#3C7D50",
         fontFamily: "'IBM Plex Sans Arabic','IBM Plex Sans',sans-serif",
         color: "var(--nv-ink)",
         minHeight: "100vh",
@@ -189,7 +195,7 @@ export default function MarketingChrome({ ar, lang, loggedIn, onToggleLang, chil
       <style>{`
         @media (max-width: 900px) {
           [data-nv="navlinks"] { display: none !important; }
-          [data-nv="pad"] { padding-left: 22px !important; padding-right: 22px !important; }
+          [data-nv="pad"] { padding-left: 12px !important; padding-right: 12px !important; }
           [data-nv="foot-grid"] { grid-template-columns: 1fr !important; gap: 28px !important; }
           [data-nv="cert-grid"] { grid-template-columns: 1fr !important; }
           [data-nv="cert-grid"] > div { border-inline-end: none !important; border-bottom: 1px solid rgba(255,255,255,.1); }

@@ -1518,6 +1518,7 @@ export function addNotification(companyId, userId, text, extra = {}) {
       row.voiceNotice = extra.voiceNotice;
     }
     if (extra?.to) row.to = String(extra.to);
+    if (extra?.lane) row.lane = String(extra.lane);
     d.notifications.unshift(row);
   });
 }
@@ -1565,9 +1566,24 @@ export function patchEmployeeFile(companyId, employeeId, { profile, phone, name,
     }
     if (phone != null) emp.phone = phone;
     if (name != null && String(name).trim()) emp.name = String(name).trim();
-    if (log) emp.fileLog = [log, ...(emp.fileLog || [])].slice(0, 40);
+    if (log) emp.fileLog = [log, ...(emp.fileLog || [])].slice(0, 200);
   });
   return { ok: true };
+}
+
+/** One line on the file's change trail («سجل التعديلات» in أرشيف الملف): what, who, when. */
+export function appendEmployeeFileLog(companyId, employeeId, log) {
+  if (!companyId || !employeeId || !log?.text) return;
+  updateCompany(companyId, (d) => {
+    const emp = (d.employees || []).find((e) => String(e.id) === String(employeeId));
+    if (!emp) return;
+    emp.fileLog = [{
+      at: new Date().toISOString().slice(0, 16).replace("T", " "),
+      dot: "#3C7D50",
+      ...log,
+      by: log.by || (auditActor && auditActor !== "system" ? auditActor : ""),
+    }, ...(emp.fileLog || [])].slice(0, 200);
+  });
 }
 
 /** Write due Article 55 conversion and statutory leave floors onto one employee file. */
@@ -1830,7 +1846,7 @@ export function openDueReligionNotices(companyId) {
       const key = `religion-missing:${emp.id}:${m.id}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      addNotification(companyId, m.id, `الديانة غير محددة في ملف ${emp.name || "موظف"} — حدّدها ليظهر له ما يخصه من الإجازات: الحج للمسلم (المادة 114)، ومدة العدة 130 يوماً للمسلمة أو 15 لغيرها (المادة 160).`, { key, to: `/app/employees/${emp.id}?tab=identity` });
+      addNotification(companyId, m.id, `الديانة غير محددة في ملف ${emp.name || "موظف"} — حدّدها ليظهر له ما يخصه من الإجازات: الحج للمسلم (المادة 114)، ومدة العدة 130 يوماً للمسلمة أو 15 لغيرها (المادة 160).`, { key, to: `/app/employees/${emp.id}?tab=identity`, lane: "manage" });
       notified += 1;
     }
     const own = `religion-missing:${emp.id}:self`;

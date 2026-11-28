@@ -99,11 +99,6 @@ function ProfessionalCard({ card, ar, self, companyName }) {
           <button type="button" onClick={printCard} style={{ ...btn, border: "1px solid var(--nv-line)", background: "transparent", color: "var(--nv-ink)" }}>
             {ar ? "طباعة" : "Print"}
           </button>
-          {self ? (
-            <button type="button" onClick={() => navigate("/app/requests?kind=doc&doc=exp")} style={{ ...btn, border: "1px solid var(--nv-ok-ink)", background: "var(--nv-ok-ink)", color: "#fff" }}>
-              {ar ? "طلب شهادة خدمة" : "Request service certificate"}
-            </button>
-          ) : null}
         </div>
       </div>
       <div className="nv-myfile-printonly" style={{ alignItems: "center", gap: 14, padding: "16px 20px 0" }}>

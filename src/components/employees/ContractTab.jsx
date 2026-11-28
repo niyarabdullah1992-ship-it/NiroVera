@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { uploadFileOrLocal } from "@/lib/localFileUpload";
 import { useI18n } from "@/lib/i18n";
 import ContractForm from "@/components/employees/ContractForm";
 import { BORDER, MUTED, NAVY, OK, WARN, BAD, SURFACE, ui } from "@/lib/platformStyles";
@@ -9,7 +10,7 @@ import { contractHint, fileAlertHint } from "@/lib/rightHints.disc";
 import { FileText } from "lucide-react";
 import { EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
 import { deriveArt55Conversion, deriveProbationProgress } from "@/lib/contractLawDerivations";
-import { applyDueLaborRules, updateEmployeeProfile } from "@/lib/store";
+import { appendEmployeeFileLog, applyDueLaborRules, updateEmployeeProfile } from "@/lib/store";
 import { checkContractAckGate, contractSheet, contractTermsText } from "@/lib/contractDocument";
 import { printSheet } from "@/lib/printSheet";
 import { toast } from "@/components/ui/use-toast";
@@ -106,7 +107,99 @@ function ContractAck({ employee, companyId, contract, viewerId, ar }) {
   );
 }
 
-export default function ContractTab({ employee, companyId, canEdit, viewerId = "" }) {
+const CONTRACT_FILE_TYPES = "application/pdf,image/png,image/jpeg";
+
+/**
+ * The signed contract file: HR uploads or replaces it here; the employee downloads it from their own file.
+ * A replaced file stays listed (name and date) so the change is traceable.
+ */
+function ContractFileRow({ employee, companyId, contract, fileName, canUpload, isSelf, viewerId, viewerName, ar }) {
+  const input = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const has = Boolean(contract?.fileUrl);
+  const history = Array.isArray(contract?.fileHistory) ? contract.fileHistory : [];
+  const pick = () => input.current?.click();
+  const onFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    try {
+      const up = await uploadFileOrLocal(file);
+      const prior = has ? [{ fileName: contract.fileName || "", at: contract.fileUploadedAt || "", by: contract.fileUploadedBy || "" }, ...history].slice(0, 10) : history;
+      updateEmployeeProfile(companyId, employee.id, {
+        contract: {
+          fileUrl: up.file_url,
+          fileName: file.name,
+          fileUploadedAt: new Date().toISOString(),
+          fileUploadedBy: String(viewerId || ""),
+          fileHistory: prior,
+        },
+      });
+      appendEmployeeFileLog(companyId, employee.id, {
+        text: has ? (ar ? `تغيير ملف العقد — ${file.name}` : `Contract file replaced — ${file.name}`) : (ar ? `رفع ملف العقد — ${file.name}` : `Contract file uploaded — ${file.name}`),
+        by: viewerName || "",
+        kind: ar ? "العقد" : "Contract",
+        changes: has ? [{ label: ar ? "ملف العقد" : "Contract file", from: contract.fileName || "", to: file.name }] : [],
+      });
+      toast({ description: has ? (ar ? "استُبدل ملف العقد." : "Contract file replaced.") : (ar ? "رُفع ملف العقد، ويستطيع الموظف تحميله من ملفه." : "Contract file uploaded; the employee can download it from their file.") });
+    } catch (error) {
+      toast({
+        description: String(error?.message || "") === "file_too_large_local"
+          ? (ar ? "الملف أكبر من ١٫٥ ميجابايت في المعاينة. صغّر الملف أو ارفعه في المنصة المنشورة." : "File over 1.5 MB in preview.")
+          : (ar ? "تعذّر رفع الملف. حاول مرة أخرى." : "Upload failed. Please try again."),
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const isPdf = /\.pdf$/i.test(fileName || "") || /^data:application\/pdf/.test(String(contract?.fileUrl || ""));
+  return (
+    <div data-contract-file="1" style={{ marginTop: 18, padding: "12px 14px", borderRadius: 11, background: SURFACE, border: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={PDF_CHIP}>{isPdf || !has ? "PDF" : (ar ? "صورة" : "IMG")}</span>
+        <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+          <span style={{ fontSize: 13, color: has ? NAVY : MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {has ? fileName : (ar ? "لا يوجد عقد مرفوع بعد" : "No contract uploaded yet")}
+          </span>
+          {has && contract?.fileUploadedAt ? (
+            <span style={{ fontSize: 10.5, color: MUTED }}>{ar ? `رُفع ${niceDate(contract.fileUploadedAt, ar)}` : `Uploaded ${niceDate(contract.fileUploadedAt, ar)}`}</span>
+          ) : null}
+        </span>
+        {has ? (
+          <>
+            <a href={contract.fileUrl} target="_blank" rel="noopener noreferrer" style={{ ...ui.btnGhost, textDecoration: "none", height: 32, display: "inline-flex", alignItems: "center" }}>
+              {ar ? "عرض" : "View"}
+            </a>
+            <a href={contract.fileUrl} download={fileName || "contract.pdf"} data-contract-download="1" style={{ ...ui.btnGhost, textDecoration: "none", height: 32, display: "inline-flex", alignItems: "center", fontWeight: 700 }}>
+              {ar ? "تحميل" : "Download"}
+            </a>
+          </>
+        ) : null}
+        {canUpload ? (
+          <>
+            <input ref={input} type="file" accept={CONTRACT_FILE_TYPES} onChange={onFile} style={{ display: "none" }} aria-label={ar ? "ملف العقد" : "Contract file"} />
+            <button type="button" disabled={busy} onClick={pick} data-contract-upload="1" style={{ ...ui.btnPrimary, height: 32 }}>
+              {busy ? (ar ? "جارٍ الرفع…" : "Uploading…") : has ? (ar ? "تغيير الملف" : "Replace file") : (ar ? "ارفع ملف العقد" : "Upload contract file")}
+            </button>
+          </>
+        ) : null}
+      </div>
+      {!canUpload && !has && isSelf ? (
+        <span style={{ fontSize: 11, color: MUTED }}>{ar ? "ترفعه الموارد البشرية، ثم يظهر هنا لتحمّله." : "HR uploads it; then it appears here to download."}</span>
+      ) : null}
+      {canUpload && history.length ? (
+        <span style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.7 }}>
+          {ar ? "نسخ سابقة: " : "Earlier files: "}
+          {history.map((item) => `${item.fileName || "—"}${item.at ? ` (${niceDate(item.at, ar)})` : ""}`).join(" · ")}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+export default function ContractTab({ employee, companyId, canEdit, viewerId = "", viewerName = "" }) {
   const { lang } = useI18n();
   const ar = lang === "ar";
   const profile = employee.profile || {};
@@ -185,7 +278,7 @@ export default function ContractTab({ employee, companyId, canEdit, viewerId = "
             {contract?.fileUrl || contract?.generated ? (ar ? "تحديث العقد" : "Update contract") : (ar ? "أنشئ العقد أو ارفعه" : "Generate or upload the contract")}
           </button>
         ) : (
-          <span style={{ fontSize: "10px", color: MUTED }}>{ar ? "للإدارة فقط" : "Management only"}</span>
+          <span style={{ fontSize: "10px", color: MUTED }}>{hctx.view === "employee" ? (ar ? "يحدّثه قسم الموارد البشرية — يمكنك تحميل الملف من الأسفل" : "Kept by HR — download the file below") : (ar ? "للإدارة فقط" : "Management only")}</span>
         )}
       </div>
       {patternRules.map((id) => {
@@ -247,44 +340,7 @@ export default function ContractTab({ employee, companyId, canEdit, viewerId = "
 
       <ContractAck employee={employee} companyId={companyId} contract={contract} viewerId={viewerId} ar={ar} />
 
-      {fileName ? (
-        <a
-          href={contract.fileUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            marginTop: "18px",
-            padding: "12px 14px",
-            borderRadius: "11px",
-            background: SURFACE,
-            border: `1px solid ${BORDER}`,
-            textDecoration: "none",
-          }}
-        >
-          <span style={PDF_CHIP}>PDF</span>
-          <span style={{ flex: 1, fontSize: "13px", color: NAVY }}>{fileName}</span>
-        </a>
-      ) : (
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "10px",
-          marginTop: "18px",
-          padding: "12px 14px",
-          borderRadius: "11px",
-          background: SURFACE,
-          border: `1px solid ${BORDER}`,
-        }}
-        >
-          <span style={PDF_CHIP}>PDF</span>
-          <span style={{ flex: 1, fontSize: "13px", color: MUTED }}>
-            {ar ? "لا يوجد عقد مرفوع بعد" : "No contract uploaded yet"}
-          </span>
-        </div>
-      )}
+      <ContractFileRow employee={employee} companyId={companyId} contract={contract} fileName={fileName} canUpload={canEdit} isSelf={hctx.view === "employee"} viewerId={viewerId} viewerName={viewerName} ar={ar} />
     </IdentityCard>
   );
 }

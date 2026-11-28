@@ -1,10 +1,12 @@
 import { getCompanyData, updateCompany } from "@/lib/store";
+import { linkBranchHr } from "@/lib/hrTree";
 import { applyPreviewStationPin } from "@/lib/previewStationPins";
 import { assignEmployeeNumber } from "@/lib/employeeNumber";
 import { ownerEmployee, syncStationManagersFromSeats } from "@/lib/orgHire";
 import { applyWorkplaceManagerRule, seatCompanyHeadOnRoot } from "@/lib/peopleTreeGraph";
 import { applyExtraCoverageStrip, companyRootStation, hangOrphanStationsUnderCompany, isCompanyRootStation, stationParentId, stripDescendantCoverage } from "@/lib/stationTree";
 import {
+  DEMO_BRANCH_HR,
   DEMO_BRANCH_MANAGERS,
   DEMO_ORG_EMAIL_DOMAIN,
   DEMO_ORG_MANAGER_EMAIL,
@@ -196,6 +198,31 @@ function ensureBranch(data, name, parentName, unitKind) {
   return station;
 }
 
+/** Point each demo branch at its HR officer, so file completion has someone to go to. */
+function applyDemoBranchHr(data) {
+  DEMO_BRANCH_HR.forEach(({ email, branches }) => {
+    const hr = (data.employees || []).find((e) => String(e.email || "").toLowerCase() === email.toLowerCase());
+    if (!hr) return;
+    const ids = [];
+    branches.forEach((name) => {
+      const station = stationByName(data, name);
+      if (!station) return;
+      if (!station.hrManagerId) linkBranchHr(data, station.id, hr.id);
+      ids.push(String(station.id));
+    });
+    // Her HR level: manage employee files, inside her branches only — what lets her complete them.
+    data.hrLevels = data.hrLevels || [];
+    const levelId = `hrlvl_branch_${hr.id}`;
+    let level = data.hrLevels.find((l) => l.id === levelId);
+    if (!level) {
+      level = { id: levelId, name: "مسؤول موارد الفرع", role: "hr_branch", scope: "station", order: 3, active: true, permissions: ["manage_employees"], stationIds: [] };
+      data.hrLevels.push(level);
+    }
+    level.stationIds = ids;
+    hr.hrLevelId = levelId;
+  });
+}
+
 export function seedDemoOrgTree(companyId, { ar = true } = {}) {
   if (!companyId || !getCompanyData(companyId)) {
     return { ok: false, hired: [], message: ar ? "لا توجد منشأة لملئها." : "No company to fill." };
@@ -314,6 +341,7 @@ export function seedDemoOrgTree(companyId, { ar = true } = {}) {
     });
     syncStationManagersFromSeats(data);
     applyDemoBranchManagers(data);
+    applyDemoBranchHr(data);
     applyExtraCoverageStrip(data);
     data.settings = { ...(data.settings || {}), demoOrgTreeAt: new Date().toISOString() };
   });

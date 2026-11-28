@@ -5,11 +5,15 @@ import { renameCompany } from "@/lib/companySettings";
 import {
   assignBranchHrManager,
   branchHrManager,
+  clearBranchHrManager,
   createOrgBranch,
   findEmployeeByName,
-  listBranchHrManagers,
+  listBranchHrCandidates,
   renameOrgBranch,
   setStationLocation,
+  setStationLegacyCr,
+  setRegisterAnnualDue,
+  setStationCrDisplayChecked,
   setOrgBranchParent,
   setOrgUnitKind,
 } from "@/lib/orgHire";
@@ -17,6 +21,8 @@ import { explainWorkplaceManager } from "@/lib/peopleTree";
 import { setStationManager } from "@/lib/store";
 import { deleteStationWithData } from "@/lib/stationData";
 import { DEFAULT_COUNTRY, stationPlace } from "@/lib/geoPlaces";
+import { localDateKey } from "@/lib/complianceDerivations";
+import { branchRegisterLine, companyCrNumber, deriveRegisterAnnualStatus, registerDisplayPlaces } from "@/lib/commercialRegister";
 import LocationPicker, { placeLine } from "@/components/hr/orgdesign/LocationPicker";
 import {
   allowedStationParents,
@@ -29,6 +35,7 @@ import {
   stationSubtreeIds,
 } from "@/lib/stationTree";
 import NvIcon from "@/components/shared/NvIcon";
+import { fieldBranchesForHr } from "@/lib/hrTree";
 
 const FIELD = {
   height: 34,
@@ -201,6 +208,105 @@ function occupiedCount(data, stationId) {
   )).length;
 }
 
+const HR_ERRORS = (ar) => ({
+  NOT_HR: ar ? "هذا الموظف ليس من الموارد البشرية." : "That person is not in HR.",
+  HR_SPAN: ar ? "مدير الموارد البشرية يخدم ثلاثة فروع كحد أقصى." : "An HR manager serves at most three branches.",
+  BRANCH_MANAGER: ar ? "مدير الفرع لا يكون مدير الموارد البشرية. الموارد البشرية تراجع قراره." : "A branch manager cannot be the HR manager.",
+  DIRECTOR: ar ? "مدير الموارد البشرية للقسم لا يُربط بفرع." : "The HR director is not linked to a branch.",
+});
+
+/** «الموارد البشرية»: the unit director over all branches, then one HR manager per branch — picked from the company or hired new. */
+function BranchHrAssignments({ data, companyId, ar, canWrite, onError, onHire, hrUnitId }) {
+  const branches = useMemo(() => fieldBranchesForHr(data), [data]);
+  const candidates = useMemo(() => listBranchHrCandidates(data), [data]);
+  const director = useMemo(() => {
+    const unit = (data?.stations || []).find((item) => String(item.id) === String(hrUnitId));
+    return (data?.employees || []).find((employee) => String(employee.id) === String(unit?.managerId || "")) || null;
+  }, [data, hrUnitId]);
+  const [picked, setPicked] = useState({});
+  const label = (employee) => {
+    const seat = (data?.orgSeats || []).find((item) => String(item.employeeId || "") === String(employee.id));
+    const title = seat?.title || employee.profile?.position || employee.position || "";
+    const where = (data?.stations || []).find((item) => String(item.id) === String(employee.stationId || ""))?.name || "";
+    return [employee.name, [title, where].filter(Boolean).join(" · ")].filter(Boolean).join(" — ");
+  };
+  const assign = (station) => {
+    const eid = picked[station.id];
+    if (!eid) return;
+    if (eid === "__hire") {
+      setPicked((cur) => ({ ...cur, [station.id]: "" }));
+      onHire?.({ stationId: hrUnitId, hrBranchId: station.id });
+      return;
+    }
+    const result = eid === "__none"
+      ? clearBranchHrManager(companyId, station.id)
+      : assignBranchHrManager(companyId, station.id, eid);
+    if (!result.ok) { onError(HR_ERRORS(ar)[result.error] || (ar ? "تعذّر الحفظ." : "Could not save.")); return; }
+    onError("");
+    setPicked((cur) => ({ ...cur, [station.id]: "" }));
+    toast({ description: eid === "__none"
+      ? (ar ? `أُزيل مدير الموارد البشرية من ${station.name}.` : `HR manager cleared for ${station.name}.`)
+      : (ar ? `عُيّن مدير الموارد البشرية لـ${station.name}.` : `HR manager set for ${station.name}.`) });
+  };
+  if (!branches.length) return <span style={{ fontSize: 11.5, color: "var(--nv-ink3)" }}>{ar ? "لا فروع بعد." : "No branches yet."}</span>;
+  return (
+    <div data-branch-hr-list="1" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div data-hr-director-row="1" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "11px 12px", borderRadius: 10, background: "var(--nv-accent-soft)", border: "1px solid var(--nv-ok-line, var(--nv-line))", fontSize: 11.5 }}>
+        <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <span style={{ fontSize: 10.5, color: "var(--nv-ink3)", letterSpacing: 0.2 }}>{ar ? "مدير وحدة الموارد البشرية · لكل الفروع" : "HR unit director · all branches"}</span>
+          <strong style={{ fontSize: 13 }}>{director ? director.name : (ar ? "شاغر" : "Vacant")}</strong>
+        </span>
+        <span style={{ fontSize: 10.5, color: "var(--nv-ink3)" }}>{ar ? "يرأس مدراء الفروع أدناه" : "Heads the branch managers below"}</span>
+      </div>
+      <span style={{ fontSize: 10.5, color: "var(--nv-ink3)", padding: "6px 2px 0" }}>{ar ? "مدراء الموارد البشرية للفروع — يتبعون مدير الوحدة" : "Branch HR managers — report to the unit director"}</span>
+      {branches.map((station) => {
+        const current = branchHrManager(data, station.id);
+        const value = picked[station.id] || "";
+        const hrList = candidates.hr.filter((employee) => String(employee.id) !== String(current?.id || ""));
+        const companyList = candidates.company.filter((employee) => String(employee.id) !== String(current?.id || ""));
+        return (
+          <div key={station.id} data-branch-hr-row={station.id} style={{ display: "flex", flexDirection: "column", gap: 6, padding: "9px 11px", border: "1px solid var(--nv-line)", borderRadius: 10, fontSize: 11.5 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+              <span style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                <strong style={{ fontSize: 12.5 }}>{station.name}</strong>
+                <span style={{ fontSize: 10, color: "var(--nv-ink3)" }}>{ar ? "مدير الموارد البشرية للفرع" : "Branch HR manager"}</span>
+              </span>
+              <span style={{ color: current ? "var(--nv-ink)" : "var(--nv-warn-ink, #8a5a00)", fontWeight: 600 }}>{current ? current.name : (ar ? "شاغر" : "Vacant")}</span>
+            </div>
+            {canWrite ? (
+              <div style={{ display: "flex", gap: 6 }}>
+                <select aria-label={ar ? `مدير الموارد البشرية لـ${station.name}` : `HR manager for ${station.name}`} value={value} onChange={(event) => setPicked((cur) => ({ ...cur, [station.id]: event.target.value }))} style={{ ...FIELD, height: 32, borderRadius: 8, fontSize: 11.5, padding: "0 8px", flex: 1, minWidth: 0 }}>
+                  <option value="">{ar ? (current ? "— تغيير المدير —" : "— اختر مديراً —") : "— Choose —"}</option>
+                  {onHire ? <option value="__hire">{ar ? "+ توظيف مدير جديد" : "+ Hire a new manager"}</option> : null}
+                  {hrList.length ? (
+                    <optgroup label={ar ? "من الموارد البشرية" : "From HR"}>
+                      {hrList.map((employee) => <option key={employee.id} value={employee.id}>{label(employee)}</option>)}
+                    </optgroup>
+                  ) : null}
+                  {companyList.length ? (
+                    <optgroup label={ar ? "من موظفي المنشأة" : "From the company"}>
+                      {companyList.map((employee) => <option key={employee.id} value={employee.id}>{label(employee)}</option>)}
+                    </optgroup>
+                  ) : null}
+                  {current ? <option value="__none">{ar ? "إزالة المدير" : "Clear"}</option> : null}
+                </select>
+                <button type="button" disabled={!value} onClick={() => assign(station)} style={{ ...actionButton("var(--nv-ok-ink)"), opacity: value ? 1 : 0.5, height: 32, flex: "0 0 auto", width: "auto", padding: "0 12px" }}>
+                  {value === "__hire" ? (ar ? "توظيف" : "Hire") : (ar ? "حفظ" : "Save")}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+      <span style={{ fontSize: 10.5, color: "var(--nv-ink3)", lineHeight: 1.8 }}>
+        {ar
+          ? "لكل فرع مدير موارد بشرية واحد، يُختار من الموارد البشرية أو من أي موظف في المنشأة أو يُوظَّف جديداً، ويحمل مسمّى «مدير موارد بشرية». يخدم المدير ثلاثة فروع كحد أقصى، ويظهر اسمه في ملف كل موظف في الفرع. ولمدير أي فرع أن يوظّف تحته موظفي موارد بشرية للفرع."
+          : "Each branch has one HR manager, picked from HR, from anyone in the company, or hired new. One manager serves up to three branches. Any branch manager may also have HR staff under them."}
+      </span>
+    </div>
+  );
+}
+
 export function OrgBranchDrawer({
   open,
   station = null,
@@ -220,21 +326,52 @@ export function OrgBranchDrawer({
   const kind = isRoot ? "branch" : effectiveUnitKind(station);
   const [name, setName] = useState(station?.name || "");
   const [moveSel, setMoveSel] = useState("");
-  const [hrSel, setHrSel] = useState("");
   const [err, setErr] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
   const known = stationPlace(station);
   const [place, setPlace] = useState({ countryCode: known.countryCode || DEFAULT_COUNTRY, city: known.city, cityRegion: known.cityRegion });
+  const [legacyCr, setLegacyCr] = useState(station?.legacySubCr || "");
+  const [annualDue, setAnnualDue] = useState(data?.commercialRegister?.annualConfirmDue || "");
 
   useEffect(() => {
     const p = stationPlace(station);
     setPlace({ countryCode: p.countryCode || DEFAULT_COUNTRY, city: p.city, cityRegion: p.cityRegion });
+    setLegacyCr(station?.legacySubCr || "");
+    setAnnualDue(data?.commercialRegister?.annualConfirmDue || "");
     setName(station?.name || "");
     setMoveSel("");
-    setHrSel("");
     setErr("");
     setConfirmDel(false);
-  }, [stationId, station?.name, station?.city, station?.countryCode]);
+  }, [stationId, station?.name, station?.city, station?.countryCode, station?.legacySubCr, data?.commercialRegister?.annualConfirmDue]);
+
+  const todayKey = localDateKey(new Date());
+  const annual = deriveRegisterAnnualStatus({ commercialRegister: { annualConfirmDue: data?.commercialRegister?.annualConfirmDue } }, todayKey);
+  const isDisplayPlace = registerDisplayPlaces(station ? [station] : []).length > 0;
+  const saveAnnualDue = () => {
+    const result = setRegisterAnnualDue(companyId, annualDue);
+    if (!result.ok) { setErr(ar ? result.reason : (result.reasonEn || result.reason)); return; }
+    setErr("");
+    toast({ description: result.value ? (ar ? `موعد التأكيد السنوي ${result.value}.` : `Annual confirmation due ${result.value}.`) : (ar ? "أُزيل موعد التأكيد السنوي." : "Annual confirmation date cleared.") });
+  };
+  const toggleDisplay = (checked) => {
+    const result = setStationCrDisplayChecked(companyId, stationId, checked);
+    if (!result.ok) { setErr(ar ? result.reason : (result.reasonEn || result.reason)); return; }
+    setErr("");
+    toast({ description: checked ? (ar ? `سُجّل التحقق من عرض بيانات السجل في «${station?.name || ""}».` : `Register display checked at “${station?.name || ""}”.`) : (ar ? "أُزيل التحقق." : "Check cleared.") });
+  };
+
+  /* «السجل التجاري»: سجل واحد للمنشأة وفروعها؛ السجل الفرعي القائم يوثَّق فقط */
+  const saveLegacyCr = () => {
+    const result = setStationLegacyCr(companyId, stationId, legacyCr);
+    if (!result.ok) { setErr(ar ? result.reason : (result.reasonEn || result.reason)); return; }
+    setErr("");
+    setLegacyCr(result.value);
+    toast({
+      description: result.value
+        ? (ar ? `وُثّق السجل الفرعي ${result.value} على «${station?.name || ""}».` : `Sub-register ${result.value} recorded on “${station?.name || ""}”.`)
+        : (ar ? `«${station?.name || ""}» تحت السجل الرئيسي وحده.` : `“${station?.name || ""}” is under the main register only.`),
+    });
+  };
 
   /* «الموقع»: country and city — the tree regroups by city at once */
   const saveLocation = () => {
@@ -254,7 +391,6 @@ export function OrgBranchDrawer({
   const parent = (data?.stations || []).find((item) => String(item.id) === parentId) || null;
   const root = companyRootStation(data?.stations || []);
   const hrCurrent = branchHrManager(data, stationId);
-  const hrOptions = useMemo(() => listBranchHrManagers(data), [data]);
   const moveOptions = useMemo(() => {
     if (!station || isRoot) return [];
     return allowedStationParents(data?.stations || [], stationId)
@@ -330,27 +466,6 @@ export function OrgBranchDrawer({
           ? (ar ? "حُفظ مدير الفرع." : "Branch manager saved.")
           : (ar ? "أُزيل المدير." : "Manager cleared.")),
     });
-  };
-
-  const saveHr = () => {
-    if (!hrSel) {
-      setErr(ar ? "اختر مدير موارد بشرية" : "Choose an HR manager");
-      return;
-    }
-    const result = assignBranchHrManager(companyId, stationId, hrSel);
-    if (!result.ok) {
-      const hrError = {
-        NOT_HR: ar ? "هذا الموظف ليس مدير موارد بشرية إقليمياً." : "That person is not a regional HR manager.",
-        HR_SPAN: ar ? "المدير الإقليمي يخدم ثلاثة فروع كحد أقصى." : "A regional HR manager serves at most three branches.",
-        BRANCH_MANAGER: ar ? "مدير الفرع لا يكون مدير الموارد البشرية. الموارد البشرية تراجع قراره." : "A branch manager cannot be the HR manager. HR reviews that person's decisions.",
-        DIRECTOR: ar ? "مديرة الموارد البشرية تتبع الرئيس التنفيذي ولا تُربط بفرع." : "The HR director reports to the CEO and is not linked to a branch.",
-      };
-      setErr(hrError[result.error] || (ar ? "تعذّر تعيين مدير الموارد البشرية." : "Could not assign the HR manager."));
-      return;
-    }
-    setHrSel("");
-    setErr("");
-    toast({ description: ar ? "عُيّن مدير الموارد البشرية للفرع." : "HR manager assigned to the branch." });
   };
 
   const moveBranch = () => {
@@ -447,17 +562,81 @@ export function OrgBranchDrawer({
         </div>
       ) : null}
 
+      {canWrite && !fixedHr && !isManagerUnit(station) ? (
+        <div data-nv="branch-register" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <SectionLabel>{ar ? "السجل التجاري" : "Commercial register"}</SectionLabel>
+          <div style={NOTE}>
+            {branchRegisterLine(station, { isRoot, companyCr: companyCrNumber(data), ar })}
+            {" "}
+            {ar
+              ? "ونطاقات يُحسب في قوى للمنشأة كلها بفروعها، لا لكل فرع وحده."
+              : "Nitaqat is rated on Qiwa for the whole company with its branches, not per branch."}
+          </div>
+          {isDisplayPlace ? (
+            <>
+              <label style={LABEL}>
+                {ar ? "موعد التأكيد السنوي للسجل — للمنشأة كلها (م11)" : "Annual register confirmation due — whole company (art. 11)"}
+                <input type="date" value={annualDue} dir="ltr" onChange={(event) => { setAnnualDue(event.target.value); setErr(""); }} style={FIELD} />
+              </label>
+              <span style={{ fontSize: 11, color: annual.state === "overdue" || annual.state === "suspendable" ? "var(--nv-danger, #B42318)" : "var(--nv-ink3)", lineHeight: 1.7 }}>
+                {annual.state === "unset"
+                  ? (ar ? "سجّل الموعد من شهادة السجل لتنبّهك المنصة قبله بثلاثين يومًا. التأخر تسعين يومًا يعلّق السجل ومعه كل التراخيص (م15)." : "Record it from the register certificate; the platform warns 30 days ahead. Ninety days late suspends the register with all licences (art. 15).")
+                  : annual.days >= 0
+                    ? (ar ? `باقٍ ${annual.days} يومًا على التأكيد السنوي.` : `${annual.days} day(s) to the annual confirmation.`)
+                    : (ar ? `فات الموعد منذ ${-annual.days} يومًا — بعد 90 يومًا يُعلَّق السجل ومعه كل التراخيص (م15).` : `${-annual.days} day(s) late — after 90 days the register and all licences are suspended (art. 15).`)}
+              </span>
+              <button type="button" onClick={saveAnnualDue} style={actionButton("var(--nv-navy)")}>{ar ? "حفظ الموعد" : "Save date"}</button>
+            </>
+          ) : null}
+          {isDisplayPlace ? (
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: "var(--nv-ink)", lineHeight: 1.7, cursor: "pointer" }}>
+              <input type="checkbox" checked={Boolean(station?.crDisplayCheckedAt)} onChange={(event) => toggleDisplay(event.target.checked)} style={{ marginTop: 4 }} />
+              <span>
+                {ar ? "بيانات السجل التجاري معروضة في مكان واضح في هذا الموقع (م16)" : "Commercial register data is shown in plain view at this place (art. 16)"}
+                {station?.crDisplayCheckedAt ? <span style={{ color: "var(--nv-ink3)" }}>{ar ? ` — تُحقِّق منه ${station.crDisplayCheckedAt}` : ` — checked ${station.crDisplayCheckedAt}`}</span> : null}
+              </span>
+            </label>
+          ) : null}
+          {!isRoot ? (
+            <>
+              <label style={LABEL}>
+                {ar ? "سجل فرعي قائم (إن وُجد قبل النظام الجديد)" : "Pre-existing sub-register (if any)"}
+                <input
+                  value={legacyCr}
+                  inputMode="numeric"
+                  dir="ltr"
+                  placeholder={ar ? "اتركه فارغًا — الوضع النظامي" : "Leave empty — the regular case"}
+                  onChange={(event) => { setLegacyCr(event.target.value); setErr(""); }}
+                  style={FIELD}
+                />
+              </label>
+              <span style={{ fontSize: 11, color: "var(--nv-ink3)", lineHeight: 1.7 }}>
+                {ar
+                  ? "المرسوم الملكي م/83 (1446/3/19هـ) منح خمس سنوات من نفاذ نظام السجل التجاري لتصحيح أوضاع السجلات الفرعية، وتُشطب كلها بانتهاء المهلة. يُحفظ الرقم هنا للتوثيق دون أن يفصل الفرع عن المنشأة."
+                  : "Royal Decree M/83 (1446/3/19 AH) gives five years from the Commercial Register Law taking effect to correct sub-registers; all are struck off when it ends. The number is kept here for the record and does not split the branch from the company."}
+              </span>
+              <button type="button" onClick={saveLegacyCr} style={actionButton("var(--nv-navy)")}>{ar ? "حفظ السجل" : "Save register"}</button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
       <label style={LABEL}>
-        {isRoot ? (ar ? "مدير المنشأة" : "Company manager") : fixedHr ? (ar ? "مديرة الموارد البشرية" : "HR director") : (ar ? "مدير الفرع" : "Branch manager")}
+        {isRoot ? (ar ? "مدير المنشأة" : "Company manager") : fixedHr ? (ar ? "مدير وحدة الموارد البشرية (لكل الفروع)" : "HR unit director (all branches)") : (ar ? "مدير الفرع" : "Branch manager")}
         <select
           value={managerId}
           onChange={(event) => saveManager(event.target.value)}
           style={{ ...FIELD, padding: "0 8px" }}
         >
           <option value="">{ar ? "بدون مدير" : "No manager"}</option>
-          {people.map((employee) => (
-            <option key={employee.id} value={employee.id}>{employee.name}</option>
-          ))}
+          {people.map((employee) => {
+            // name — title · branch: two people with one name are told apart
+            const seat = (data?.orgSeats || []).find((item) => String(item.employeeId || "") === String(employee.id));
+            const title = seat?.title || employee.profile?.position || employee.customTitle || "";
+            const home = (data?.stations || []).find((item) => String(item.id) === String(employee.stationId || ""))?.name || "";
+            const tail = [title, home].filter(Boolean).join(" · ");
+            return <option key={employee.id} value={employee.id}>{tail ? `${employee.name} — ${tail}` : employee.name}</option>;
+          })}
         </select>
       </label>
       {managerNote?.line ? (
@@ -498,33 +677,23 @@ export function OrgBranchDrawer({
       {!isRoot && !fixedHr ? (
       <>
       <SectionLabel>{ar ? "مدير الموارد البشرية لهذا الفرع" : "HR manager for this branch"}</SectionLabel>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", border: "1px solid var(--nv-line)", borderRadius: 12, fontSize: 11.5 }}>
+      <div data-branch-hr-readonly="1" style={{ display: "flex", flexDirection: "column", gap: 4, padding: "10px 12px", border: "1px solid var(--nv-line)", borderRadius: 12, fontSize: 11.5 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
           <span style={{ color: "var(--nv-ink3)" }}>{ar ? "الحالي" : "Current"}</span>
-          <strong>{hrCurrent ? `${hrCurrent.name}` : (ar ? "لا يوجد" : "None")}</strong>
+          <strong>{hrCurrent ? `${hrCurrent.name}` : (ar ? "شاغر" : "Vacant")}</strong>
         </div>
-        <select value={hrSel} onChange={(event) => { setHrSel(event.target.value); setErr(""); }} style={{ ...FIELD, height: 34, borderRadius: 8, fontSize: 11.5, padding: "0 8px" }}>
-          <option value="">{ar ? "— اختر مديراً إقليمياً —" : "— Choose a regional HR manager —"}</option>
-          {hrOptions.map((employee) => {
-            const seat = (data?.orgSeats || []).find((item) => String(item.employeeId || "") === String(employee.id));
-            const title = seat?.title || employee.profile?.position || employee.position || "";
-            return (
-              <option key={employee.id} value={employee.id}>
-                {title ? `${title} — ${employee.name}` : employee.name}
-              </option>
-            );
-          })}
-        </select>
-        <button type="button" onClick={saveHr} style={actionButton("var(--nv-ok-ink)")}>
-          {ar ? "ربط الفرع بمديره الإقليمي" : "Link the branch to its regional HR manager"}
-        </button>
         <span style={{ fontSize: 10.5, color: "var(--nv-ink3)" }}>
-          {ar
-            ? "مدير واحد يخدم فرعين أو ثلاثة. الخط الثابت إلى مديرة الموارد البشرية، والخط المتقطع إلى مدير الفرع للتنسيق والجدول."
-            : "One manager serves two or three branches. The solid line goes to the HR director, and the dotted line to the branch manager for the roster."}
+          {ar ? "يُعيَّن من بطاقة «وحدة الموارد البشرية» في الهيكل." : "Set from the «HR unit» card in the structure."}
         </span>
       </div>
       </>
+      ) : null}
+
+      {fixedHr ? (
+        <>
+          <SectionLabel>{ar ? "مدير الوحدة ومدراء الموارد البشرية للفروع" : "Unit director and branch HR managers"}</SectionLabel>
+          <BranchHrAssignments data={data} companyId={companyId} ar={ar} canWrite={canWrite} onError={setErr} onHire={onHire} hrUnitId={stationId} />
+        </>
       ) : null}
 
       {!isRoot && !fixedHr ? (

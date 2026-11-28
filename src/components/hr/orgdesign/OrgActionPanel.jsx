@@ -18,6 +18,7 @@ import {
   createVacantSeatsUnderManager,
   endSeatTenure,
   jobTitleCatalog,
+  removeVacantSeat,
   renameOrgBranch,
   setActingAssignment,
   setOrgBranchParent,
@@ -419,6 +420,23 @@ export default function OrgActionPanel({
               const res = endSeatTenure(companyId, node.employeeId);
               if (!res.ok) { setGate({ ok: false, reason: res.reason || seatDrawerReason(res.error, true), reasonEn: res.reasonEn || seatDrawerReason(res.error, false) }); return; }
               done([node.seatId].filter(Boolean));
+            }}
+          />
+        );
+      case "confirmRemoveSeat":
+        return (
+          <Confirm
+            ar={ar}
+            text={ar
+              ? `يُحذف المنصب الشاغر «${node.title || "—"}» من الهيكل، وتنتقل المناصب التي تتبعه إلى من فوقه. لا يُحذف أي موظف.`
+              : `The vacant seat “${node.title || "—"}” leaves the structure; seats under it move up. Nobody is deleted.`}
+            cta={ar ? "احذف المنصب" : "Remove the seat"}
+            onCancel={() => setActive("")}
+            onConfirm={() => {
+              const res = removeVacantSeat(companyId, node.seatId);
+              if (!res.ok) { setGate(fail({ ar: res.error === "DIRECTOR" ? "منصب مدير الموارد البشرية ثابت." : "تعذّر حذف المنصب.", en: "Could not remove the seat." })); return; }
+              onDone?.({ keys: [], removed: node.key });
+              onClose();
             }}
           />
         );

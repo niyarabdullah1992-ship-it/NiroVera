@@ -31,12 +31,14 @@ import {
   EDIT_BLOCK,
   cardHealthIndex,
   changeRequestHref,
+  ledStation,
   orgAdminHref,
   orgCardActions,
   pendingChangeIndex,
   planMove,
 } from "@/lib/orgChartActions";
 import { canEditOrgDesign } from "@/lib/orgDesign";
+import { isHrUnit } from "@/lib/stationTree";
 import {
   branchPeopleKey,
   buildBranchTree,
@@ -50,7 +52,7 @@ import { todayKey } from "@/lib/orgDesign";
 import OrgEmployeePreview from "@/components/hr/OrgEmployeePreview";
 import { OrgAddBranchDrawer, OrgBranchDrawer } from "@/components/hr/OrgBranchDrawer";
 import { useAuth } from "@/lib/PowerCareAuth";
-import { structureRights } from "@/lib/orgActionPanel";
+import { panelActions, structureRights } from "@/lib/orgActionPanel";
 import OrgActionPanel from "./OrgActionPanel";
 import NvIcon from "@/components/shared/NvIcon";
 import OrgCardDrawer from "./OrgCardDrawer";
@@ -659,7 +661,7 @@ function CardMenu({ ar, card, anchor, actions, onPick, onClose }) {
 /**
  * The org chart — one tree for the full screen (/app/org/chart) and for «الفروع والدليل» on /app/org.
  *
- * SAP-style: compact cards (avatar, name, title, «مباشر / الكل»); pressing the count opens that
+ * compact cards (avatar, name, title, «مباشر / الكل»); pressing the count opens that
  * card's team under it in neat rows. Any number of cards stay open at once (a Set, kept per viewer
  * in sessionStorage); clicking a card selects it without folding anything. Search opens the path to
  * the person found. Keys: arrows move, Enter opens/folds, Esc folds or steps up, + − 0 zoom.
@@ -781,7 +783,7 @@ export default function OrgTreeChart({
   const downloadBtn = useRef(null);
   const pendingScroll = useRef({ key: branches ? selectedB : resolveFocusKey(peopleTree, urlFocus), mode: "center", smooth: false });
   const moveDomFocus = useRef(false);
-  // SAP: after every move (select / open / close) the chart re-fits itself to the viewport, then
+  // after every move (select / open / close) the chart re-fits itself to the viewport, then
   // glides to the focus. A manual zoom (buttons, wheel, pinch) pauses that until the next move.
   const pendingAutoFit = useRef(true);
   const manualZoom = useRef(false);
@@ -791,7 +793,7 @@ export default function OrgTreeChart({
   // a branch card carries one more line (its manager); the branches view keeps one card height
   const cardH = cardHeight(options, compact) + (branches ? (compact ? 16 : 20) : 0);
   const indent = narrow ? 28 : 40;
-  // SAP blocks: ≈√n columns (2…4), the focus's own team in four; one column on a phone
+  // blocks: ≈√n columns (2…4), the focus's own team in four; one column on a phone
   const maxCols = narrow ? 1 : TREE_GEOMETRY.maxCols;
   const rtl = Boolean(ar);
 
@@ -853,12 +855,21 @@ export default function OrgTreeChart({
     return true;
   }, [layout, zoom, physX, cardW, cardH, reduceMotion]);
 
+  const [busyKey, setBusyKey] = useState("");
+  const busyTimer = useRef(null);
+  useEffect(() => () => clearTimeout(busyTimer.current), []);
   const select = useCallback((key, { fromSearch = false, scroll = "nearest", domFocus = true } = {}) => {
     if (!key || !tree.nodes.has(key)) return;
     setSelected(key);
     setHighlight(fromSearch ? key : "");
-    // SAP: the chain to the focus stands as a vertical stack; the focus shows its own team
-    if (tree.nodes.get(key).childKeys.length) setExpanded((cur) => (cur.has(key) ? cur : new Set([...cur, key])));
+    // the chain to the focus stands as a vertical stack; the focus shows its own team
+    if (tree.nodes.get(key).childKeys.length) {
+      const land = () => setExpanded((cur) => (cur.has(key) ? cur : new Set([...cur, key])));
+      if (!reduceMotion && !fromSearch && !expanded.has(key) && !busyTimer.current) {
+        setBusyKey(key);
+        busyTimer.current = setTimeout(() => { busyTimer.current = null; setBusyKey(""); pendingAutoFit.current = true; land(); }, 560);
+      } else land();
+    }
     pendingScroll.current = { key, mode: scroll === "nearest" ? "center" : scroll, smooth: true };
     pendingAutoFit.current = true;
     moveDomFocus.current = domFocus;
@@ -868,9 +879,9 @@ export default function OrgTreeChart({
       else params.set("focus", key);
       setSearchParams(params, { replace: true, state: location.state });
     }
-  }, [tree, branches, setSelected, setExpanded, embedded, searchParams, setSearchParams, location.state]);
+  }, [tree, branches, setSelected, setExpanded, embedded, searchParams, setSearchParams, location.state, reduceMotion, expanded]);
 
-  const toggle = useCallback((key) => {
+  const applyToggle = useCallback((key) => {
     pendingAutoFit.current = true;
     setExpanded((cur) => {
       const opening = !cur.has(key);
@@ -884,6 +895,21 @@ export default function OrgTreeChart({
       return next;
     });
   }, [setExpanded, tree]);
+
+  const toggle = useCallback((key) => {
+    // opening a team dims the chart for a beat with three dots under the card, then the team lands
+    if (!reduceMotion && !expanded.has(key) && !busyTimer.current) {
+      setBusyKey(key);
+      busyTimer.current = setTimeout(() => {
+        busyTimer.current = null;
+        setBusyKey("");
+        applyToggle(key);
+      }, 560);
+      return;
+    }
+    applyToggle(key);
+  }, [reduceMotion, expanded, applyToggle]);
+
 
   const setView = useCallback((next) => {
     if (next === view) return;
@@ -1000,7 +1026,7 @@ export default function OrgTreeChart({
     return fitZoom({ width: W, height: H, availW, availH, floor: narrow ? 1 : 0.55 });
   }, [W, H, narrow]);
 
-  /* after a layout change: re-fit the zoom (SAP), scroll to the pending card, move DOM focus there */
+  /* after a layout change: re-fit the zoom, scroll to the pending card, move DOM focus there */
   useLayoutEffect(() => {
     if (pendingAutoFit.current) {
       pendingAutoFit.current = false;
@@ -1276,9 +1302,39 @@ export default function OrgTreeChart({
 
   /* the «⋯» menu (management tree only) */
   const closeMenu = useCallback(() => setMenu(null), []);
+  // The «⋯» menu lists only what can be done now on this card: nothing blocked, no links to elsewhere.
+  const BRANCH_MENU = [
+    ["branchManagers", "تعيين مدير الفرع", "Set the branch manager", "seat"],
+    ["hireManager", "تعيين مدير للفرع", "Assign the branch manager", "seat"],
+    ["hireHere", "تعيين موظف في الفرع", "Assign into the branch", "seat"],
+    ["addUnit", "إضافة فرع تحته", "Add a branch under it", "seat"],
+    ["moveParent", "نقل تحت فرع آخر", "Move under another branch", "decide"],
+    ["rename", "تعديل الاسم", "Rename", "decide"],
+    ["location", "تعديل الموقع", "Edit the location", "decide"],
+    ["unitKind", "تغيير النوع: فرع أو منطقة", "Change kind: branch or region", "decide"],
+    ["deleteBranch", "إغلاق الفرع ونقل ما فيه للأعلى", "Close the branch, its content moves up", "decide"],
+  ];
+  // «وحدة الموارد البشرية»: its manager, its staff, and the HR manager of every branch are set from here.
+  const HR_UNIT_MENU = [
+    ["hrBranches", "تعيين مدراء الموارد البشرية للفروع", "Set each branch's HR manager", "seat"],
+    ["hireManager", "تعيين مدير للموارد البشرية", "Assign the HR director", "seat"],
+    ["hireHere", "تعيين موظف في الموارد البشرية", "Assign into HR", "seat"],
+    ["location", "تعديل الموقع", "Edit the location", "decide"],
+  ];
+  const branchMenu = (card) => {
+    if (!manage) return [];
+    const ready = new Map(panelActions(card, { data, user }).flatMap((g) => g.items).filter((i) => !i.blocked).map((i) => [i.id, i]));
+    const station = (data?.stations || []).find((row) => String(row.id) === String(card.stationId || ""));
+    if (isHrUnit(station)) {
+      return HR_UNIT_MENU
+        .filter(([id]) => (id === "hrBranches" || id === "pickDirector") ? canEditSeats : ready.has(id))
+        .map(([id, ar, en, group]) => ({ id, ar, en, group, blocked: null, stationId: String(card.stationId || "") }));
+    }
+    return BRANCH_MENU.filter(([id]) => ready.has(id)).map(([id, ar, en, group]) => ({ id, ar, en, group, blocked: null, stationId: ready.get(id).stationId }));
+  };
   const menuActions = !menu ? [] : menu.card.kind === "branch"
-    ? orgBranchActions(menu.card, { data, user, canWrite: manage })
-    : orgCardActions(menu.card, { data, user, canWrite: manage, health: health.get(menu.card.key) });
+    ? branchMenu(menu.card)
+    : orgCardActions(menu.card, { data, user, canWrite: manage, health: health.get(menu.card.key) }).filter((a) => !a.blocked);
 
   /* «تغيير»: drag a card onto another (or «نقل تحت…»), then a sheet says what will be requested */
   const [sheet, setSheet] = useState(null); // { source, targetKey }
@@ -1317,7 +1373,8 @@ export default function OrgTreeChart({
   const [dragView, setDragView] = useState(null); // { key, x, y, over, ok }
   const dragPlans = useRef(new Map());
   const onCardPointerDown = (event) => {
-    if (!manage || event.button !== 0 || event.pointerType === "touch") return;
+    // Moving is done from the card's «⋯» actions (نقل), not by dragging.
+    if (true || !manage || event.button !== 0 || event.pointerType === "touch") return;
     const el = event.target.closest(".nv-ot-card[data-k]");
     if (!el || (event.target.closest("button") && !event.target.classList.contains("nv-ot-card__hit"))) return;
     const source = cardOf(el.dataset.k);
@@ -1374,8 +1431,8 @@ export default function OrgTreeChart({
     if (!manage || !node || node.kind === "people") return null;
     if (node.kind === "branch") {
       const items = [];
-      if (node.level !== "hq") items.push({ id: "moveUnder", ar: "تغيير", en: "Change", blocked: seatBlock, hint: { ar: "اسحب البطاقة إلى فرع آخر، أو اختر الوجهة", en: "Drag onto another branch, or pick the target" } });
-      items.push({ id: "branch", ar: "تعديل", en: "Edit", blocked: null, hint: { ar: "الفرع والوحدة", en: "Branch / unit" } });
+      if (node.level !== "hq") items.push({ id: "moveUnder", ar: "نقل", en: "Move", blocked: seatBlock, hint: { ar: "اختر الفرع الذي ينتقل تحته", en: "Pick the branch it moves under" } });
+      items.push({ id: "rename", ar: "تعديل", en: "Edit", blocked: null, hint: { ar: "اسم الفرع", en: "Branch name" } });
       if (node.managerVacant && node.level !== "hq") {
         const acts = orgBranchActions(node, { data, user, canWrite: true });
         const hire = acts.find((a) => a.id === "hireManager");
@@ -1383,17 +1440,16 @@ export default function OrgTreeChart({
       }
       return items;
     }
-    const items = [
-      { id: "moveUnder", ar: "تغيير", en: "Change", blocked: node.seatId ? seatBlock : noSeat, hint: { ar: "اسحب البطاقة إلى مديرها الجديد، أو اختره", en: "Drag onto the new manager, or pick them" } },
-      { id: "acting", ar: "تكليف", en: "Acting", blocked: node.seatId ? seatBlock : noSeat, hint: { ar: "التكليف والنائب في بطاقة المنصب", en: "Acting cover and deputy on the seat card" } },
-      { id: "seat", ar: "تعديل", en: "Edit", blocked: node.seatId ? null : noSeat, hint: { ar: "بطاقة المنصب: المسمى، الحالة، الخط المنقّط", en: "Seat card: title, state, dotted line" } },
-    ];
+    const items = [];
     if (node.vacant && node.state === "vacant") items.push({ id: "hire", ar: "تعيين", en: "Hire", blocked: null, hint: { ar: "تعيين على المنصب", en: "Hire into this seat" } });
+    if (!node.vacant) items.push({ id: "transfer", ar: "نقل", en: "Move", blocked: node.seatId ? seatBlock : noSeat, hint: { ar: "نقل من فرع إلى فرع", en: "Move from branch to branch" } });
+    items.push({ id: "seat", ar: "تعديل", en: "Edit", blocked: node.seatId ? null : noSeat, hint: { ar: "المسمى والحالة", en: "Title and state" } });
+    if (ledStation(data, node) && node.seatId) items.push({ id: "acting", ar: "تكليف", en: "Acting", blocked: seatBlock, hint: { ar: "تكليف بإدارة الفرع", en: "Acting branch head" } });
     return items;
   };
   const pending = useMemo(() => (manage ? pendingChangeIndex(data) : { seats: new Set(), stations: new Set() }), [manage, data]);
   const isPending = (node) => (node.kind === "branch" ? pending.stations.has(String(node.stationId)) : Boolean(node.seatId) && pending.seats.has(String(node.seatId)));
-  /* «· n تكليف»: acting roles held now, plus a dotted line (HR only) */
+  /* «· n تكليف»: acting roles held now (HR only) */
   const assignedOf = useMemo(() => {
     const out = new Map();
     if (!hrScope) return out;
@@ -1403,7 +1459,7 @@ export default function OrgTreeChart({
     });
     return out;
   }, [hrScope, data, day]);
-  const assignedFor = (node) => (hrScope ? (assignedOf.get(String(node.employeeId || "")) || 0) + (node.dottedToKey ? 1 : 0) : 0);
+  const assignedFor = (node) => (hrScope ? (assignedOf.get(String(node.employeeId || "")) || 0) : 0);
 
   /* edge arrows: pan the canvas sideways when there is more to see */
   const [edges, setEdges] = useState({ left: false, right: false });
@@ -1467,7 +1523,19 @@ export default function OrgTreeChart({
     const card = target || menu?.card;
     setMenu(null);
     if (!card) return;
-    if (id === "moveUnder") { openMove(card); return; }
+    if (id === "moveUnder" || id === "moveParent") { openPanel(card.key, "moveParent"); return; }
+    if (["rename", "location", "unitKind", "deleteBranch"].includes(id)) { openPanel(card.key, id); return; }
+    if (id === "branchManagers" || id === "hrBranches") { setBranchDrawer(String(card.stationId || "")); return; }
+    if (id === "addUnit") { setAddPlace(null); setAddUnit(String(action?.stationId || card.stationId || "")); return; }
+    if (id === "hireHere") { onHire?.({ stationId: action?.stationId || card.stationId || "" }); return; }
+    if (id === "transfer") { openPanel(card.key, "moveBranch"); return; }
+    if (id === "seatEdit") { openPanel(card.key, "seatEdit"); return; }
+    if (id === "acting") { openPanel(card.key, "acting"); return; }
+    if (id === "vacate") { openPanel(card.key, "vacate"); return; }
+    if (id === "freeze") { openPanel(card.key, "freeze"); return; }
+    if (id === "removeSeat") { openPanel(card.key, "removeSeat"); return; }
+    if (id === "pickDirector") { setBranchDrawer(String(action?.stationId || card.stationId || "")); return; }
+    if (id === "perms") { navigate(`/app/hr?tab=org&pane=authority&open=perm&emp=${encodeURIComponent(String(card.employeeId || ""))}`, { state: { from: `${location.pathname}${location.search}` } }); return; }
     if (id === "addSeat") { onHire?.({ stationId: action?.stationId || card.stationId || "" }); return; }
     if (id === "file") { setDetails(card); return; }
     if (id === "people") { focusPerson(card.managerKey); return; }
@@ -1505,7 +1573,7 @@ export default function OrgTreeChart({
       )}
       {hrScope && !embedded ? (
         <nav className="nv-ot-sections" aria-label={ar ? "أقسام الهيكل" : "Structure panes"}>
-          {[["seats", ar ? "المناصب" : "Seats"], ["health", ar ? "صحة الهيكل" : "Health"], ["authority", ar ? "الصلاحيات" : "Authority"], ["changes", ar ? "التغييرات" : "Changes"]].map(([pane, label]) => (
+          {[["seats", ar ? "المناصب" : "Seats"], ["authority", ar ? "الصلاحيات" : "Authority"]].map(([pane, label]) => (
             <button key={pane} type="button" className="nv-ot-tool nv-ot-tool--label" onClick={() => navigate(`/app/hr?tab=org&pane=${pane}`, { state: { from: `${location.pathname}${location.search}` } })}>{label}</button>
           ))}
         </nav>
@@ -1630,15 +1698,15 @@ export default function OrgTreeChart({
   const miniScale = showMini ? Math.min(160 / W, 132 / H) : 0;
 
   return (
-    <div className="nv-ot" data-variant={variant} data-mode={manage ? "manage" : "view"} data-density={options.density} data-narrow={narrow ? "1" : "0"} data-motion={reduceMotion ? "0" : "1"} data-dragging={dragView ? "1" : undefined}>
+    <div className="nv-ot" data-busy={busyKey ? "1" : undefined} data-variant={variant} data-mode={manage ? "manage" : "view"} data-density={options.density} data-narrow={narrow ? "1" : "0"} data-motion={reduceMotion ? "0" : "1"} data-dragging={dragView ? "1" : undefined}>
       {topBar}
       {manage ? (
         <p className="nv-ot-band" role="note">
           <b>{ar ? "وضع الإدارة" : "Management mode"}</b>
           <span>
             {ar
-              ? "اسحب بطاقة إلى مديرها الجديد أو استخدم «تغيير» — كل تغيير يُفتح طلباً في «التغييرات» للاعتماد، لا تعديل مباشر."
-              : "Drag a card onto its new manager or use Change — every change opens a request in Changes for approval; nothing is edited directly."}
+              ? "اضغط «⋯» على بطاقة الموظف أو المدير أو الفرع لترى الإجراءات المتاحة لها: النقل والتكليف والتعديل والتعيين وغيرها."
+              : "Press «⋯» on an employee, manager or branch card to see the actions open to it: move, acting, edit, hire and more."}
           </span>
         </p>
       ) : null}
@@ -1708,6 +1776,14 @@ export default function OrgTreeChart({
                   : { left: physX(line.x, line.w), top: line.y - 0.75, width: line.w }}
               />
             ))}
+            {(() => {
+              const b = busyKey ? layout.cards.find((c) => c.key === busyKey) : null;
+              return b ? (
+                <span className="nv-ot-dots" aria-hidden style={{ left: physX(b.x, cardW) + cardW / 2, top: b.y + cardH + 12 }}>
+                  <i /><i /><i />
+                </span>
+              ) : null;
+            })()}
             {layout.cards.map((place) => {
               const at = { ...place, left: physX(place.x, cardW) };
               if (place.add) {
@@ -1801,10 +1877,10 @@ export default function OrgTreeChart({
                   h={cardH}
                   isFocus={place.key === selected}
                   highlighted={highlight === place.key}
-                  flag={health.get(place.key)?.flag || null}
+                  flag={null}
                   assigned={assignedFor(card)}
                   pending={manage && isPending(card)}
-                  controls={manage ? <CardControls ar={ar} items={controlsFor(card)} onRun={(it) => (it.id === "acting" || it.id === "seat" ? openPanel(card.key, it.id === "seat" ? "seatEdit" : "acting") : runAction(it.id, card))} /> : null}
+                  controls={manage ? <CardControls ar={ar} items={controlsFor(card)} onRun={(it) => (it.id === "acting" || it.id === "seat" || it.id === "transfer" ? openPanel(card.key, it.id === "seat" ? "seatEdit" : it.id === "transfer" ? "moveBranch" : "acting") : runAction(it.id, card))} /> : null}
                   drop={dropOf(place.key)}
                   flash={flash.has(place.key)}
                   hasMenu={hasMenu}
@@ -1899,7 +1975,7 @@ export default function OrgTreeChart({
             companyName={data?.settings?.companyName || company?.name || ""}
             ar={ar}
             canWrite={rights.canManage}
-            onHire={onHire}
+            onHire={onHire ? (detail) => { setBranchDrawer(""); onHire(detail); } : undefined}
             onAddChild={(parentId) => { setBranchDrawer(""); setAddUnit(String(parentId || "")); }}
             onClose={() => setBranchDrawer("")}
             onDeleted={() => setBranchDrawer("")}

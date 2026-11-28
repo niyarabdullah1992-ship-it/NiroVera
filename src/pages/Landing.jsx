@@ -1,37 +1,47 @@
 import React, { useEffect } from "react";
 import { Link } from "react-router-dom";
 import MarketingChrome from "@/components/landing/MarketingChrome";
+import { Nv7Strip, nv7Count, nv7Tab } from "@/components/shared/Nv7SectionHead";
+import { statusPillStyle } from "@/components/shared/StatusFilterPills";
+import ProofWindow from "@/components/landing/ProofWindow";
+import RuleLab from "@/components/landing/RuleLab";
+import { LABOR_RULES } from "@/lib/laborRules";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { trackVisit } from "@/lib/trackVisit";
 import { DEFAULT_SUBSCRIPTION_PLANS, planDisplayName } from "@/lib/subscriptionPlans";
 
 /*
- * The public face of NiroVera — rebuilt in the platform's own identity: the dark green of the app chrome,
- * one gold accent, Readex Pro for the few large lines, IBM Plex Sans Arabic for the reading, mono Latin digits
- * for every article and figure. One job per band, nothing said twice:
- *   1. the claim and the Proof Cycle (the memorable thing — a connected chain, not a picture);
- *   2. the sections as a ledger (what each proves, and under which article);
- *   3. the law the platform reads, and what is honestly still pending;
- *   4. what changed in this release;
- *   5. the subscription, from the live plan catalogue.
- * No trial or "enter" buttons, no hero image: the header keeps a quiet sign-in link.
+ * The public face of NiroVera, drawn with the same parts as the inside of the platform (v7):
+ * the paper page, the deep-green section band with its numbered gold kicker and lattice, the white
+ * strip of tabs under it, white 12px cards with a hairline, letter tiles like «إجراء جديد», mono
+ * article chips like «م 66», and the green status pills. Nothing here is a second design: a visitor
+ * who signs in should feel they never left the page.
+ *   the claim beside a window from the inside that plays the Proof Cycle link by link, the stepper
+ *   as its control, and the page tabs in the white strip;
+ *   «جرّب القاعدة»: a wage and a slider, answered by the rule catalogue with figure, formula, article;
+ *   the sections (as the option tiles, grouped like the sidebar);
+ *   the law (as the case rows) and the honest list of pending government links;
+ *   what changed in this release;
+ *   the subscription, from the live plan catalogue.
  */
 
 const C = {
   green: "#0B3D27",
-  deep: "#0A2E1E",
+  fill: "#3C7D50",
   gold: "#C8A45A",
   goldInk: "#7A5B1C",
   paper: "#F4F7F5",
   card: "#FFFFFF",
-  line: "#E3E9E5",
+  line: "#E4E9E6",
   ink: "#111418",
-  mid: "#4A5852",
+  mid: "#555C66",
   soft: "#A9CDB8",
+  tile: "#E8F1EC",
 };
-const DISPLAY = "'Readex Pro','IBM Plex Sans Arabic',sans-serif";
-const MONO = { fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums" };
+const HEAD = "var(--font-heading, 'Readex Pro','IBM Plex Sans Arabic',sans-serif)";
+const MONO = { fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)", fontVariantNumeric: "tabular-nums" };
+const CARD = { background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, boxShadow: "0 1px 2px rgba(12,20,16,.06)" };
 
 /** The Proof Cycle — six links, in order (CLAUDE.md). */
 const CHAIN = [
@@ -43,61 +53,119 @@ const CHAIN = [
   ["إثبات للعميل", "Client proof", "حقول مسموحة ورابط تحقق عام", "Allowed fields and a public verify link"],
 ];
 
-/** The sections — what each one proves, and the rule it reads. */
+/** The sections — the same names and groups as the sidebar inside. */
 const SECTIONS = [
-  ["الحضور والدوام", "Attendance", "البصمة تُقارن بالجدول، والراحة والشمس والليل في مسار اليوم", "The punch against the roster; rest, sun and night on the day's path", "م 98 · 101", "/app/attendance"],
-  ["الجدول", "Roster", "لا يُنشر دوام يخالف ساعات العمل أو حظر الشمس أو العمل الليلي", "No shift that breaks hours, heat or night rules is published", "ق 3337 · 18632", "/app/shifts"],
-  ["المهام وإثبات العمل", "Tasks and work proof", "مهمة بصاحب وموعد ووزن، تُغلق بمراجعة مكتوبة", "An owner, a due date and a weight, closed by a written review", "الإثبات شرط", "/app/tasks"],
-  ["الطلبات", "Requests", "الرصيد من النظام، والطلب يصعد إن طال بلا قرار", "Balances from the law; a stalled request escalates", "م 109 · 117", "/app/requests"],
-  ["الأجور والمخالصة", "Pay and settlement", "المسير من البصمة، والحسم بسند، والإضافي يُسجَّل تلقائياً", "Payroll from the punch, deductions with a document, overtime logged", "م 90 · 107", "/app/payroll"],
-  ["الجزاءات", "Discipline", "لا جزاء خارج اللائحة، وبعد سماع الدفاع ومهلة الاعتراض", "None outside the list, after a hearing and an appeal window", "م 66–72", "/app/discipline"],
-  ["الأداء", "Performance", "الدرجة من المهام المعتمدة، لا من تقدير بلا سند", "A score from approved tasks, not an unsupported rating", "وصف الوظيفة", "/app/performance"],
-  ["صوت الموظف", "Employee voice", "الشكوى لا تصل إلى المشكو منه، وتصعد بمهلة", "A complaint never reaches its subject, and escalates on time", "م 72", "/app/complaints"],
-  ["السلامة", "Safety", "بلاغ بصورة وموقع، وتصاريح وتفتيش جاهزية", "A report with a photo and a place, permits and readiness checks", "م 121 · 122", "/app/safety"],
-  ["التوقيع الرقمي", "Digital signing", "موقّعون بالترتيب أو معاً، وإيصال وبصمة لكل مستند", "Signers in order or together, a receipt and a fingerprint", "التعاملات الإلكترونية", "/app/signing"],
-  ["القوى العاملة", "Workforce", "المقر والفروع، والوظيفة ثابتة والشخص يتغيّر", "Head office and branches; the seat stays, the person changes", "م 50 · 51", "/app/org"],
-  ["المساعد", "Assistant", "اسأل بيانات المنشأة بالعربية في حدود صلاحيتك", "Ask the company's data in Arabic, within your permissions", "الصلاحية من الهيكل", "/app/assistant"],
+  ["العمل اليومي", "Daily work", [
+    ["ح", "الحضور والدوام", "Attendance", "البصمة من داخل نطاق الموقع وتُقارن بالجدول، والراحة والشمس والليل في مسار اليوم", "The punch from inside the site, against the roster; rest, sun and night on the day's path", "م 98 · 101", "/app/attendance"],
+    ["م", "المهام والإثبات", "Tasks and proof", "مهمة بصاحب وموعد ووزن، تُغلق بدليل ومراجعة مكتوبة", "An owner, a due date and a weight, closed by evidence and a written review", "الإثبات شرط", "/app/tasks"],
+    ["س", "السلامة", "Safety", "بلاغ بصورة وموقع، وتصاريح وتفتيش جاهزية", "A report with a photo and a place, permits and readiness checks", "م 121 · 122", "/app/safety"],
+  ]],
+  ["الموظفون", "People", [
+    ["ب", "الموارد البشرية", "Human resources", "ملف الموظف ووثائقه بتواريخ انتهائها، والعقد والأجر ونهاية الخدمة", "The employee file and its expiring documents, contract, pay and end of service", "م 50 · 84", "/app/hr"],
+    ["ط", "الطلبات", "Requests", "الرصيد من النظام، والطلب يصعد إن طال بلا قرار", "Balances from the law; a stalled request escalates", "م 109 · 117", "/app/requests"],
+    ["ج", "الجزاءات", "Discipline", "لا جزاء خارج اللائحة، ولا قبل إبلاغ كتابي وسماع الدفاع", "None outside the list, and none before written notice and a hearing", "م 66–72", "/app/discipline"],
+    ["ص", "صوت الموظف", "Employee voice", "الشكوى لا تصل إلى المشكو منه، وتصعد بمهلة", "A complaint never reaches its subject, and escalates on time", "م 72", "/app/complaints"],
+    ["أ", "الأداء", "Performance", "الدرجة من المهام المعتمدة، لا من تقدير بلا سند", "A score from approved tasks, not an unsupported rating", "وصف الوظيفة", "/app/performance"],
+  ]],
+  ["المال", "Money", [
+    ["ر", "المال والرواتب", "Pay and settlement", "المسير من البصمة، والحسم بسند وتحت سقفه، والإضافي يُسجَّل تلقائياً", "Payroll from the punch, deductions with a document and under the cap, overtime logged", "م 90 · 92 · 107", "/app/payroll"],
+    ["ت", "التوقيع الرقمي", "Digital signing", "موقّعون بالترتيب أو معاً، وإيصال وبصمة لكل مستند", "Signers in order or together, a receipt and a fingerprint", "التعاملات الإلكترونية", "/app/signing"],
+    ["ع", "المساعد", "Assistant", "اسأل بيانات المنشأة بالعربية في حدود صلاحيتك", "Ask the company's data in Arabic, within your permissions", "الصلاحية من الهيكل", "/app/assistant"],
+  ]],
 ];
+/** Section tags in English: article numbers keep their digits; the few word tags are translated. */
+const TAG_EN = { "الإثبات شرط": "Proof required", "وصف الوظيفة": "Job description", "التعاملات الإلكترونية": "E-transactions law", "الصلاحية من الهيكل": "Access from the structure" };
+function tagEn(tag) {
+  if (TAG_EN[tag]) return TAG_EN[tag];
+  return tag.replace(/^م /, "Art. ").replace(/^ق /, "Dec. ");
+}
+const SECTION_COUNT = SECTIONS.reduce((n, [, , rows]) => n + rows.length, 0);
 
 /** The law the platform reads — article, then what the platform does with it. */
 const LAW = [
-  ["م 98", "Art. 98", "ثماني ساعات في اليوم أو ثمان وأربعون في الأسبوع — المنشأة تختار المعيار، والإضافي يُحسب به.", "Eight hours a day or forty-eight a week — the company picks the criterion; overtime follows it."],
-  ["م 101", "Art. 101", "لا عمل أكثر من خمس ساعات متصلة؛ راحة نصف ساعة تجمع الراحة والصلاة والطعام، وبقاء لا يتجاوز اثنتي عشرة ساعة.", "No more than five hours in a row; half an hour for rest, prayer and food; no more than twelve hours on site."],
-  ["م 102", "Art. 102", "الراحة ليست من ساعات العمل، ولا بصمة ولا موقع أثناءها.", "Rest is not working time — no punch and no location during it."],
-  ["م 107", "Art. 107", "ما زاد على المعيار يُسجَّل عملاً إضافياً بانتظار قرار الأجر أو الإجازة.", "Time past the criterion is logged as overtime, awaiting a pay or leave decision."],
-  ["ق 3337", "Dec. 3337", "لا عمل مكشوف تحت الشمس من 12:00 إلى 15:00، من 15 يونيو إلى 15 سبتمبر.", "No sun-exposed work 12:00–15:00, 15 June to 15 September."],
-  ["ق 18632", "Dec. 18632", "الليل من 23:00 إلى 06:00: راحة 12 ساعة، وتدوير بعد ثلاثة أشهر، وإسعاف ونقل وطعام.", "Night is 23:00–06:00: 12 hours' rest, rotation after three months, first aid, transport and food."],
-  ["م 17", "Art. 17", "جدول مواعيد العمل والراحة ويوم الراحة يُعلَّق في موقع العمل، ويراه كل موظف في «جدولي».", "The hours, rest and rest-day table is posted on site, and every worker sees it in «My schedule»."],
-  ["ق 115921", "Dec. 115921", "اللائحة التنفيذية لعام 1446هـ ونموذج لائحة تنظيم العمل.", "The 1446 AH implementing regulations and the model work regulation."],
+  ["م 98", "Art. 98", "ثماني ساعات في اليوم أو ثمان وأربعون في الأسبوع — المنشأة تختار المعيار، والإضافي يُحسب به.", "Eight hours a day or forty-eight a week — the company picks the criterion; overtime follows it.", "hours"],
+  ["م 101", "Art. 101", "لا عمل أكثر من خمس ساعات متصلة؛ راحة نصف ساعة تجمع الراحة والصلاة والطعام، وبقاء لا يتجاوز اثنتي عشرة ساعة.", "No more than five hours in a row; half an hour for rest, prayer and food; no more than twelve hours on site.", "hours"],
+  ["م 102", "Art. 102", "الراحة ليست من ساعات العمل، ولا بصمة ولا موقع أثناءها.", "Rest is not working time — no punch and no location during it.", "hours"],
+  ["م 107", "Art. 107", "ما زاد على المعيار يُسجَّل عملاً إضافياً بانتظار قرار الأجر أو الإجازة.", "Time past the criterion is logged as overtime, awaiting a pay or leave decision.", "pay"],
+  ["م 71", "Art. 71", "لا يُوقَّع جزاء قبل إبلاغ العامل كتابةً بما نُسب إليه، واستجوابه، وتحقيق دفاعه.", "No penalty before written notice of the charge, questioning, and a hearing of the defence.", "rights"],
+  ["ق 3337", "Dec. 3337", "لا عمل مكشوف تحت الشمس من 12:00 إلى 15:00، من 15 يونيو إلى 15 سبتمبر.", "No sun-exposed work 12:00–15:00, 15 June to 15 September.", "safety"],
+  ["ق 18632", "Dec. 18632", "الليل من 23:00 إلى 06:00: راحة 12 ساعة، وتدوير بعد ثلاثة أشهر، وإسعاف ونقل وطعام.", "Night is 23:00–06:00: 12 hours' rest, rotation after three months, first aid, transport and food.", "safety"],
+  ["م 17", "Art. 17", "جدول مواعيد العمل والراحة ويوم الراحة يُعلَّق في موقع العمل، ويراه كل موظف في «جدولي».", "The hours, rest and rest-day table is posted on site, and every worker sees it in «My schedule».", "rights"],
+];
+const LAW_FILTERS = [
+  ["all", "الكل", "All"],
+  ["hours", "الساعات والراحة", "Hours and rest"],
+  ["pay", "الأجر", "Pay"],
+  ["rights", "الحقوق", "Rights"],
+  ["safety", "السلامة", "Safety"],
 ];
 
-const PENDING_LINKS = ["قوى", "التأمينات", "مدد", "نفاذ"];
-const PENDING_LINKS_EN = ["Qiwa", "GOSI", "Mudad", "Nafath"];
+const PENDING_LINKS = [["قوى", "Qiwa"], ["التأمينات", "GOSI"], ["مدد", "Mudad"], ["نفاذ", "Nafath"]];
 
 /** This release — what changed, in the words a manager would use. */
 const RELEASE = [
+  ["ملف الموظف كاملاً", "The full employee file", "الوثائق بتواريخ انتهائها، والعقد والأجر، والالتزام بالمنصات، وأرشيف الملف في مكان واحد.", "Documents with expiry dates, contract and pay, platform compliance and the file archive in one place."],
+  ["التعيين والعقد", "Hiring and the contract", "تعيين الموظف على وظيفة في الهيكل، وعقد يُبنى من بيانات الملف ويُوقَّع داخل المنصة.", "Appoint a person to a seat in the structure; the contract is built from the file and signed in the platform."],
+  ["مساران: الموظف والإدارة", "Two lanes: employee and management", "واجهة الموظف أبسط: بصمتي ومهامي وطلباتي، والإدارة في مسارها بصلاحياتها.", "A simpler employee lane — my punch, my tasks, my requests — and management in its own lane."],
+  ["نهاية الخدمة بحرف النظام", "End of service by the letter", "المواد 75–77 و110 في المكافأة وترحيل الإجازة، محسوبة كما نصّت.", "Articles 75–77 and 110 for the award and leave carry-over, computed as written."],
   ["الراحة بنص المادة 101", "Rest by Art. 101", "نصف ساعة قبل أن تكتمل خمس ساعات، تُخصم وحدها بلا بصمة، وراحتان في دوام اثنتي عشرة ساعة.", "Half an hour before five hours, deducted on its own with no punch; two on a twelve-hour day."],
-  ["معيار ساعات العمل", "Hours criterion", "يومي أو أسبوعي من جدول الإدارة، ويُحسب العمل الإضافي بالمعيار المختار.", "Daily or weekly, set on the roster; overtime follows the chosen criterion."],
-  ["التوقيع كما سيُطبع", "Signing as printed", "حقل التوقيع يعرض توقيع كل موقّع باسمه وتاريخه، وإيصال إرسال برقم مرجع.", "Each signature field previews the signer's own mark and date; a dispatch receipt with a reference."],
-  ["أرشيف بقاعدة واحدة", "One archive rule", "ما حُسم يبقى ثلاثين يوماً ثم ينتقل إلى الأرشيف، في كل الأقسام.", "Anything decided stays thirty days, then moves to the archive — in every section."],
-  ["مسار اليوم", "The day's path", "حد الخمس ساعات ومواعيد الصلوات وحظر الشمس في مكانها من اليوم.", "The five-hour mark, prayer times and the heat ban, each at its time of day."],
 ];
 
-function Band({ id, tone = "paper", children, pad = "64px 48px" }) {
-  const bg = tone === "green" ? C.green : tone === "card" ? C.card : C.paper;
+/** The deep-green band of the inside, at landing scale: numbered gold kicker, title, hint, lattice. */
+function Band({ num, kicker, title, hint, children, big = false }) {
   return (
-    <section id={id} data-nv="pad" style={{ background: bg, padding: pad, borderTop: tone === "card" ? `1px solid ${C.line}` : "none" }}>
-      <div style={{ maxWidth: 1180, margin: "0 auto" }}>{children}</div>
-    </section>
+    <header
+      className="nv7-section-head"
+      style={{
+        background: "linear-gradient(135deg,#0B3D27 0%,#0F5535 100%)",
+        borderRadius: 12,
+        boxShadow: "0 6px 18px rgba(6,61,38,.16)",
+        color: "#fff",
+        textAlign: "start",
+        display: "flex",
+        flexDirection: "column",
+        gap: big ? 6 : 2,
+        padding: big ? "40px 40px 34px" : undefined,
+      }}
+      data-nv="band"
+    >
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 8, color: C.soft, fontWeight: 600, fontSize: big ? 12 : 10.5 }}>
+        <span aria-hidden style={{ width: 12, height: 2, background: C.gold, borderRadius: 8, display: "inline-block" }} />
+        {num ? <span dir="ltr" style={{ ...MONO, letterSpacing: ".04em" }}>{num}</span> : null}
+        <span>{kicker}</span>
+      </span>
+      <h2
+        className="nv-h"
+        data-nv={big ? "hero-title" : undefined}
+        style={{ margin: 0, fontFamily: HEAD, fontSize: big ? 40 : 20, fontWeight: 700, color: "#fff", lineHeight: 1.35 }}
+      >
+        {title}
+      </h2>
+      {hint ? <p style={{ margin: 0, fontSize: big ? 15.5 : 12.5, lineHeight: big ? 1.95 : 1.7, color: "#C5DBCD", maxWidth: big ? 680 : 760 }}>{hint}</p> : null}
+      {children}
+    </header>
   );
 }
 
-function Heading({ title, lead, onDark = false }) {
+/** A card head like «قائمة الجزاءات» / «إجراء جديد»: bold title, one muted line, optional trailing. */
+function CardHead({ title, sub, trailing }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28, maxWidth: 680 }}>
-      <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 28, fontWeight: 600, lineHeight: 1.4, color: onDark ? "#fff" : C.ink }}>{title}</h2>
-      {lead ? <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.9, color: onDark ? C.soft : C.mid }}>{lead}</p> : null}
+    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+        <h3 style={{ margin: 0, fontFamily: HEAD, fontSize: 17, fontWeight: 700, color: C.ink }}>{title}</h3>
+        {sub ? <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.75, color: C.mid }}>{sub}</p> : null}
+      </div>
+      {trailing}
     </div>
+  );
+}
+
+/** Mono article chip, the «م 66» of every case row. */
+function ArticleChip({ children }) {
+  return (
+    <span dir="auto" style={{ ...MONO, display: "inline-flex", alignItems: "center", height: 24, padding: "0 8px", borderRadius: 6, background: "#EEF4F0", color: C.green, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
+      {children}
+    </span>
   );
 }
 
@@ -108,159 +176,230 @@ export default function Landing() {
   const ar = lang === "ar";
   const T = (a, e) => (ar ? a : e);
   const plan = DEFAULT_SUBSCRIPTION_PLANS.find((row) => row.slug === "professional") || DEFAULT_SUBSCRIPTION_PLANS[2];
+  const [lawFilter, setLawFilter] = React.useState("all");
+  const lawRows = LAW.filter((row) => lawFilter === "all" || row[4] === lawFilter);
 
   useEffect(() => {
     trackVisit("/");
   }, []);
 
+  const pageTabs = [
+    ["#lab", T("جرّب القاعدة", "Try a rule"), 0],
+    ["#sections", T("الأقسام", "Sections"), SECTION_COUNT],
+    ["#mhrsd", T("النظام", "The law"), LAW.length],
+    ["#release", T("الجديد", "What's new"), RELEASE.length],
+    ["#pricing", T("الاشتراك", "Subscription"), 0],
+  ];
+
   return (
     <MarketingChrome ar={ar} lang={lang} loggedIn={loggedIn} onToggleLang={() => setLang(ar ? "en" : "ar")}>
       <style>{`
-        [data-nv="chain"] { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
-        [data-nv="ledger"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 40px; }
-        [data-nv="law"] { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(260px, 1fr); gap: 32px; align-items: start; }
-        [data-nv="release"] { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; }
-        [data-nv="plan"] { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: end; }
+        [data-nv="page"] { max-width: 1240px; margin: 0 auto; padding: 18px 24px 40px; display: flex; flex-direction: column; gap: 22px; }
+        [data-nv="stepper"] { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+        .nv7-section-head h1[data-nv="hero-title"] { font-size: 46px !important; }
+        [data-nv="proof-top"] { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 36px; align-items: center; }
+        [data-nv="proof-panel"] { animation: nvProofIn .32s ease both; }
+        @keyframes nvProofIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+        [data-nv="step"]:focus-visible { outline: 2px solid #E2C57E; outline-offset: 4px; border-radius: 8px; }
+        [data-nv="lab"] { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 20px; align-items: stretch; }
+        @media (prefers-reduced-motion: reduce) { [data-nv="proof-panel"] { animation: none; } }
+        [data-nv="tiles"] { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+        [data-nv="law"] { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 16px; align-items: start; }
+        [data-nv="release"] { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+        [data-nv="plan"] { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: center; }
+        [data-nv="tile"]:hover { border-color: #3C7D50 !important; }
         @media (max-width: 1000px) {
-          [data-nv="chain"] { grid-template-columns: 1fr; }
-          [data-nv="chain"] > li { display: grid !important; grid-template-columns: 31px 1fr; column-gap: 12px !important; row-gap: 2px !important; align-items: center !important; text-align: start !important; padding: 0 0 14px !important; }
-          [data-nv="chain"] > li > span:first-child { grid-row: 1 / span 2; grid-column: 1; }
-          [data-nv="chain"] > li > strong, [data-nv="chain"] > li > span:last-child { grid-column: 2; }
-          [data-nv="chain"] > li > span:last-child { max-width: none !important; }
-          [data-nv="chain-note"] { text-align: start !important; }
-          [data-nv="chain-rule"] { display: none; }
-          [data-nv="ledger"], [data-nv="law"], [data-nv="plan"] { grid-template-columns: 1fr; }
-          [data-nv="release"] { grid-template-columns: 1fr; }
-          [data-nv="release"] > div { border-inline-start: none !important; border-top: 1px solid ${C.line}; padding: 16px 0 !important; }
-          [data-nv="hero-title"] { font-size: 34px !important; }
+          [data-nv="page"] { padding: 12px 14px 32px; }
+          [data-nv="band"] { padding: 22px 18px !important; }
+          .nv7-section-head h1[data-nv="hero-title"] { font-size: 30px !important; }
+          [data-nv="proof-top"], [data-nv="lab"] { grid-template-columns: 1fr; gap: 20px; }
+          [data-nv="stepper"] { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 14px; }
+          [data-nv="stepper-rule"], [data-nv="step-note"] { display: none; }
+          [data-nv="facts"] { gap: 18px !important; }
+          [data-nv="tiles"], [data-nv="law"], [data-nv="release"], [data-nv="plan"] { grid-template-columns: 1fr; }
         }
       `}</style>
 
-      {/* 1 · The claim, and the Proof Cycle as one connected chain. */}
-      <section id="how" data-nv="pad" style={{ background: C.green, color: "#E7F0EA", padding: "72px 48px 56px", borderBottom: `3px solid ${C.gold}` }}>
-        <div style={{ maxWidth: 1180, margin: "0 auto", display: "flex", flexDirection: "column", gap: 44 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 760 }}>
-            <h1 data-nv="hero-title" style={{ margin: 0, fontFamily: DISPLAY, fontSize: 46, fontWeight: 600, lineHeight: 1.35, color: "#fff" }}>
-              {T("العمل يُثبَت قبل أن يُحكم عليه", "Work is proven before it is judged")}
-            </h1>
-            <p style={{ margin: 0, fontSize: 16, lineHeight: 2, color: "#C5DBCD", maxWidth: 620 }}>
-              {T(
-                "نيروفيرا منصة موارد بشرية سعودية لا تكتفي بتسجيل العمل، بل تثبته: كل حكم — أجر أو جزاء أو درجة — يُقرأ من سجل واحد، وتحت كل قاعدة اسم مادتها من نظام العمل.",
-                "NiroVera is a Saudi HR platform that does not only record work — it proves it. Every ruling, whether pay, a penalty or a score, reads one record, and every rule names its Labour Law article.",
-              )}
-            </p>
-          </div>
-
-          <ol data-nv="chain" aria-label={T("دورة الإثبات", "The Proof Cycle")} style={{ listStyle: "none", margin: 0, padding: 0, position: "relative" }}>
-            <span data-nv="chain-rule" aria-hidden style={{ position: "absolute", top: 15, insetInline: "8.33%", height: 1, background: "rgba(200,164,90,.55)" }} />
-            {CHAIN.map(([nameAr, nameEn, noteAr, noteEn], i) => (
-              <li key={nameAr} style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 8, padding: "0 8px" }}>
-                <span style={{ ...MONO, width: 31, height: 31, borderRadius: "50%", background: i === CHAIN.length - 1 ? C.gold : C.green, border: `1px solid ${C.gold}`, color: i === CHAIN.length - 1 ? C.deep : C.gold, fontSize: 12.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", position: "relative" }}>{i + 1}</span>
-                <strong style={{ fontFamily: DISPLAY, fontSize: 15.5, fontWeight: 600, color: "#fff" }}>{T(nameAr, nameEn)}</strong>
-                <span style={{ fontSize: 12, lineHeight: 1.7, color: C.soft, maxWidth: 170 }}>{T(noteAr, noteEn)}</span>
-              </li>
-            ))}
-          </ol>
-          <p data-nv="chain-note" style={{ margin: 0, fontSize: 12.5, color: C.soft, textAlign: "center" }}>
-            {T("إن انقطعت حلقة لم يُغلق الحكم. هذه هي القاعدة التي يُبنى عليها كل قسم.", "If one link breaks, the ruling does not close. Every section is built on that rule.")}
-          </p>
-        </div>
-      </section>
-
-      {/* 2 · The sections, as a ledger. */}
-      <Band id="sections" tone="paper">
-        <Heading
-          title={T("اثنا عشر قسماً على سجل واحد", "Twelve sections on one record")}
-          lead={T("كل قسم يقرأ من الحضور والمهام نفسها، فلا يتناقض الأجر مع الجزاء ولا الأداء مع الدوام.", "Every section reads the same attendance and tasks, so pay never contradicts discipline, nor performance the roster.")}
-        />
-        <div data-nv="ledger" style={{ borderTop: `1px solid ${C.ink}` }}>
-          {SECTIONS.map(([nameAr, nameEn, proofAr, proofEn, law, href]) => {
-            const row = (
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: "4px 16px", padding: "16px 0", borderBottom: `1px solid ${C.line}`, alignItems: "baseline" }}>
-                <strong style={{ fontFamily: DISPLAY, fontSize: 16, fontWeight: 600, color: C.ink }}>{T(nameAr, nameEn)}</strong>
-                <span style={{ fontVariantNumeric: "tabular-nums", fontSize: 12, fontWeight: 600, color: C.goldInk, whiteSpace: "nowrap" }}>{law}</span>
-                <span style={{ gridColumn: "1 / -1", fontSize: 13.5, lineHeight: 1.8, color: C.mid }}>{T(proofAr, proofEn)}</span>
+      <div data-nv="page">
+        {/* The claim, and the Proof Cycle as the case stepper. */}
+        <div id="how" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <header
+            className="nv7-section-head"
+            data-nv="band"
+            style={{ background: "linear-gradient(135deg,#0B3D27 0%,#0F5535 100%)", borderRadius: 12, boxShadow: "0 6px 18px rgba(6,61,38,.16)", color: "#fff", textAlign: "start", padding: "36px 36px 30px" }}
+          >
+            <ProofWindow chain={CHAIN} ar={ar}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8, color: C.soft, fontWeight: 600, fontSize: 12 }}>
+                  <span aria-hidden style={{ width: 12, height: 2, background: C.gold, borderRadius: 8, display: "inline-block" }} />
+                  <span dir="ltr" style={{ ...MONO, letterSpacing: ".04em" }}>00</span>
+                  <span>{T("نيروفيرا", "NiroVera")}</span>
+                </span>
+                <h1 className="nv-h" data-nv="hero-title" style={{ margin: 0, fontFamily: HEAD, fontSize: 46, fontWeight: 700, color: "#fff", lineHeight: 1.3 }}>
+                  {T("العمل يُثبَت قبل أن يُحكم عليه", "Work is proven before it is judged")}
+                </h1>
+                <p style={{ margin: 0, fontSize: 15.5, lineHeight: 1.95, color: "#C5DBCD", maxWidth: 520 }}>
+                  {T(
+                    "منصة موارد بشرية سعودية لا تكتفي بتسجيل العمل، بل تثبته: كل حكم — أجر أو جزاء أو درجة — يُقرأ من سجل واحد، وتحت كل قاعدة اسم مادتها من نظام العمل.",
+                    "A Saudi HR platform that does not only record work — it proves it. Every ruling, whether pay, a penalty or a score, reads one record, and every rule names its Labour Law article.",
+                  )}
+                </p>
+                <dl data-nv="facts" style={{ margin: "6px 0 0", display: "flex", gap: 26, flexWrap: "wrap" }}>
+                  {[
+                    [LABOR_RULES.length, T("قاعدة نظامية مؤرّخة", "dated legal rules")],
+                    [SECTION_COUNT, T("قسماً على سجل واحد", "sections on one record")],
+                    [CHAIN.length, T("حلقات في دورة الإثبات", "links in the Proof Cycle")],
+                  ].map(([figure, label]) => (
+                    <div key={label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <dt style={{ order: 2, fontSize: 12, color: C.soft }}>{label}</dt>
+                      <dd dir="ltr" style={{ ...MONO, margin: 0, fontSize: 30, fontWeight: 600, color: "#F1D98F", lineHeight: 1.1, textAlign: ar ? "right" : "left" }}>{figure}</dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
-            );
-            return loggedIn
-              ? <Link key={nameAr} to={href} style={{ color: "inherit", textDecoration: "none" }}>{row}</Link>
-              : <div key={nameAr}>{row}</div>;
-          })}
+            </ProofWindow>
+          </header>
+          <Nv7Strip
+            meta={(
+              <>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: C.fill, fontWeight: 700 }}>
+                  <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: C.fill }} />
+                  {T("متوافق مع النظام", "Aligned with the law")}
+                </span>
+                <span>{T("إن انقطعت حلقة لم يُغلق الحكم — هذه هي القاعدة التي يُبنى عليها كل قسم.", "If one link breaks, the ruling does not close — every section is built on that rule.")}</span>
+              </>
+            )}
+            tabs={(
+              <nav aria-label={T("أقسام الصفحة", "On this page")} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {pageTabs.map(([href, label, count], i) => (
+                  <a key={href} href={`/${href}`} style={{ ...nv7Tab(i === 0), textDecoration: "none" }}>
+                    {label}
+                    {count ? <span dir="ltr" style={nv7Count(i === 0)}>{count}</span> : null}
+                  </a>
+                ))}
+              </nav>
+            )}
+          />
         </div>
-      </Band>
 
-      {/* 3 · The law it reads — and what is honestly still pending. */}
-      <Band id="mhrsd" tone="card">
-        <Heading
-          title={T("النظام كما هو مكتوب", "The law as written")}
-          lead={T("المنصة تطبّق نصوص نظام العمل والقرارات الوزارية حرفياً، وتسمّي المادة عند كل قاعدة وكل تنبيه.", "The platform applies the Labour Law and ministerial decisions to the letter, and names the article at every rule and alert.")}
-        />
-        <div data-nv="law">
-          <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", columnGap: 22 }}>
-            {LAW.map(([refAr, refEn, textAr, textEn], i) => (
-              <React.Fragment key={refAr}>
-                <dt style={{ fontVariantNumeric: "tabular-nums", fontSize: 13, fontWeight: 700, color: C.green, padding: "13px 0", borderTop: i ? `1px solid ${C.line}` : "none", whiteSpace: "nowrap" }}>{T(refAr, refEn)}</dt>
-                <dd style={{ margin: 0, fontSize: 13.5, lineHeight: 1.85, color: C.ink, padding: "13px 0", borderTop: i ? `1px solid ${C.line}` : "none" }}>{T(textAr, textEn)}</dd>
-              </React.Fragment>
-            ))}
-          </dl>
-          <aside style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: 22, background: C.paper, display: "flex", flexDirection: "column", gap: 14 }}>
-            <strong style={{ fontFamily: DISPLAY, fontSize: 16, fontWeight: 600, color: C.ink }}>{T("الربط الحكومي", "Government links")}</strong>
-            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.85, color: C.mid }}>
-              {T("الأقسام تعمل اليوم داخل المنصة. الربط الحي بالمنصات الحكومية ينتظر الاعتماد الرسمي، ولا ندّعيه قبل ذلك.", "The sections work today inside the platform. Live links to government systems await official accreditation, and we do not claim them before then.")}
-            </p>
-            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" }}>
-              {(ar ? PENDING_LINKS : PENDING_LINKS_EN).map((name, i) => (
-                <li key={name} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "9px 0", borderTop: i ? `1px solid ${C.line}` : "none", fontSize: 13 }}>
-                  <span style={{ color: C.ink, fontWeight: 600 }}>{name}</span>
-                  <span style={{ color: C.goldInk }}>{T("بانتظار الاعتماد", "Awaiting accreditation")}</span>
-                </li>
-              ))}
-            </ul>
-            <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.75, color: C.mid }}>
-              {T("التوقيع في المنصة توقيع إلكتروني موثّق بسجل المنشأة، وليس شهادة حكومية مؤهلة.", "Signing in the platform is an electronic signature evidenced by the company registry, not a qualified government certificate.")}
-            </p>
-          </aside>
-        </div>
-      </Band>
+        <RuleLab ar={ar} />
 
-      {/* 4 · This release. */}
-      <Band id="release" tone="paper">
-        <Heading
-          title={T("الجديد في تحديث أكتوبر 2026", "New in the October 2026 update")}
-          lead={T("ما تغيّر في هذا الإصدار، كما يراه المدير والموظف.", "What changed in this release, as a manager and an employee see it.")}
-        />
-        <div data-nv="release" style={{ borderTop: `1px solid ${C.ink}`, borderBottom: `1px solid ${C.line}` }}>
-          {RELEASE.map(([titleAr, titleEn, bodyAr, bodyEn], i) => (
-            <div key={titleAr} style={{ padding: "18px 18px 20px", borderInlineStart: i ? `1px solid ${C.line}` : "none", display: "flex", flexDirection: "column", gap: 8 }}>
-              <strong style={{ fontFamily: DISPLAY, fontSize: 15, fontWeight: 600, color: C.ink, lineHeight: 1.5 }}>{T(titleAr, titleEn)}</strong>
-              <span style={{ fontSize: 13, lineHeight: 1.85, color: C.mid }}>{T(bodyAr, bodyEn)}</span>
+        {/* The sections, as the option tiles of «إجراء جديد», grouped like the sidebar. */}
+        <section id="sections" style={{ ...CARD, padding: 20, display: "flex", flexDirection: "column", gap: 18 }}>
+          <CardHead
+            title={T(`${SECTION_COUNT} قسماً على سجل واحد`, `${SECTION_COUNT} sections on one record`)}
+            sub={T("كل قسم يقرأ من الحضور والمهام نفسها، فلا يتناقض الأجر مع الجزاء ولا الأداء مع الدوام.", "Every section reads the same attendance and tasks, so pay never contradicts discipline, nor performance the roster.")}
+          />
+          {SECTIONS.map(([groupAr, groupEn, rows]) => (
+            <div key={groupAr} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.goldInk }}>{T(groupAr, groupEn)}</span>
+              <div data-nv="tiles">
+                {rows.map(([letter, nameAr, nameEn, proofAr, proofEn, law, href]) => {
+                  const tile = (
+                    <div data-nv="tile" style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 14px", border: `1px solid ${C.line}`, borderRadius: 12, background: C.card, height: "100%", transition: "border-color .15s ease" }}>
+                      <span aria-hidden style={{ width: 40, height: 40, borderRadius: 10, background: C.tile, color: C.green, fontFamily: HEAD, fontWeight: 700, fontSize: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{ar ? letter : nameEn[0]}</span>
+                      <span style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+                        <strong style={{ fontFamily: HEAD, fontSize: 15, fontWeight: 700, color: C.ink }}>{T(nameAr, nameEn)}</strong>
+                        <span style={{ fontSize: 12.5, lineHeight: 1.75, color: C.mid }}>{T(proofAr, proofEn)}</span>
+                        <span dir="auto" style={{ fontSize: 11.5, fontWeight: 600, color: C.goldInk }}>{ar ? law : tagEn(law)}</span>
+                      </span>
+                    </div>
+                  );
+                  return loggedIn
+                    ? <Link key={nameAr} to={href} style={{ color: "inherit", textDecoration: "none" }}>{tile}</Link>
+                    : <div key={nameAr}>{tile}</div>;
+                })}
+              </div>
             </div>
           ))}
-        </div>
-      </Band>
+        </section>
 
-      {/* 5 · The subscription, from the live catalogue. */}
-      <Band id="pricing" tone="green" pad="56px 48px">
-        <div data-nv="plan">
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 26, fontWeight: 600, color: "#fff" }}>{T("الاشتراك", "Subscription")}</h2>
-            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.9, color: C.soft, maxWidth: 560 }}>
-              {T("باقة واحدة تفتح الأقسام كلها لمنشأتك وفروعها. السعر من كتالوج الباقات الحي، والمقارنة الكاملة في صفحة الاشتراك.", "One plan opens every section for your company and its branches. The price comes from the live plan catalogue; the full comparison is on the subscription page.")}
-            </p>
-            <Link to="/pricing" style={{ fontSize: 13.5, fontWeight: 600, color: C.gold, textDecoration: "underline", textUnderlineOffset: 4, alignSelf: "flex-start" }}>
-              {T("قارن الباقات", "Compare plans")}
-            </Link>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: ar ? "flex-start" : "flex-end", gap: 4 }}>
-            <span style={{ fontSize: 12.5, color: "#E9D9AE", fontWeight: 600 }}>{planDisplayName(plan, ar ? "ar" : "en")}</span>
-            <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-              <strong style={{ ...MONO, fontSize: 48, fontWeight: 600, color: "#fff", lineHeight: 1 }}>{plan.monthlyPrice}</strong>
-              <span style={{ fontSize: 13, color: C.soft }}>{plan.currency} / {T("شهر", "month")}</span>
-            </span>
+        {/* The law as the case rows, and the honest list of pending links. */}
+        <div id="mhrsd" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <Band
+            num=""
+            kicker={T("الامتثال الوزاري", "Ministry compliance")}
+            title={T("النظام كما هو مكتوب", "The law as written")}
+            hint={T("المنصة تطبّق نصوص نظام العمل والقرارات الوزارية حرفياً، وتسمّي المادة عند كل قاعدة وكل تنبيه.", "The platform applies the Labour Law and ministerial decisions to the letter, and names the article at every rule and alert.")}
+          />
+          <div data-nv="law">
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ ...CARD, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+                <CardHead title={T("القواعد", "Rules")} sub={T("ما تقرؤه المنصة من النظام، وما تفعله به.", "What the platform reads from the law, and what it does with it.")} />
+                <div role="tablist" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {LAW_FILTERS.map(([id, la, le]) => {
+                    const n = id === "all" ? LAW.length : LAW.filter((row) => row[4] === id).length;
+                    const on = lawFilter === id;
+                    return (
+                      <button key={id} type="button" role="tab" aria-selected={on} onClick={() => setLawFilter(id)} style={statusPillStyle(on)}>
+                        {T(la, le)}
+                        <span dir="ltr" style={{ ...MONO, fontSize: 11, padding: "0 6px", borderRadius: 999, background: on ? "rgba(255,255,255,.22)" : "#EEF4F0", color: on ? "#fff" : C.green }}>{n}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {lawRows.map(([refAr, refEn, textAr, textEn]) => (
+                <div key={refAr} style={{ ...CARD, padding: "12px 16px", display: "flex", alignItems: "flex-start", gap: 12 }}>
+                  <ArticleChip>{T(refAr, refEn)}</ArticleChip>
+                  <span style={{ fontSize: 13.5, lineHeight: 1.85, color: C.ink }}>{T(textAr, textEn)}</span>
+                </div>
+              ))}
+            </div>
+            <aside style={{ ...CARD, padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+              <CardHead title={T("الربط الحكومي", "Government links")} sub={T("الأقسام تعمل اليوم داخل المنصة. الربط الحي بالمنصات الحكومية ينتظر الاعتماد الرسمي، ولا ندّعيه قبل ذلك.", "The sections work today inside the platform. Live links to government systems await official accreditation, and we do not claim them before then.")} />
+              <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" }}>
+                {PENDING_LINKS.map(([nameAr, nameEn], i) => (
+                  <li key={nameAr} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "10px 0", borderTop: i ? `1px solid ${C.line}` : "none", fontSize: 13 }}>
+                    <span style={{ color: C.ink, fontWeight: 700 }}>{T(nameAr, nameEn)}</span>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: "#FBF3DF", color: C.goldInk }}>{T("بانتظار الاعتماد", "Awaiting accreditation")}</span>
+                  </li>
+                ))}
+              </ul>
+              <p style={{ margin: 0, padding: "10px 12px", borderRadius: 10, background: C.paper, fontSize: 11.5, lineHeight: 1.75, color: C.mid }}>
+                {T("التوقيع في المنصة توقيع إلكتروني موثّق بسجل المنشأة، وليس شهادة حكومية مؤهلة.", "Signing in the platform is an electronic signature evidenced by the company registry, not a qualified government certificate.")}
+              </p>
+            </aside>
           </div>
         </div>
-      </Band>
+
+        {/* This release. */}
+        <section id="release" style={{ ...CARD, padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+          <CardHead
+            title={T("الجديد في تحديث نوفمبر 2026", "New in the November 2026 update")}
+            sub={T("ما تغيّر في هذا الإصدار، كما يراه المدير والموظف.", "What changed in this release, as a manager and an employee see it.")}
+            trailing={<span style={{ fontSize: 11.5, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: C.fill, color: "#fff" }}>{T("آخر إصدار", "Latest")}</span>}
+          />
+          <div data-nv="release">
+            {RELEASE.map(([titleAr, titleEn, bodyAr, bodyEn]) => (
+              <div key={titleAr} style={{ padding: "14px 14px 16px", borderRadius: 12, background: C.paper, display: "flex", flexDirection: "column", gap: 6 }}>
+                <strong style={{ fontFamily: HEAD, fontSize: 14.5, fontWeight: 700, color: C.ink, lineHeight: 1.5 }}>{T(titleAr, titleEn)}</strong>
+                <span style={{ fontSize: 12.5, lineHeight: 1.85, color: C.mid }}>{T(bodyAr, bodyEn)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* The subscription, from the live catalogue. */}
+        <div id="pricing">
+          <Band
+            num=""
+            kicker={T("الاشتراك", "Subscription")}
+            title={planDisplayName(plan, ar ? "ar" : "en")}
+            hint={T("باقة واحدة تفتح الأقسام كلها لمنشأتك وفروعها. السعر من كتالوج الباقات الحي، والمقارنة الكاملة في صفحة الاشتراك.", "One plan opens every section for your company and its branches. The price comes from the live plan catalogue; the full comparison is on the subscription page.")}
+          >
+            <div data-nv="plan" style={{ marginTop: 14 }}>
+              <Link to="/pricing" style={{ ...nv7Tab(false), textDecoration: "none", justifySelf: "start", background: C.gold, border: `1px solid ${C.gold}`, color: "#3A2A08", fontWeight: 700 }}>
+                {T("قارن الباقات", "Compare plans")}
+              </Link>
+              <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <strong style={{ ...MONO, fontSize: 44, fontWeight: 600, color: "#fff", lineHeight: 1 }}>{plan.monthlyPrice}</strong>
+                <span style={{ fontSize: 13, color: C.soft }}>{plan.currency} / {T("شهر", "month")}</span>
+              </span>
+            </div>
+          </Band>
+        </div>
+      </div>
     </MarketingChrome>
   );
 }

@@ -16,7 +16,7 @@ import {
   todayKey,
   unitSeatTree,
 } from "@/lib/orgDesign";
-import { saveOrgChangeDraft, transitionOrgChange } from "@/lib/orgDesignStore";
+import { applyOrgChangeNow, saveOrgChangeDraft, transitionOrgChange } from "@/lib/orgDesignStore";
 import { printReport } from "@/lib/printReport";
 import RightHint from "@/components/shared/RightHint";
 import { mono, slab } from "@/components/schedules/scheduleChrome";
@@ -53,13 +53,13 @@ function opLine(op, ctx, ar) {
  */
 const CHANGE_FACE_LABELS = {
   pending: { ar: "بانتظار الاعتماد", en: "Awaiting approval" },
-  approved: { ar: "معتمدة", en: "Approved" },
+  approved: { ar: "مجدولة", en: "Scheduled" },
   draft: { ar: "مسودات", en: "Drafts" },
   rejected: { ar: "مرفوضة", en: "Rejected" },
-  published: { ar: "منشورة", en: "Published" },
+  published: { ar: "مطبّقة", en: "Applied" },
 };
 
-export default function OrgChangesBoard({ ar, data, actor, companyId, canEdit, seed, onSeedConsumed }) {
+export default function OrgChangesBoard({ ar, data, actor, companyId, canEdit, seed, onSeedConsumed, quick = false, onDone }) {
   const today = todayKey();
   const design = orgDesignOf(data);
   const seats = useMemo(() => deriveSeatRegister(data, today), [data, today]);
@@ -80,7 +80,7 @@ export default function OrgChangesBoard({ ar, data, actor, companyId, canEdit, s
   }, [seed]);
 
   const ctx = { stations: data?.stations || [], seatById };
-  const groups = ["pending", "approved", "draft", "rejected", "published"].map((status) => ({
+  const groups = ["approved", "published"].map((status) => ({
     status,
     rows: design.changes.filter((c) => (c.status || "draft") === status),
   }));
@@ -98,6 +98,13 @@ export default function OrgChangesBoard({ ar, data, actor, companyId, canEdit, s
     }
     setGate(null);
     setDraft(null);
+  };
+  const applyNow = () => {
+    const res = applyOrgChangeNow(companyId, actor, draft, { today });
+    if (!res.ok) { setGate(res); if (res.id) setDraft((d) => ({ ...d, id: res.id })); return; }
+    setGate(null);
+    setDraft(null);
+    if (quick) onDone?.();
   };
   const act = (change, next) => {
     const res = transitionOrgChange(companyId, actor, change.id, next, { note: notes[change.id] || "", today });
@@ -149,12 +156,12 @@ export default function OrgChangesBoard({ ar, data, actor, companyId, canEdit, s
   return (
     <div className="nv-od">
       <Slab
-        label={ar ? "التغييرات التنظيمية" : "Org changes"}
-        title={ar ? "التغييرات التنظيمية" : "Org changes"}
+        label={ar ? "تعديل الهيكل" : "Edit the structure"}
+        title={ar ? "تعديل الهيكل" : "Edit the structure"}
         note={ar
-          ? "التغيير البنيوي يُكتب أولاً: ماذا يتغير، لماذا، ومتى يسري. ترى أثره قبل اعتماده — من يتغير مديره ومن يتغير معتمِد طلباته — ثم يعتمده مسؤول آخر، ويُنشر في تاريخه قراراً موقّعاً في سجل التدقيق."
-          : "A structural change is written first: what, why, and from when. See its impact before approval — who changes manager, whose approvals move — another HR member approves, and it publishes on its date as a signed decision."}
-        trailing={canEdit && !draft ? <button type="button" style={btnPrimary()} onClick={() => { setDraft({ id: "", title: "", reason: "", effectiveDate: today, ops: [blankOp()] }); setGate(null); }}>{ar ? "＋ تغيير تنظيمي" : "+ Org change"}</button> : null}
+          ? "من يملك إدارة الموارد البشرية يعدّل الهيكل مباشرة — بلا طلب اعتماد. ترى الأثر قبل التطبيق (من يتغير مديره ومسار اعتماده)، ويُحفظ كل تعديل قراراً موقّعاً في سجل التدقيق. التاريخ المستقبلي يُطبَّق في يومه."
+          : "Whoever manages HR edits the structure directly — no approval request. See the impact first; each edit is kept as a signed decision in the audit log. A future date applies on that day."}
+        trailing={canEdit && !draft && !quick ? <button type="button" style={btnPrimary()} onClick={() => { setDraft({ id: "", title: "", reason: "", effectiveDate: today, ops: [blankOp()] }); setGate(null); }}>{ar ? "＋ تعديل" : "+ Edit"}</button> : null}
       >
         {draft ? (
           <SlabBody style={{ gap: 14, borderBottom: "1px solid var(--nv-line2, var(--nv-line))" }}>
@@ -180,26 +187,27 @@ export default function OrgChangesBoard({ ar, data, actor, companyId, canEdit, s
             {impact ? <ImpactBlock ar={ar} impact={impact} /> : null}
             <GateLine gate={gate} ar={ar} />
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <button type="button" style={btnPrimary(!liveGate?.ok)} disabled={!liveGate?.ok} onClick={() => saveDraft(true)}>{ar ? "أرسل للاعتماد" : "Submit for approval"}</button>
-              <button type="button" style={btnGhost()} onClick={() => saveDraft(false)}>{ar ? "احفظ مسودة" : "Save draft"}</button>
-              <button type="button" style={btnQuiet()} onClick={() => { setDraft(null); setGate(null); }}>{ar ? "إلغاء" : "Cancel"}</button>
+              <button type="button" style={btnPrimary(!liveGate?.ok)} disabled={!liveGate?.ok} onClick={applyNow}>
+                {String(draft.effectiveDate || today).slice(0, 10) > today ? (ar ? "طبّق في تاريخه" : "Apply on its date") : (ar ? "طبّق الآن" : "Apply now")}
+              </button>
+              <button type="button" style={btnQuiet()} onClick={() => { setDraft(null); setGate(null); if (quick) onDone?.(); }}>{ar ? "إلغاء" : "Cancel"}</button>
             </div>
           </SlabBody>
         ) : null}
 
-        {!design.changes.length && !draft ? (
-          <EmptyInvite text={ar ? "لا تغييرات بعد. حين تنقل منصباً أو تنشئ وحدة أو تغيّر تبعيتها، اكتبها هنا بتاريخ سريان — ليبقى كل تغيير قراراً له أثر وتاريخ." : "No changes yet. When you move a seat, create a unit or change its parent, write it here with an effective date."} />
+        {!quick && !design.changes.length && !draft ? (
+          <EmptyInvite text={ar ? "لا تعديلات بعد. انقل منصباً أو أنشئ وحدة أو غيّر تبعيتها من هنا — يُطبَّق مباشرة ويبقى قراراً له تاريخ." : "No edits yet. Move a seat, create a unit or change its parent here — it applies directly and stays a dated decision."} />
         ) : null}
 
       </Slab>
 
       {/* «طلبات التغيير» filter as in طلباتي: الكل, what waits on approval, then the settled states. */}
-      {design.changes.length ? (
+      {!quick && groups.some((g) => g.rows.length) ? (
       <div className="nv-list-stack" data-org-changes-list="1">
         <StatusFilterPills
           card
           dataKey="org-changes"
-          title={ar ? "طلبات التغيير" : "Change requests"}
+          title={ar ? "سجل التعديلات" : "Edit log"}
           value={changesFace}
           onChange={setChangesFace}
           items={[
@@ -283,7 +291,7 @@ function StepEditor({ ar, op, index, seats, stations, onChange, onRemove, newUni
       <div style={{ display: "flex", gap: 8, alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap" }}>
         <label className="nv-od-field" style={{ flex: "1 1 220px" }}>{ar ? `الخطوة ${index + 1}` : `Step ${index + 1}`}
           <select className="nv-od-select" value={op.type} onChange={(e) => onChange({ type: e.target.value })}>
-            {CHANGE_OPS.map((t) => <option key={t} value={t}>{ar ? CHANGE_OP_LABELS[t].ar : CHANGE_OP_LABELS[t].en}</option>)}
+            {CHANGE_OPS.filter((t) => t !== "setDotted").map((t) => <option key={t} value={t}>{ar ? CHANGE_OP_LABELS[t].ar : CHANGE_OP_LABELS[t].en}</option>)}
           </select>
         </label>
         {onRemove ? <button type="button" style={btnQuiet({ padding: "8px 0" })} onClick={onRemove}>{ar ? "حذف الخطوة" : "Remove step"}</button> : null}

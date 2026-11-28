@@ -9,7 +9,8 @@ import { DS_CONTROL_RADIUS, DS_PILL_RADIUS, DS_RADIUS, DS_SHADOW } from "@/lib/d
 import { statusBanner } from "@/lib/platformStyles";
 import { StatusFlag } from "@/components/shared/StatusFlag";
 
-export const OWNER_MONO = { fontFamily: "'IBM Plex Mono', monospace" };
+// أرقام اللوحة: Inter Tight بأرقام متساوية العرض — لا صفر منقّط ولا خط آلة كاتبة.
+export const OWNER_MONO = { fontFamily: "'Inter Tight', ui-sans-serif, system-ui, sans-serif", fontVariantNumeric: "tabular-nums lining-nums", letterSpacing: "-0.02em" };
 
 export const ownerStack = {
   display: "flex",

@@ -15,7 +15,7 @@ import { base44 } from "@/api/base44Client";
 import SubscriberAnalytics, { planLabel } from "@/components/owner/SubscriberAnalytics";
 import VisitorStatsCard from "@/components/owner/VisitorStatsCard";
 import OwnerExportButtons from "@/components/owner/OwnerExportButtons";
-import { OwnerCard, ownerPaper, ownerStatusChip } from "@/components/owner/ownerUi";
+import { OWNER_MONO, OwnerCard, ownerPaper, ownerStatusChip } from "@/components/owner/ownerUi";
 import { currencyLabel } from "@/lib/subscriptionPlans";
 
 function statusOf(row, ar) {
@@ -95,7 +95,7 @@ export default function SaasAnalyticsDashboard({ lang, onTab }) {
             <Wallet size={15} /> {ar ? "الإيراد الشهري المتكرر" : "Monthly recurring revenue"}
           </span>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-            <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 48, fontWeight: 600, color: "#fff", lineHeight: 1.05 }}>{fmtNum(summary.mrr)}</span>
+            <span dir="ltr" style={{ ...OWNER_MONO, fontSize: 48, fontWeight: 600, color: "#fff", lineHeight: 1.05 }}>{fmtNum(summary.mrr)}</span>
             <span style={{ fontSize: 16, fontWeight: 600, color: "rgba(255,255,255,.75)" }}>{currencyLabel("SAR", ar)}</span>
           </div>
           <span style={{ fontSize: 12.5, color: "rgba(255,255,255,.62)" }}>
@@ -109,7 +109,7 @@ export default function SaasAnalyticsDashboard({ lang, onTab }) {
                 {item.alert ? <span style={{ width: 7, height: 7, borderRadius: 99, background: "#F87171" }} /> : null}
                 {item.label}
               </span>
-              <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 30, fontWeight: 600, color: "#fff", lineHeight: 1 }}>{fmtNum(item.value)}</span>
+              <span dir="ltr" style={{ ...OWNER_MONO, fontSize: 30, fontWeight: 600, color: "#fff", lineHeight: 1 }}>{fmtNum(item.value)}</span>
               <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.5)", minHeight: 16 }}>{item.note || (item.alert ? (ar ? `${summary.frozen || 0} مجمّدة · ${summary.expired || 0} منتهية` : `${summary.frozen || 0} frozen · ${summary.expired || 0} expired`) : "")}</span>
             </button>
           ))}

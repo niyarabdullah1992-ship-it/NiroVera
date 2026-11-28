@@ -5,6 +5,7 @@ import SubscriberRow from "@/components/owner/SubscriberRow";
 import SubscriptionRevenueSummary from "@/components/owner/SubscriptionRevenueSummary";
 import SubscriptionBulkExport from "@/components/owner/SubscriptionBulkExport";
 import {
+  OWNER_MONO,
   ownerChip,
   ownerField,
   ownerGhostBtn,
@@ -78,7 +79,7 @@ export default function SubscribersDashboard({ ar }) {
                   {stat.icon ? <stat.icon size={14} /> : null}
                   {stat.label}
                 </span>
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 26, fontWeight: 600, color: "var(--nv-ink)", lineHeight: 1, alignSelf: "flex-start" }}>{stat.value}</span>
+                <span dir="ltr" style={{ ...OWNER_MONO, fontSize: 26, fontWeight: 600, color: "var(--nv-ink)", lineHeight: 1, alignSelf: "flex-start" }}>{stat.value}</span>
               </div>
             ))}
           </div>

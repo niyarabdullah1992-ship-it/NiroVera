@@ -28,6 +28,7 @@ import Landing from './pages/Landing';
 const Login = lazy(() => import('./pages/Login'));
 const LoginPortal = lazy(() => import('./pages/LoginPortal'));
 const LocalPreviewEntry = lazy(() => import('./pages/LocalPreviewEntry'));
+const AdminEntry = lazy(() => import('./pages/AdminEntry'));
 const Escalation = lazy(() => import('./pages/Escalation'));
 const Assistant = lazy(() => import('./pages/Assistant'));
 const Register = lazy(() => import('./pages/Register'));
@@ -201,6 +202,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/preview" element={<LocalPreviewEntry />} />
+      <Route path="/admin" element={<AdminEntry />} />
       <Route path="/about" element={<About />} />
       <Route path="/mobile" element={<Mobile />} />
       <Route path="/deck" element={<SalesDeck />} />

@@ -14,7 +14,6 @@ import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import IdentityCard from "@/components/shared/IdentityCard";
 import { labelMuted, MUTED } from "@/lib/platformStyles";
 import {
-  ownerChip,
   ownerField,
   ownerGateBanner,
   ownerOkBanner,
@@ -137,8 +136,8 @@ export default function OwnerCompanyRulings({
           icon={Crown}
           title={ar ? `اشتراكات الشركات (${companies.length})` : `Company subscriptions (${companies.length})`}
           subtitle={ar
-            ? "اختر شركة لتغيير اسم اشتراكها وسعرها. الحكم خارج منصة الشركة — لا شريحة اشتراك داخل /app."
-            : "Choose a company to change its plan name and price. The ruling lives outside the company app — no plan chip inside /app."}
+            ? "اضغط على شركة لتعديل اسم باقتها وسعرها."
+            : "Click a company to edit its plan name and price."}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {companies.length === 0 ? <p style={{ margin: 0, fontSize: 13, color: MUTED }}>{ar ? "لا شركات في السجل." : "No companies in the registry."}</p> : null}
@@ -149,28 +148,37 @@ export default function OwnerCompanyRulings({
                 <button
                   key={company.id}
                   type="button"
-                  onClick={() => setSelectedId(company.id)}
+                  onClick={() => setSelectedId(on ? "" : company.id)}
                   style={{
-                    ...ownerChip(on),
-                    textAlign: "inherit",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
+                    fontFamily: "inherit",
+                    textAlign: "start",
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0, 1fr) auto auto",
+                    alignItems: "center",
+                    gap: 14,
                     width: "100%",
-                    padding: "10px 12px",
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    cursor: "pointer",
+                    color: "var(--nv-ink)",
+                    background: on ? "var(--nv-accent-soft)" : "var(--nv-card)",
+                    border: `1px solid ${on ? "var(--nv-accent-border)" : "var(--nv-line)"}`,
                   }}
                 >
-                  <span>
-                    <strong>{company.name || company.id}</strong>
-                    <span style={{ display: "block", fontSize: 11, color: on ? "inherit" : MUTED, opacity: on ? 0.85 : 1 }}>{company.ownerEmail || ""}</span>
-                  </span>
-                  <span style={{ fontSize: 12, textAlign: "end" }}>
-                    {item.view.ok ? `${ar ? item.view.nameAr : item.view.nameEn} · ${item.view.monthlyPrice} ${currencyLabel(item.view.currency, ar)}` : (ar ? item.view.reason : item.view.reasonEn)}
-                    <span style={{ display: "block", marginTop: 4 }}>
-                      <span style={ownerStatusChip(item.status.id === "active" ? "ok" : item.status.id === "frozen" ? "bad" : item.status.id === "ended" ? "bad" : "warn")}>
-                        {ar ? item.status.ar : item.status.en}
-                      </span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <span style={{ width: 34, height: 34, borderRadius: 10, background: on ? "var(--nv-card)" : "var(--nv-accent-soft)", color: "var(--nv-accent-deep)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>
+                      {String(company.name || "?").trim().charAt(0).toUpperCase()}
                     </span>
+                    <span style={{ minWidth: 0 }}>
+                      <strong style={{ display: "block", fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{company.name || company.id}</strong>
+                      <span style={{ display: "block", fontSize: 11.5, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{company.ownerEmail || ""}</span>
+                    </span>
+                  </span>
+                  <span style={{ fontSize: 12.5, color: "var(--nv-ink2)", fontWeight: 600, whiteSpace: "nowrap" }}>
+                    {item.view.ok ? `${ar ? item.view.nameAr : item.view.nameEn} · ${item.view.monthlyPrice} ${currencyLabel(item.view.currency, ar)}` : (ar ? item.view.reason : item.view.reasonEn)}
+                  </span>
+                  <span style={ownerStatusChip(item.status.id === "active" ? "ok" : item.status.id === "frozen" ? "bad" : item.status.id === "ended" ? "bad" : "warn")}>
+                    {ar ? item.status.ar : item.status.en}
                   </span>
                 </button>
               );
@@ -191,8 +199,8 @@ export default function OwnerCompanyRulings({
                 <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.7 }}>
                   {row?.view?.ok
                     ? (ar
-                      ? `اشتراك ${selected.name} الآن: ${row.view.nameAr} · ${row.view.monthlyPrice} ${row.view.currency} / شهر · ${row.status.ar}.`
-                      : `${selected.name}'s subscription is now: ${row.view.nameEn} · ${row.view.monthlyPrice} ${row.view.currency} / month · ${row.status.en}.`)
+                      ? `اشتراك ${selected.name} الآن: ${row.view.nameAr} · ${row.view.monthlyPrice} ${currencyLabel(row.view.currency, ar)} / شهر · ${row.status.ar}.`
+                      : `${selected.name}'s subscription is now: ${row.view.nameEn} · ${row.view.monthlyPrice} ${currencyLabel(row.view.currency, ar)} / month · ${row.status.en}.`)
                     : (ar ? row?.view?.reason : row?.view?.reasonEn)}
                 </p>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>

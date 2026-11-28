@@ -5,7 +5,6 @@ import SubscriberRow from "@/components/owner/SubscriberRow";
 import SubscriptionRevenueSummary from "@/components/owner/SubscriptionRevenueSummary";
 import SubscriptionBulkExport from "@/components/owner/SubscriptionBulkExport";
 import {
-  OwnerKpi,
   ownerChip,
   ownerField,
   ownerGhostBtn,
@@ -72,9 +71,15 @@ export default function SubscribersDashboard({ ar }) {
 
       {summary ? (
         <>
-          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))" }}>
-            {stats.map((stat) => (
-              <OwnerKpi key={stat.label} icon={stat.icon} label={stat.label} value={stat.value} tone={stat.tone} sub={stat.sub} />
+          <div style={{ ...ownerPaper(), display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", overflow: "hidden" }}>
+            {stats.map((stat, index) => (
+              <div key={stat.label} style={{ padding: "16px 20px", borderInlineStart: index ? "1px solid var(--nv-line)" : "none", display: "flex", flexDirection: "column", gap: 8 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, color: "var(--nv-muted)" }}>
+                  {stat.icon ? <stat.icon size={14} /> : null}
+                  {stat.label}
+                </span>
+                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 26, fontWeight: 600, color: "var(--nv-ink)", lineHeight: 1, alignSelf: "flex-start" }}>{stat.value}</span>
+              </div>
             ))}
           </div>
 

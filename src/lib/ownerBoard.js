@@ -47,8 +47,8 @@ export const OWNER_BOARD_SECTIONS = [
     value: "rulings",
     labelAr: "اشتراكات الشركات",
     labelEn: "Company plans",
-    hintAr: "اسم الاشتراك وسعره لكل شركة — حكم خارج /app.",
-    hintEn: "Plan name and price per company — ruled outside /app.",
+    hintAr: "اسم الباقة وسعرها لكل شركة على حدة.",
+    hintEn: "Plan name and price for each company.",
   },
   {
     value: "holidays",

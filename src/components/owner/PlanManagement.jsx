@@ -4,7 +4,7 @@ import { createSubscriptionPlan, deleteSubscriptionPlan, listSubscriptionPlans, 
 import PlanForm from "@/components/owner/PlanForm";
 import PlanCard from "@/components/owner/PlanCard";
 import { normalizePlanConfig } from "@/lib/subscriptionPlans";
-import { OwnerSectionHead, ownerGateBanner, ownerPrimaryBtn, ownerStack } from "@/components/owner/ownerUi";
+import { ownerGateBanner, ownerPrimaryBtn, ownerStack, ownerStatusChip } from "@/components/owner/ownerUi";
 
 const emptyPlan = normalizePlanConfig({
   slug: "",
@@ -71,21 +71,25 @@ export default function PlanManagement({ ar }) {
 
   return (
     <div style={ownerStack}>
-      <OwnerSectionHead
-        kicker={ar ? "كتالوج الاشتراكات" : "Subscription catalog"}
-        title={ar ? "باقات NiroVera" : "NiroVera plans"}
-        meta={(
-          <button type="button" onClick={() => setEditing({ ...emptyPlan })} style={ownerPrimaryBtn()}>
-            <Plus className="h-4 w-4" />
-            {ar ? "إنشاء باقة" : "Create plan"}
-          </button>
-        )}
-      />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13, color: "var(--nv-ink2)" }}>
+          <strong style={{ color: "var(--nv-ink)" }}>{ar ? `${plans.length} باقات` : `${plans.length} plans`}</strong>
+          <span style={{ color: "var(--nv-muted)" }}>·</span>
+          <span>{ar ? `${plans.filter((p) => p.active).length} مفعّلة` : `${plans.filter((p) => p.active).length} active`}</span>
+          <span style={{ color: "var(--nv-muted)" }}>·</span>
+          <span>{ar ? "الأسعار بالريال السعودي قبل الضريبة" : "Prices in SAR before VAT"}</span>
+          {plans.length && plans.every((p) => p.freeNow) ? <span style={ownerStatusChip("warn")}>{ar ? "كل الباقات مجانية حاليًا" : "All plans free for now"}</span> : null}
+        </div>
+        <button type="button" onClick={() => setEditing({ ...emptyPlan })} style={ownerPrimaryBtn()}>
+          <Plus className="h-4 w-4" />
+          {ar ? "إنشاء باقة" : "Create plan"}
+        </button>
+      </div>
       {ownerGateBanner(gate, ar)}
       {editing ? <PlanForm value={editing} onChange={setEditing} onSave={save} onCancel={() => setEditing(null)} ar={ar} /> : null}
-      <div style={{ display: "grid", gap: 16, paddingTop: 10, gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", alignItems: "stretch" }}>
+      <div style={{ display: "grid", gap: 16, paddingTop: 12, gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", alignItems: "stretch" }}>
         {plans.map((plan) => (
-          <PlanCard key={plan.id} plan={plan} ar={ar} onEdit={() => setEditing({ ...plan })} onToggle={() => toggle(plan)} onDelete={() => remove(plan)} />
+          <PlanCard key={plan.id} plan={plan} ar={ar} allFree={plans.every((p) => p.freeNow)} onEdit={() => setEditing({ ...plan })} onToggle={() => toggle(plan)} onDelete={() => remove(plan)} />
         ))}
       </div>
     </div>

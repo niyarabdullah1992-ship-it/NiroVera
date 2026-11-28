@@ -64,13 +64,13 @@ assert.equal(view.nameEn, "Command");
 assert.equal(view.monthlyPrice, 310);
 const untouched = dashboardSubscription({ plan: "Starter" }, data);
 assert.equal(untouched.nameAr, "البداية");
-assert.equal(untouched.monthlyPrice, 49);
+assert.equal(untouched.monthlyPrice, 199);
 const before = dashboardSubscription({ plan: "enterprise" }, {});
 assert.equal(before.nameAr, "المؤسسات");
-assert.equal(before.monthlyPrice, 249);
+assert.equal(before.monthlyPrice, 949);
 const otherCompany = dashboardSubscription({ plan: "enterprise" }, { settings: {} });
 assert.equal(otherCompany.nameAr, "المؤسسات");
-assert.equal(otherCompany.monthlyPrice, 249);
+assert.equal(otherCompany.monthlyPrice, 949);
 const listed = companySubscriptionRow(
   { id: "c1", name: "الأولى", plan: "enterprise", subscriptionEnd: "2026-12-31", subscriptionExempt: false },
   data,

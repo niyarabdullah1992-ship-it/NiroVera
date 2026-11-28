@@ -296,7 +296,7 @@ function AppRoutes() {
       <Route path="/api/*" element={<Navigate to="/login" replace />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
-    <PlatformMusicButton inPlatform={isPlatform} />
+    {path.startsWith("/owner") ? null : <PlatformMusicButton inPlatform={isPlatform} />}
     </Suspense>
   );
 }

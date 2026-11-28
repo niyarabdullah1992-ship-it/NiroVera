@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 
 // Maps Stripe price ids back to plan names (must mirror stripeCheckout).
-const MANUAL_PLAN_MONTHLY_PRICE = { Starter: 49, Professional: 149, Enterprise: 249 };
+const MANUAL_PLAN_MONTHLY_PRICE = { Starter: 199, Professional: 549, Enterprise: 949 };
 
 const PRICE_TO_PLAN = {
   'price_1Tro3sAz7ujPvPWo7k0AlkdX': { plan: 'Starter', billing: 'monthly' },

@@ -10,7 +10,7 @@ import { DEFAULT_SUBSCRIPTION_PLANS } from "./subscriptionPlans.js";
 const REGISTRY_KEY = "powercare_registry";
 const PLANS_KEY = "powercare_local_plans";
 const AUDIT_KEY = "powercare_local_platform_audit";
-const MANUAL_PLAN_MONTHLY_PRICE = { Starter: 49, Professional: 149, Enterprise: 249 };
+const MANUAL_PLAN_MONTHLY_PRICE = { Starter: 199, Professional: 549, Enterprise: 949 };
 const VALID_PLANS = new Set(["Starter", "Professional", "Enterprise", "Custom"]);
 const DAY = 86400000;
 
@@ -84,8 +84,17 @@ export function localPlans() {
   const stored = read(PLANS_KEY, null);
   if (Array.isArray(stored) && stored.length) {
     // الباقات بالريال: ما بُذر محليًا بالدولار قبل التحويل ينتقل مرة واحدة
-    if (stored.some((plan) => plan.currency === "USD")) {
-      const moved = stored.map((plan) => (plan.currency === "USD" ? { ...plan, currency: "SAR" } : plan));
+    // وأسعار الدولار القديمة (49/149/249) تُستبدل بأسعارها بالريال
+    const OLD = { starter: 49, professional: 149, enterprise: 249 };
+    const stale = (plan) => plan.currency === "USD" || OLD[plan.slug] === Number(plan.monthlyPrice);
+    if (stored.some(stale)) {
+      const moved = stored.map((plan) => {
+        if (!stale(plan)) return plan;
+        const fresh = DEFAULT_SUBSCRIPTION_PLANS.find((row) => row.slug === plan.slug);
+        return OLD[plan.slug] === Number(plan.monthlyPrice) && fresh
+          ? { ...plan, currency: "SAR", monthlyPrice: fresh.monthlyPrice, yearlyPrice: fresh.yearlyPrice }
+          : { ...plan, currency: "SAR" };
+      });
       write(PLANS_KEY, moved);
       return moved;
     }

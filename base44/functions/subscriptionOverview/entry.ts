@@ -160,7 +160,8 @@ Deno.serve(async (req) => {
     const promotionalFreePlans = new Set(planCatalog.filter((plan) => plan.freeNow === true).map((plan) => plan.nameEn));
     const now = Date.now();
     const latestByEmail = {};
-    for (const payment of payments) { const key = String(payment.email || '').toLowerCase(); if (key && !latestByEmail[key]) latestByEmail[key] = payment; }
+    // only a captured payment is revenue — an abandoned or failed checkout is not
+    for (const payment of payments) { if (payment.status !== 'paid') continue; const key = String(payment.email || '').toLowerCase(); if (key && !latestByEmail[key]) latestByEmail[key] = payment; }
     const rows = accounts.map((account) => {
       const payment = latestByEmail[String(account.ownerEmail || '').toLowerCase()];
       const endTs = account.subscriptionEnd ? Date.parse(account.subscriptionEnd) : null;

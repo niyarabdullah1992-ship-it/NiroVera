@@ -580,7 +580,7 @@ Deno.serve(async (req) => {
     const auth = await getAuth(base44, body);
 
     if (action === 'syncAccount') {
-      const { name, ownerEmail, ownerPassword, plan, allowedEmailDomain, emailLanguage, subscriptionStart, subscriptionEnd } = body;
+      const { name, ownerEmail, ownerPassword, plan, allowedEmailDomain, emailLanguage } = body;
       const existing = await base44.asServiceRole.entities.CompanyAccount.filter({ companyId });
       const email = String(ownerEmail || '').trim().toLowerCase();
       const newIsIndividual = String(plan || '').toLowerCase() === 'individual';
@@ -624,8 +624,39 @@ Deno.serve(async (req) => {
         if (sameKind) return Response.json({ error: 'email_exists' }, { status: 409 });
       }
 
+      // الباقة وتواريخ الاشتراك حكمُ المنصة لا المتصفح: كان مالك الشركة يرسل plan و subscriptionEnd
+      // كما يشاء (المؤسسات حتى 2099) فتظهر في لوحة المالك مشتركًا نشطًا بلا دفع، وكانت تجديدات Tap
+      // تُمحى لأن المتصفح يعيد subscriptionEnd: null بعد أن مدّها verifyCharge. تُقبل الباقة المطلوبة
+      // فقط إن كانت مجانية الآن في الكتالوج، أو مدفوعة بدفعة Tap مقبوضة لهذا البريد لم تُربط بعد.
+      const prev = existing[0] || null;
+      const today = new Date().toISOString().slice(0, 10);
+      const requestedPlan = String(plan || '').trim();
+      let nextPlan = prev ? (prev.plan || 'Free') : 'Free';
+      let nextStart = prev?.subscriptionStart ?? null;
+      let nextEnd = prev?.subscriptionEnd ?? null;
+      let linkPaymentId = null;
+      if (requestedPlan && requestedPlan !== (prev?.plan || '')) {
+        if (newIsIndividual && !prev) {
+          nextPlan = requestedPlan; nextStart = today; nextEnd = null;
+        } else {
+          const catalog = await base44.asServiceRole.entities.SubscriptionPlan.filter({ nameEn: requestedPlan, active: true });
+          if (catalog.some((row) => row.freeNow === true)) {
+            nextPlan = requestedPlan; nextStart = today; nextEnd = null;
+          } else {
+            const paid = (await base44.asServiceRole.entities.SubscriptionPayment.filter({ email, status: 'paid' }))
+              .filter((row) => row.plan === requestedPlan && !row.companyId && row.paidAt)
+              .sort((left, right) => String(right.paidAt).localeCompare(String(left.paidAt)))[0];
+            if (paid) {
+              const end = new Date(paid.paidAt); end.setDate(end.getDate() + (paid.billing === 'yearly' ? 365 : 30));
+              nextPlan = requestedPlan; nextStart = String(paid.paidAt).slice(0, 10); nextEnd = end.toISOString().slice(0, 10);
+              linkPaymentId = paid.id;
+            }
+          }
+        }
+      }
+
       const supportedEmailLanguages = ['en', 'ar', 'de', 'fr', 'es', 'pt', 'ru', 'ja', 'ko'];
-      const fields = { companyId, name, ownerEmail: email, ownerPassword: storedPassword, plan, orgType, allowedEmailDomain: allowedEmailDomain || '', emailLanguage: supportedEmailLanguages.includes(emailLanguage) ? emailLanguage : (existing[0]?.emailLanguage || 'en'), subscriptionStart: Object.prototype.hasOwnProperty.call(body, 'subscriptionStart') ? subscriptionStart : (existing[0]?.subscriptionStart ?? null), subscriptionEnd: Object.prototype.hasOwnProperty.call(body, 'subscriptionEnd') ? subscriptionEnd : (existing[0]?.subscriptionEnd ?? null) };
+      const fields = { companyId, name, ownerEmail: email, ownerPassword: storedPassword, plan: nextPlan, orgType, allowedEmailDomain: allowedEmailDomain || '', emailLanguage: supportedEmailLanguages.includes(emailLanguage) ? emailLanguage : (existing[0]?.emailLanguage || 'en'), subscriptionStart: nextStart, subscriptionEnd: nextEnd };
       let token = null;
       if (existing.length) {
         await base44.asServiceRole.entities.CompanyAccount.update(existing[0].id, fields);
@@ -634,6 +665,7 @@ Deno.serve(async (req) => {
         await base44.asServiceRole.entities.CompanyAccount.create(fields);
         token = await makeSession(base44, companyId, null, 'owner');
       }
+      if (linkPaymentId) await base44.asServiceRole.entities.SubscriptionPayment.update(linkPaymentId, { companyId });
       const ownerId = String(body.ownerId || '').trim() || (existing.length ? '' : `emp_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`);
       const ownerName = String(body.ownerName || email.split('@')[0] || 'Owner').trim();
       if (ownerId) {

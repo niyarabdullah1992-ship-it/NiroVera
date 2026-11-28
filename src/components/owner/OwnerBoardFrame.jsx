@@ -79,8 +79,9 @@ export default function OwnerBoardFrame({
       .then((response) => { if (live) setSummary(response.data?.summary || null); })
       .catch(() => { if (live) setSummary(null); });
     return () => { live = false; };
-    // refreshKey يُبصم على كل تحديث: اليدوي والتلقائي كل 30 ثانية وعند العودة إلى النافذة.
-  }, [refreshKey]);
+    // refreshKey يُبصم على كل تحديث: اليدوي والتلقائي كل 30 ثانية وعند العودة إلى النافذة،
+    // وتغيير القسم يعيد العدّ أيضًا: تجميد شركة ثم الانتقال لا يترك الشارة على رقمها القديم.
+  }, [refreshKey, tab]);
 
   const attention = (summary?.frozen || 0) + (summary?.expired || 0) + (summary?.pastDue || 0);
   const badges = { subscribers: attention || null };

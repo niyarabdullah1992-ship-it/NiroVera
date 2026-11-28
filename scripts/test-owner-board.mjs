@@ -186,3 +186,17 @@ for (const value of expectedTabs) {
 }
 
 console.log("owner board rulings ok");
+
+// The browser does not rule its own subscription: syncAccount ignores client plan dates, accepts a
+// plan only when free now or paid by a captured Tap payment; revenue counts paid payments only.
+{
+  const { readFileSync: readSrc } = await import("node:fs");
+  const dir = readSrc(new URL("../base44/functions/companyDirectory/entry.ts", import.meta.url), "utf8");
+  const sync = dir.slice(dir.indexOf("action === 'syncAccount'"), dir.indexOf("action === 'syncAccount'") + 6000);
+  assert.doesNotMatch(sync, /hasOwnProperty\.call\(body, 'subscriptionEnd'\)/, "client subscriptionEnd is not trusted");
+  assert.match(sync, /freeNow === true/, "a requested plan must be free now");
+  assert.match(sync, /status: 'paid'/, "or paid by a captured payment");
+  assert.match(sync, /subscriptionEnd: nextEnd/);
+  const overview = readSrc(new URL("../base44/functions/subscriptionOverview/entry.ts", import.meta.url), "utf8");
+  assert.match(overview, /payment\.status !== 'paid'\) continue/, "only paid payments count as revenue");
+}

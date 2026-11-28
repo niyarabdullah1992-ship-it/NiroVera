@@ -82,7 +82,15 @@ function patchCompany(id, patch) {
 
 export function localPlans() {
   const stored = read(PLANS_KEY, null);
-  if (Array.isArray(stored) && stored.length) return stored;
+  if (Array.isArray(stored) && stored.length) {
+    // الباقات بالريال: ما بُذر محليًا بالدولار قبل التحويل ينتقل مرة واحدة
+    if (stored.some((plan) => plan.currency === "USD")) {
+      const moved = stored.map((plan) => (plan.currency === "USD" ? { ...plan, currency: "SAR" } : plan));
+      write(PLANS_KEY, moved);
+      return moved;
+    }
+    return stored;
+  }
   const seeded = DEFAULT_SUBSCRIPTION_PLANS.map((plan) => ({ ...plan, id: `plan_${plan.slug}` }));
   write(PLANS_KEY, seeded);
   return seeded;
@@ -129,7 +137,7 @@ function overview(now = Date.now()) {
       daysLeft: free || !endTs ? null : Math.ceil((endTs - now) / DAY),
       amount: free ? 0 : listPrice,
       customPrice: account.customPrice,
-      currency: "USD",
+      currency: "SAR",
       exempt: account.subscriptionExempt,
       isFree: free || listPrice === 0,
       exemptReason: account.exemptReason,

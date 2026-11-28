@@ -12,7 +12,7 @@ const emptyPlan = normalizePlanConfig({
   nameEn: "",
   monthlyPrice: 0,
   yearlyPrice: 0,
-  currency: "USD",
+  currency: "SAR",
   featuresAr: [],
   featuresEn: [],
   active: true,

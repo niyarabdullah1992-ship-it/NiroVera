@@ -1,3 +1,4 @@
+import { currencyLabel } from "@/lib/subscriptionPlans";
 import React, { useEffect, useState } from "react";
 import { Crown } from "lucide-react";
 import {
@@ -164,7 +165,7 @@ export default function OwnerCompanyRulings({
                     <span style={{ display: "block", fontSize: 11, color: on ? "inherit" : MUTED, opacity: on ? 0.85 : 1 }}>{company.ownerEmail || ""}</span>
                   </span>
                   <span style={{ fontSize: 12, textAlign: "end" }}>
-                    {item.view.ok ? `${ar ? item.view.nameAr : item.view.nameEn} · ${item.view.monthlyPrice} ${item.view.currency}` : (ar ? item.view.reason : item.view.reasonEn)}
+                    {item.view.ok ? `${ar ? item.view.nameAr : item.view.nameEn} · ${item.view.monthlyPrice} ${currencyLabel(item.view.currency, ar)}` : (ar ? item.view.reason : item.view.reasonEn)}
                     <span style={{ display: "block", marginTop: 4 }}>
                       <span style={ownerStatusChip(item.status.id === "active" ? "ok" : item.status.id === "frozen" ? "bad" : item.status.id === "ended" ? "bad" : "warn")}>
                         {ar ? item.status.ar : item.status.en}

@@ -95,7 +95,7 @@ export default function SubscriberRow({ row, ar, onChanged }) {
         <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--nv-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} dir="ltr">{row.email}</p>
       </td>
       <td style={muted} data-label={ar ? "الباقة" : "Plan"}>
-        {planLabel(row.plan, ar)}{row.customPrice != null ? ` · $${row.customPrice}` : ""}
+        {planLabel(row.plan, ar)}{row.customPrice != null ? ` · ${row.customPrice} ${ar ? "ر.س" : "SAR"}` : ""}
       </td>
       <td style={cell} data-label={ar ? "الحالة" : "Status"}>
         <span style={ownerStatusChip(tones[status] || "mute")}>

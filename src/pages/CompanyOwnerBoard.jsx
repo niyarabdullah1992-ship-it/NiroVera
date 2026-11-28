@@ -14,7 +14,7 @@ import {
 } from "@/lib/store";
 import { isLocalPreviewActive } from "@/lib/localPreview";
 import { ownerBoardSections, platformOwnerGate, resolveOwnerBoardActor } from "@/lib/ownerBoard";
-import { DEFAULT_SUBSCRIPTION_PLANS, planDisplayName } from "@/lib/subscriptionPlans";
+import { DEFAULT_SUBSCRIPTION_PLANS, currencyLabel, planDisplayName } from "@/lib/subscriptionPlans";
 import { logAudit } from "@/lib/auditLog";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import OwnerBoardFrame from "@/components/owner/OwnerBoardFrame";
@@ -253,7 +253,7 @@ export default function CompanyOwnerBoard() {
                   <span>{ar ? "الباقة" : "Plan"}</span>
                   <select style={ownerField()} value={form.plan} onChange={(event) => setForm({ ...form, plan: event.target.value })}>
                     {DEFAULT_SUBSCRIPTION_PLANS.filter((plan) => plan.slug !== "free").map((plan) => (
-                      <option key={plan.slug} value={plan.nameEn}>{planDisplayName(plan, ar ? "ar" : "en")} — {plan.monthlyPrice} {plan.currency}</option>
+                      <option key={plan.slug} value={plan.nameEn}>{planDisplayName(plan, ar ? "ar" : "en")} — {plan.monthlyPrice} {currencyLabel(plan.currency, ar)}</option>
                     ))}
                   </select>
                 </label>

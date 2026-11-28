@@ -1,6 +1,7 @@
 import React from "react";
 import { Check, Pencil, Power, Trash2 } from "lucide-react";
 import { OWNER_MONO, ownerGhostBtn, ownerPaper, ownerStatusChip } from "@/components/owner/ownerUi";
+import { currencyLabel } from "@/lib/subscriptionPlans";
 
 export default function PlanCard({ plan, ar, onEdit, onToggle, onDelete }) {
   const name = ar ? plan.nameAr : plan.nameEn;
@@ -37,12 +38,13 @@ export default function PlanCard({ plan, ar, onEdit, onToggle, onDelete }) {
       </div>
 
       <div>
-        <div dir="ltr" style={{ display: "flex", alignItems: "baseline", gap: 6, justifyContent: ar ? "flex-end" : "flex-start" }}>
-          <span style={{ ...OWNER_MONO, fontSize: 34, fontWeight: 700, color: "var(--nv-ink)", lineHeight: 1 }}>${plan.monthlyPrice}</span>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+          <span style={{ ...OWNER_MONO, fontSize: 34, fontWeight: 700, color: "var(--nv-ink)", lineHeight: 1 }}>{plan.monthlyPrice}</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--nv-ink2)" }}>{currencyLabel(plan.currency, ar)}</span>
           <span style={{ fontSize: 12, color: "var(--nv-muted)" }}>/ {ar ? "شهر" : "mo"}</span>
         </div>
         <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--nv-muted)" }}>
-          {ar ? "أو" : "or"} <strong dir="ltr" style={{ color: "var(--nv-ink2)" }}>${plan.yearlyPrice}</strong> {ar ? "سنويًا" : "yearly"}
+          {ar ? "أو" : "or"} <strong style={{ color: "var(--nv-ink2)" }}>{plan.yearlyPrice} {currencyLabel(plan.currency, ar)}</strong> {ar ? "سنويًا" : "yearly"}
           {plan.freeNow ? <span style={{ ...ownerStatusChip("warn"), marginInlineStart: 8, padding: "1px 8px", fontSize: 10.5 }}>{ar ? "مجانية حاليًا" : "Free for now"}</span> : null}
         </p>
       </div>

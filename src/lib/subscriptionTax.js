@@ -11,10 +11,10 @@ export function subscriptionBillableAmount(row) {
   return Math.max(0, Number(row.amount ?? row.customPrice) || 0);
 }
 
-export function formatSubscriptionMoney(amount, currency = "USD", ar = false) {
+export function formatSubscriptionMoney(amount, currency = "SAR", ar = false) {
   return new Intl.NumberFormat(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-US", {
     style: "currency",
-    currency: currency || "USD",
+    currency: currency || "SAR",
     minimumFractionDigits: 2,
   }).format(Number(amount) || 0);
 }

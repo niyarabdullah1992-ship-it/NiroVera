@@ -5,7 +5,7 @@ import {
   ArrowRight,
   Building2,
   CalendarClock,
-  CircleDollarSign,
+  Wallet,
   Layers,
   Loader2,
   Megaphone,
@@ -18,6 +18,7 @@ import SubscriberAnalytics, { planLabel } from "@/components/owner/SubscriberAna
 import VisitorStatsCard from "@/components/owner/VisitorStatsCard";
 import OwnerExportButtons from "@/components/owner/OwnerExportButtons";
 import { OwnerCard, OwnerKpi, ownerPaper, ownerStatusChip } from "@/components/owner/ownerUi";
+import { currencyLabel } from "@/lib/subscriptionPlans";
 
 function statusOf(row, ar) {
   if (row.frozen) return ["bad", ar ? "مجمّد" : "Frozen"];
@@ -68,8 +69,8 @@ export default function SaasAnalyticsDashboard({ lang, onTab }) {
     [ar ? "المجمّدة" : "Frozen", summary.frozen || 0],
     [ar ? "التجريبية" : "Trials", summary.trialing || 0],
     [ar ? "المنتهية" : "Expired", summary.expired || 0],
-    [ar ? "الإيراد الشهري MRR" : "MRR", `$${summary.mrr ?? 0}`],
-    [ar ? "الإيراد السنوي ARR" : "ARR", `$${summary.arr ?? 0}`],
+    [ar ? "الإيراد الشهري MRR" : "MRR", `${summary.mrr ?? 0} ${currencyLabel("SAR", ar)}`],
+    [ar ? "الإيراد السنوي ARR" : "ARR", `${summary.arr ?? 0} ${currencyLabel("SAR", ar)}`],
   ];
 
   const quick = [
@@ -82,7 +83,7 @@ export default function SaasAnalyticsDashboard({ lang, onTab }) {
   return (
     <>
       <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))" }}>
-        <OwnerKpi big icon={CircleDollarSign} tone="gold" label={ar ? "الإيراد الشهري (MRR)" : "Monthly revenue (MRR)"} value={`$${summary.mrr ?? 0}`} sub={ar ? `سنويًا $${summary.arr ?? 0}` : `$${summary.arr ?? 0} annually`} />
+        <OwnerKpi big icon={Wallet} tone="gold" label={ar ? "الإيراد الشهري (ر.س)" : "Monthly revenue (SAR)"} value={`${summary.mrr ?? 0}`} sub={ar ? `سنويًا ${summary.arr ?? 0} ر.س` : `${summary.arr ?? 0} SAR yearly`} />
         <OwnerKpi big icon={Building2} tone="ok" label={ar ? "الشركات المسجلة" : "Registered companies"} value={summary.totalCompanies} sub={ar ? "اضغط لإدارتها" : "Open to manage"} onClick={go("companies")} />
         <OwnerKpi big icon={Users} tone="ok" label={ar ? "اشتراكات نشطة" : "Active subscriptions"} value={summary.activeSubscriptions} sub={ar ? `${summary.trialing || 0} تجريبي` : `${summary.trialing || 0} trialing`} onClick={go("subscribers")} />
         <OwnerKpi big icon={AlertTriangle} tone={attention ? "bad" : "mute"} label={ar ? "تحتاج انتباهك" : "Need attention"} value={attention} sub={attention ? (ar ? `${summary.frozen || 0} مجمّدة · ${summary.expired || 0} منتهية` : `${summary.frozen || 0} frozen · ${summary.expired || 0} expired`) : (ar ? "كل الاشتراكات سليمة" : "All subscriptions healthy")} onClick={go("subscribers")} />

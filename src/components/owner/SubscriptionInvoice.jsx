@@ -11,7 +11,7 @@ export default function SubscriptionInvoice({ row, ar }) {
   if (amount == null && !row.exempt && !row.isFree && row.plan !== "Free") {
     return <span style={{ color: "var(--nv-muted)" }}>—</span>;
   }
-  const currency = row.currency || "USD";
+  const currency = row.currency || "SAR";
   const totals = subscriptionTotals(subscriptionBillableAmount(row));
   const invoiceNumber = subscriptionInvoiceNumber(row);
   const issueDate = new Date(row.startedAt || Date.now()).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB");

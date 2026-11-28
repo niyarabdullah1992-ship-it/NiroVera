@@ -9,7 +9,7 @@ import { LABOR_RULES } from "@/lib/laborRules";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { trackVisit } from "@/lib/trackVisit";
-import { DEFAULT_SUBSCRIPTION_PLANS, planDisplayName } from "@/lib/subscriptionPlans";
+import { DEFAULT_SUBSCRIPTION_PLANS, currencyLabel, planDisplayName } from "@/lib/subscriptionPlans";
 
 /*
  * The public face of NiroVera, drawn with the same parts as the inside of the platform (v7):
@@ -394,7 +394,7 @@ export default function Landing() {
               </Link>
               <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                 <strong style={{ ...MONO, fontSize: 44, fontWeight: 600, color: "#fff", lineHeight: 1 }}>{plan.monthlyPrice}</strong>
-                <span style={{ fontSize: 13, color: C.soft }}>{plan.currency} / {T("شهر", "month")}</span>
+                <span style={{ fontSize: 13, color: C.soft }}>{currencyLabel(plan.currency, ar)} / {T("شهر", "month")}</span>
               </span>
             </div>
           </Band>

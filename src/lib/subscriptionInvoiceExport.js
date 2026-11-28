@@ -10,7 +10,7 @@ export const subscriptionInvoiceNumber = (row) => {
 };
 
 export const subscriptionInvoiceRow = (row, ar) => {
-  const currency = row.currency || "USD";
+  const currency = row.currency || "SAR";
   const totals = subscriptionTotals(subscriptionBillableAmount(row));
   const money = (value) => formatSubscriptionMoney(value, currency, ar);
   return [subscriptionInvoiceNumber(row), row.companyName || "—", row.email || "—", row.plan || "—", row.billing === "yearly" ? (ar ? "سنوي" : "Yearly") : (ar ? "شهري" : "Monthly"), new Date(row.startedAt || Date.now()).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB"), currency, money(totals.subtotal), money(totals.vat), money(totals.total)];
@@ -22,8 +22,8 @@ const esc = (value) => String(value ?? "—").replace(/&/g, "&amp;").replace(/</
 const rowsWithTotal = (rows, ar) => {
   const detailRows = rows.map((row) => subscriptionInvoiceRow(row, ar));
   const totals = subscriptionTotals(rows.reduce((sum, row) => sum + subscriptionBillableAmount(row), 0));
-  const money = (value) => formatSubscriptionMoney(value, "USD", ar);
-  return [...detailRows, [ar ? "الإجمالي" : "TOTAL", "", "", "", "", "", "USD", money(totals.subtotal), money(totals.vat), money(totals.total)]];
+  const money = (value) => formatSubscriptionMoney(value, "SAR", ar);
+  return [...detailRows, [ar ? "الإجمالي" : "TOTAL", "", "", "", "", "", "SAR", money(totals.subtotal), money(totals.vat), money(totals.total)]];
 };
 
 export function exportSubscriptionInvoicesExcel(rows, ar, filename = "subscription_invoices") {
@@ -33,7 +33,7 @@ export function exportSubscriptionInvoicesExcel(rows, ar, filename = "subscripti
 export function printSubscriptionInvoices(rows, ar, title) {
   const dir = ar ? "rtl" : "ltr";
   const cards = rows.map((item) => {
-    const currency = item.currency || "USD";
+    const currency = item.currency || "SAR";
     const totals = subscriptionTotals(subscriptionBillableAmount(item));
     const formatted = (value) => formatSubscriptionMoney(value, currency, ar);
     const issueDate = new Date(item.startedAt || Date.now()).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB");

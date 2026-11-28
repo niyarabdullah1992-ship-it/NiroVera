@@ -17,7 +17,7 @@ export default function SubscriptionRevenueSummary({ amount = 0, ar }) {
         <div key={item.label} style={{ padding: "16px 20px", borderInlineStart: index ? "1px solid var(--nv-line)" : "none" }}>
           <p style={{ margin: 0, fontSize: 12.5, color: "var(--nv-muted)" }}>{item.label}</p>
           <p dir="ltr" style={{ ...OWNER_MONO, margin: "6px 0 0", fontSize: 20, fontWeight: 600, color: "var(--nv-ink)", textAlign: ar ? "right" : "left" }}>
-            {formatSubscriptionMoney(item.value, "USD", ar)}
+            {formatSubscriptionMoney(item.value, "SAR", ar)}
           </p>
         </div>
       ))}

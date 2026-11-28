@@ -236,7 +236,7 @@ export function rulingSubscriptionPlans(saved) {
       nameEn: nameEn || plan.nameEn,
       monthlyPrice: monthly != null && monthly >= 0 ? monthly : plan.monthlyPrice,
       yearlyPrice: yearly != null && yearly >= 0 ? yearly : plan.yearlyPrice,
-      currency: plan.currency || "USD",
+      currency: plan.currency || "SAR",
     };
   });
 }
@@ -249,7 +249,7 @@ export function persistSubscriptionPlans(draft) {
     const nameEn = String(hit.nameEn ?? plan.nameEn).trim();
     const monthly = finitePrice(hit.monthlyPrice ?? plan.monthlyPrice);
     const yearly = finitePrice(hit.yearlyPrice ?? plan.yearlyPrice);
-    return { slug: plan.slug, nameAr, nameEn, monthlyPrice: monthly, yearlyPrice: yearly, currency: plan.currency || "USD", fallback: plan };
+    return { slug: plan.slug, nameAr, nameEn, monthlyPrice: monthly, yearlyPrice: yearly, currency: plan.currency || "SAR", fallback: plan };
   });
   for (const plan of plans) {
     if (!plan.nameAr || !plan.nameEn) {
@@ -296,7 +296,7 @@ export function dashboardSubscription(company, data) {
     nameEn: plan.nameEn,
     monthlyPrice: plan.monthlyPrice,
     yearlyPrice: plan.yearlyPrice,
-    currency: plan.currency || "USD",
+    currency: plan.currency || "SAR",
     labelAr: planDisplayName(plan, "ar"),
     labelEn: planDisplayName(plan, "en"),
   };

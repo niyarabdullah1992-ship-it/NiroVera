@@ -10,8 +10,8 @@ export default function PlanForm({ value, onChange, onSave, onCancel, ar }) {
       <input required value={value.nameEn} onChange={(e) => set("nameEn", e.target.value)} placeholder="Plan name in English" style={ownerField()} />
       <input required value={value.slug} disabled={!!value.id} onChange={(e) => set("slug", e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} placeholder="plan-id" style={{ ...ownerField(), opacity: value.id ? 0.6 : 1 }} />
       <select value={value.currency} onChange={(e) => set("currency", e.target.value)} style={ownerField()}>
-        <option>USD</option>
-        <option>SAR</option>
+        <option value="SAR">ريال سعودي (SAR)</option>
+        <option value="USD">دولار (USD)</option>
       </select>
       <input required type="number" min="0" step="0.01" value={value.monthlyPrice} onChange={(e) => set("monthlyPrice", Number(e.target.value))} placeholder={ar ? "السعر الشهري" : "Monthly price"} style={ownerField()} />
       <input required type="number" min="0" step="0.01" value={value.yearlyPrice} onChange={(e) => set("yearlyPrice", Number(e.target.value))} placeholder={ar ? "السعر السنوي" : "Yearly price"} style={ownerField()} />

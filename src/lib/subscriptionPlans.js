@@ -16,10 +16,10 @@ const ALL = PLAN_SECTIONS.map((item) => item.key);
 export const SIGNUP_FULL_SUITE_SECTIONS = ALL;
 
 export const DEFAULT_SUBSCRIPTION_PLANS = [
-  { slug: "free", nameAr: "المجانية", nameEn: "Free", monthlyPrice: 0, yearlyPrice: 0, currency: "USD", featuresAr: ["الميزات الأساسية", "إدارة فريق صغير", "تقارير أساسية"], featuresEn: ["Core features", "Small team management", "Basic reports"], maxStations: 1, maxEmployees: 5, enabledSections: CORE, enabledFeatures: [], active: true, freeNow: true, sortOrder: 0 },
-  { slug: "starter", nameAr: "البداية", nameEn: "Starter", monthlyPrice: 49, yearlyPrice: 490, currency: "USD", featuresAr: ["حزمة تشغيل واسعة", "الحضور والمهام والهيكل", "توقيع وملفات"], featuresEn: ["Broad ops pack", "Attendance, tasks, org", "Signing and files"], maxStations: 5, maxEmployees: 30, enabledSections: STARTER, enabledFeatures: ["exports", "signing"], active: true, freeNow: true, sortOrder: 1 },
-  { slug: "professional", nameAr: "الاحترافية", nameEn: "Professional", monthlyPrice: 149, yearlyPrice: 1490, currency: "USD", featuresAr: ["كل تطبيقات المنصة", "رواتب ومحاسبة وعهد", "مساعد ذكي وتوقيع"], featuresEn: ["All suite apps", "Payroll, accounting, assets", "AI and signing"], maxStations: null, maxEmployees: null, enabledSections: ALL, enabledFeatures: ["exports", "ai", "signing"], active: true, freeNow: true, sortOrder: 2 },
-  { slug: "enterprise", nameAr: "المؤسسات", nameEn: "Enterprise", monthlyPrice: 249, yearlyPrice: 2490, currency: "USD", featuresAr: ["كل تطبيقات المنصة", "تشغيل متعدد الفروع", "دعم مؤسسي متقدم"], featuresEn: ["All suite apps", "Multi-station operations", "Advanced enterprise support"], maxStations: null, maxEmployees: null, enabledSections: ALL, enabledFeatures: ["exports", "ai", "signing"], active: true, freeNow: true, sortOrder: 3 },
+  { slug: "free", nameAr: "المجانية", nameEn: "Free", monthlyPrice: 0, yearlyPrice: 0, currency: "SAR", featuresAr: ["الميزات الأساسية", "إدارة فريق صغير", "تقارير أساسية"], featuresEn: ["Core features", "Small team management", "Basic reports"], maxStations: 1, maxEmployees: 5, enabledSections: CORE, enabledFeatures: [], active: true, freeNow: true, sortOrder: 0 },
+  { slug: "starter", nameAr: "البداية", nameEn: "Starter", monthlyPrice: 49, yearlyPrice: 490, currency: "SAR", featuresAr: ["حزمة تشغيل واسعة", "الحضور والمهام والهيكل", "توقيع وملفات"], featuresEn: ["Broad ops pack", "Attendance, tasks, org", "Signing and files"], maxStations: 5, maxEmployees: 30, enabledSections: STARTER, enabledFeatures: ["exports", "signing"], active: true, freeNow: true, sortOrder: 1 },
+  { slug: "professional", nameAr: "الاحترافية", nameEn: "Professional", monthlyPrice: 149, yearlyPrice: 1490, currency: "SAR", featuresAr: ["كل تطبيقات المنصة", "رواتب ومحاسبة وعهد", "مساعد ذكي وتوقيع"], featuresEn: ["All suite apps", "Payroll, accounting, assets", "AI and signing"], maxStations: null, maxEmployees: null, enabledSections: ALL, enabledFeatures: ["exports", "ai", "signing"], active: true, freeNow: true, sortOrder: 2 },
+  { slug: "enterprise", nameAr: "المؤسسات", nameEn: "Enterprise", monthlyPrice: 249, yearlyPrice: 2490, currency: "SAR", featuresAr: ["كل تطبيقات المنصة", "تشغيل متعدد الفروع", "دعم مؤسسي متقدم"], featuresEn: ["All suite apps", "Multi-station operations", "Advanced enterprise support"], maxStations: null, maxEmployees: null, enabledSections: ALL, enabledFeatures: ["exports", "ai", "signing"], active: true, freeNow: true, sortOrder: 3 },
 ];
 
 export function normalizePlanConfig(plan) {
@@ -35,3 +35,10 @@ export function planConfigForName(plans, name) {
 
 export const planDisplayName = (plan, lang) => lang === "ar" ? plan.nameAr : plan.nameEn;
 export const planFeatures = (plan, lang) => lang === "ar" ? plan.featuresAr : plan.featuresEn;
+/** Short currency mark for prices: SAR → «ر.س» in Arabic, "SAR" in English. */
+export function currencyLabel(code = "SAR", ar = true) {
+  const c = String(code || "SAR").toUpperCase();
+  if (c === "SAR") return ar ? "ر.س" : "SAR";
+  if (c === "USD") return ar ? "دولار" : "USD";
+  return c;
+}

@@ -30,7 +30,7 @@
         "USD",
         "SAR"
       ],
-      "default": "USD"
+      "default": "SAR"
     },
     "featuresAr": {
       "type": "array",

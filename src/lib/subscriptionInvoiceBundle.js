@@ -9,9 +9,9 @@ const date = (value, ar) => new Date(value || Date.now()).toLocaleDateString(ar 
 export function printSubscriptionInvoiceBundle(rows, ar) {
   const subscriptions = rows.filter((row) => row.status !== "no_subscription");
   const combined = subscriptionTotals(subscriptions.reduce((sum, row) => sum + subscriptionBillableAmount(row), 0));
-  const totalMoney = (value) => formatSubscriptionMoney(value, "USD", ar);
+  const totalMoney = (value) => formatSubscriptionMoney(value, "SAR", ar);
   const invoices = subscriptions.map((row) => {
-    const currency = row.currency || "USD";
+    const currency = row.currency || "SAR";
     const totals = subscriptionTotals(subscriptionBillableAmount(row));
     const money = (value) => formatSubscriptionMoney(value, currency, ar);
     const cycle = row.billing === "yearly" ? (ar ? "سنوي" : "Yearly") : (ar ? "شهري" : "Monthly");

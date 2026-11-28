@@ -8,7 +8,7 @@ import { useI18n } from "@/lib/i18n";
 import { Check, Loader2 } from "lucide-react";
 import MarketingChrome from "@/components/landing/MarketingChrome";
 import SignupDialog from "@/components/pricing/SignupDialog";
-import { DEFAULT_SUBSCRIPTION_PLANS, normalizePlanConfig, planDisplayName, planFeatures } from "@/lib/subscriptionPlans";
+import { DEFAULT_SUBSCRIPTION_PLANS, currencyLabel, normalizePlanConfig, planDisplayName, planFeatures } from "@/lib/subscriptionPlans";
 import { appsEnabledForPlan } from "@/lib/suiteApps";
 
 export default function Pricing() {
@@ -178,7 +178,7 @@ export default function Pricing() {
             <div key={plan.id || plan.slug} className="flex flex-col rounded-2xl border border-[var(--nv-line)] bg-[var(--nv-card)] p-6 text-[var(--nv-ink)] shadow-[0_8px_24px_rgba(20,40,75,.06)]">
               <div className="mb-4 h-[3px] rounded-full bg-[var(--nv-navy)]" />
               <h3 className="mb-1 text-xl font-semibold text-[var(--nv-ink)]">{planDisplayName(plan, lang)}</h3>
-              <p className="text-3xl font-semibold text-[var(--nv-ink)]">{billing === "yearly" ? plan.yearlyPrice : plan.monthlyPrice} {plan.currency}</p>
+              <p className="text-3xl font-semibold text-[var(--nv-ink)]">{billing === "yearly" ? plan.yearlyPrice : plan.monthlyPrice} {currencyLabel(plan.currency, lang === "ar")}</p>
               <p className="mb-3 text-xs text-[var(--nv-muted)]">{billing === "yearly" ? (lang === "ar" ? "سنويًا" : "per year") : (lang === "ar" ? "شهريًا" : "per month")}</p>
               {plan.freeNow ? <p className="mb-4 text-xs font-medium text-[var(--nv-accent-deep)]">{lang === "ar" ? "متاحة مجانًا في الوقت الراهن" : "Available free for the time being"}</p> : <p className="mb-4 text-xs text-[var(--nv-muted)]">{lang === "ar" ? "تضاف ضريبة القيمة المضافة 15% عند الدفع" : "15% VAT is added at checkout"}</p>}
               <ul className="space-y-2 mb-4 flex-1">

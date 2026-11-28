@@ -140,17 +140,24 @@ export default function SaasAnalyticsDashboard({ lang, onTab }) {
                 </button>
               ))}
             </div>
+            <OwnerExportButtons
+              filename="powercare_owner_analytics"
+              title={ar ? "ملخص أداء المنصة" : "Platform performance summary"}
+              headers={[ar ? "المؤشر" : "Metric", ar ? "القيمة" : "Value"]}
+              rows={exportRows}
+              ar={ar}
+            />
           </OwnerCard>
-          <OwnerCard title={ar ? "تنتهي قريبًا" : "Ending soon"} icon={CalendarClock}>
-            {endingSoon.length === 0 ? (
-              <p style={{ margin: 0, fontSize: 12.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>{ar ? "لا اشتراك ينتهي خلال 14 يومًا." : "Nothing ends in the next 14 days."}</p>
-            ) : endingSoon.slice(0, 5).map((row, index) => (
-              <div key={row.accountId || index} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13 }}>
-                <span style={{ fontWeight: 600 }}>{row.companyName}</span>
-                <span style={ownerStatusChip(row.daysLeft <= 3 ? "bad" : "warn")}>{ar ? `${row.daysLeft} يوم` : `${row.daysLeft}d`}</span>
-              </div>
-            ))}
-          </OwnerCard>
+          {endingSoon.length ? (
+            <OwnerCard title={ar ? "تنتهي قريبًا" : "Ending soon"} icon={CalendarClock}>
+              {endingSoon.slice(0, 5).map((row, index) => (
+                <div key={row.accountId || index} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13 }}>
+                  <span style={{ fontWeight: 600 }}>{row.companyName}</span>
+                  <span style={ownerStatusChip(row.daysLeft <= 3 ? "bad" : "warn")}>{ar ? `${row.daysLeft} يوم` : `${row.daysLeft}d`}</span>
+                </div>
+              ))}
+            </OwnerCard>
+          ) : null}
         </div>
       </div>
 
@@ -169,15 +176,6 @@ export default function SaasAnalyticsDashboard({ lang, onTab }) {
 
       <VisitorStatsCard lang={lang} />
 
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <OwnerExportButtons
-          filename="powercare_owner_analytics"
-          title={ar ? "ملخص أداء المنصة" : "Platform performance summary"}
-          headers={[ar ? "المؤشر" : "Metric", ar ? "القيمة" : "Value"]}
-          rows={exportRows}
-          ar={ar}
-        />
-      </div>
       <style>{`
         [data-owner="quick"]:hover { border-color: var(--nv-accent-border) !important; background: var(--nv-accent-soft) !important; }
       `}</style>

@@ -4,7 +4,6 @@ import { RefreshCw, Loader2, Search, Building2, Users, FlaskConical, AlertTriang
 import SubscriberRow from "@/components/owner/SubscriberRow";
 import SubscriptionRevenueSummary from "@/components/owner/SubscriptionRevenueSummary";
 import SubscriptionBulkExport from "@/components/owner/SubscriptionBulkExport";
-import { subscriptionTotals, subscriptionBillableAmount, formatSubscriptionMoney } from "@/lib/subscriptionTax";
 import {
   OwnerKpi,
   ownerChip,
@@ -46,7 +45,6 @@ export default function SubscribersDashboard({ ar }) {
     if (q && !(row.companyName || "").toLowerCase().includes(q) && !(row.email || "").toLowerCase().includes(q)) return false;
     return true;
   });
-  const tableTotals = subscriptionTotals(rows.reduce((sum, row) => sum + subscriptionBillableAmount(row), 0));
   const stats = summary ? [
     { icon: Building2, label: ar ? "الشركات المسجلة" : "Registered companies", value: summary.totalCompanies, tone: "ok" },
     { icon: Users, label: ar ? "اشتراكات نشطة" : "Active subscriptions", value: summary.activeSubscriptions, tone: "ok" },
@@ -134,17 +132,6 @@ export default function SubscribersDashboard({ ar }) {
                   <SubscriberRow key={row.id || row.accountId || index} row={row} ar={ar} onChanged={load} />
                 ))}
               </tbody>
-              <tfoot>
-                <tr style={{ borderTop: "1px solid var(--nv-line)", background: "var(--nv-soft)" }}>
-                  <td colSpan={8} style={{ padding: "14px" }}>
-                    <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: "8px 20px", fontSize: 12, color: "var(--nv-ink2)" }}>
-                      <span>{ar ? "قبل الضريبة" : "Before VAT"}: <strong dir="ltr">{formatSubscriptionMoney(tableTotals.subtotal, "USD", ar)}</strong></span>
-                      <span>{ar ? "الضريبة 15%" : "VAT 15%"}: <strong dir="ltr">{formatSubscriptionMoney(tableTotals.vat, "USD", ar)}</strong></span>
-                      <span style={{ color: "var(--nv-ok-ink)" }}>{ar ? "الإجمالي شامل الضريبة" : "Total including VAT"}: <strong dir="ltr">{formatSubscriptionMoney(tableTotals.total, "USD", ar)}</strong></span>
-                    </div>
-                  </td>
-                </tr>
-              </tfoot>
             </table>
           </div>
         </>

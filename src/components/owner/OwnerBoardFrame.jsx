@@ -164,15 +164,6 @@ export default function OwnerBoardFrame({
         </nav>
 
         <div data-owner="rail-foot" style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ padding: "12px 14px", borderRadius: 12, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)" }}>
-            <span style={{ fontSize: 11, color: "#8FB39D" }}>{ar ? "الإيراد الشهري المتكرّر" : "Monthly recurring revenue"}</span>
-            <strong dir="ltr" style={{ display: "block", fontFamily: "'IBM Plex Mono', monospace", fontSize: 22, color: "#fff", marginTop: 2, textAlign: ar ? "right" : "left" }}>
-              ${summary?.mrr ?? 0}
-            </strong>
-            <span style={{ fontSize: 11, color: "#8FB39D" }}>
-              {ar ? `${summary?.activeSubscriptions ?? 0} اشتراك نشط` : `${summary?.activeSubscriptions ?? 0} active`}
-            </span>
-          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 6px 0", borderTop: "1px solid rgba(255,255,255,.08)" }}>
             <span style={{ width: 34, height: 34, borderRadius: "50%", background: GOLD, color: RAIL_BG, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, flexShrink: 0 }}>{initials(user?.name || user?.email)}</span>
             <div style={{ minWidth: 0, flex: 1 }}>
@@ -190,10 +181,7 @@ export default function OwnerBoardFrame({
         <header data-owner="topbar" style={{ position: "sticky", top: 0, zIndex: 20, background: "color-mix(in oklab, var(--nv-page, #F3F6F4) 86%, transparent)", backdropFilter: "blur(10px)", borderBottom: "1px solid var(--nv-line, #E4E9E6)" }}>
           <div style={{ maxWidth: 1280, margin: "0 auto", padding: "16px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
             <div style={{ minWidth: 0 }}>
-              <span style={{ fontSize: 11.5, color: "var(--nv-muted, #6B7480)" }}>
-                {ar ? "مالك المنصة" : "Platform owner"} <span style={{ opacity: .5, margin: "0 4px" }}>/</span> {current?.label}
-              </span>
-              <h1 style={{ margin: "2px 0 0", fontSize: 22, fontWeight: 800, color: "var(--nv-ink, #111418)", lineHeight: 1.25 }}>{current?.label}</h1>
+              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "var(--nv-ink, #111418)", lineHeight: 1.25 }}>{current?.label}</h1>
               <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--nv-muted, #6B7480)" }}>{current?.hint}</p>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

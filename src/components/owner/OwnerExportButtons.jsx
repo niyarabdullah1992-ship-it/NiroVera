@@ -1,14 +1,14 @@
 import React, { useState } from "react";
 import { FileSpreadsheet, FileText } from "lucide-react";
 import { exportOwnerReportExcel, printOwnerReport } from "@/lib/ownerReportExport";
-import { ownerChip, ownerGhostBtn, ownerPaper } from "@/components/owner/ownerUi";
+import { ownerGhostBtn, ownerPaper } from "@/components/owner/ownerUi";
 
 export default function OwnerExportButtons({ filename, title, headers, rows, ar }) {
   const [open, setOpen] = useState(false);
   const report = { filename, title, headers, rows, ar };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <button type="button" onClick={() => setOpen(!open)} style={ownerChip(open)}>
+      <button type="button" onClick={() => setOpen(!open)} style={{ ...ownerGhostBtn(), justifyContent: "flex-start", width: "100%", fontWeight: 500, color: "var(--nv-ink2)" }}>
         <FileText className="h-3.5 w-3.5" />
         {title} (PDF / Excel)
       </button>
